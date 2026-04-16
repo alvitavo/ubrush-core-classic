@@ -1,0 +1,1566 @@
+{
+    "data": [{
+        "title": "Property",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "title": "Name"
+                },
+                "icon": {
+                    "type": "string",
+                    "format": "data-url",
+                    "title": "Icon"
+                },
+                "preview": {
+                    "type": "string",
+                    "format": "data-url",
+                    "title": "Preview"
+                },
+                "useColor": {
+                    "type": "boolean",
+                    "title": "Use Color"
+                },
+                "defaultSize": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Default Size"
+                },
+                "defaultOpacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Default Opacity"
+                }
+            }
+        },
+        "uischema": {
+            "icon": {
+                "ui:options": {
+                    "accept": [".jpg", ".png"]
+                }
+            },
+            "preview": {
+                "ui:options": {
+                    "accept": [".jpg", ".png"]
+                }
+            },
+            "defaultSize": {
+                "ui:widget": "range"
+            },
+            "defaultOpacity": {
+                "ui:widget": "range"
+            }
+        }
+    }, {
+        "title": "Resource",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "tipMinSize": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 10,
+                    "multipleOf": 0.01,
+                    "title": "Tip Min Size"
+                },
+                "tipSource": {
+                    "type": "string",
+                    "format": "data-url",
+                    "title": "Tip Source"
+                },
+                "tipDivideX": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10,
+                    "title": "Tip Divide X"
+                },
+                "tipDivideY": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10,
+                    "title": "Tip Divide Y"
+                },
+                "dualTipSource": {
+                    "type": "string",
+                    "format": "data-url",
+                    "title": "Dual Tip Source"
+                },
+                "textureSource": {
+                    "type": "string",
+                    "format": "data-url",
+                    "title": "Texture Source"
+                }
+            }
+        },
+        "uischema": {
+            "tipMinSize": {
+                "ui:widget": "range"
+            },
+            "tipSource": {
+                "ui:options": {
+                    "accept": [".jpg", ".png"]
+                }
+            },
+            "tipDivideX": {
+                "ui:widget": "range"
+            },
+            "tipDivideY": {
+                "ui:widget": "range"
+            },
+            "dualTipSource": {
+                "ui:options": {
+                    "accept": [".jpg", ".png"]
+                }
+            },
+            "textureSource": {
+                "ui:options": {
+                    "accept": [".jpg", ".png"]
+                }
+            }
+        }
+    }, {
+        "title": "Stroke",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "engineType": {
+                    "type": "string",
+                    "enum": ["BASIC_DOTS", "SMUDGING_DOTS", "WATER_DOTS"],
+                    "title": "Engine Type"
+                },
+                "strokeType": {
+                    "type": "string",
+                    "enum": ["LINE", "CURVE", "FOLLOW"],
+                    "title": "Stroke Type"
+                },
+                "followAcceleration": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Follow Acceleration"
+                },
+                "tailLength": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10,
+                    "title": "Tail Length"
+                },
+                "minSize": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "multipleOf": 1,
+                    "title": "Min Size"
+                },
+                "maxSize": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "multipleOf": 1,
+                    "title": "Max Size"
+                },
+                "scale": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "Scale *"
+                },
+                "oval": {
+                    "type": "number",
+                    "minimum": -1,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Oval"
+                },
+                "spacing": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2,
+                    "multipleOf": 0.01,
+                    "title": "Spacing"
+                },
+                "minSpacing": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 5,
+                    "multipleOf": 0.01,
+                    "title": "Min Spacing"
+                },
+                "offsetForAltitude": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Offset For Altitude"
+                },
+                "spray": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "Spray *"
+                },
+                "rotationType": {
+                    "type": "string",
+                    "enum": ["FIXED", "DIRECTION", "DIRECTION_FIRST_DOT", "FIXED_OR_AZIMUTH", "DIRECTION_OR_AZIMUTH", "DIRECTION_FIRST_DOT_OR_AZIMUTH"],
+                    "title": "Rotation Type"
+                },
+                "initialAngle": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Initial Angle"
+                },
+                "angleJitter": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Angle Jitter"
+                },
+                "deltaAngle": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Delta Angle"
+                }
+            }
+        },
+        "uischema": {
+            "engineType": {
+                "ui:widget": "radio"
+            },
+            "strokeType": {
+                "ui:widget": "radio"
+            },
+            "followAcceleration": {
+                "ui:widget": "range"
+            },
+            "tailLength": {
+                "ui:widget": "range"
+            },
+            "minSize": {
+                "ui:widget": "range"
+            },
+            "maxSize": {
+                "ui:widget": "range"
+            },
+            "scale": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "oval": {
+                "ui:widget": "range"
+            },
+            "spacing": {
+                "ui:widget": "range"
+            },
+            "minSpacing": {
+                "ui:widget": "range"
+            },
+            "offsetForAltitude": {
+                "ui:widget": "range"
+            },
+            "spray": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "rotationType": {
+                "ui:widget": "radio"
+            },
+            "initialAngle": {
+                "ui:widget": "range"
+            },
+            "angleJitter": {
+                "ui:widget": "range"
+            },
+            "deltaAngle": {
+                "ui:widget": "range"
+            }
+        }
+    }, {
+        "title": "Shape",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "minOpacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Min Opacity"
+                },
+                "maxOpacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Max Opacity"
+                },
+                "minLayerOpacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Min Layer Opacity"
+                },
+                "maxLayerOpacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Max Layer Opacity"
+                },
+                "minMixingOpacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Min Mixing Opacity"
+                },
+                "maxMixingOpacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Max Mixing Opacity"
+                },
+                "opacity": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "Opacity *"
+                },
+                "tint": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "Tint *"
+                },
+                "tipIndex": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "Tip Index *"
+                },
+                "textureOpacity": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "Texture Opacity *"
+                },
+                "useTextureFitting": {
+                    "type": "boolean",
+                    "title": "Use Texture Fitting"
+                },
+                "textureOffset": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Texture Offset"
+                },
+                "textureScale": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 4,
+                    "multipleOf": 0.01,
+                    "title": "Texture Scale"
+                },
+                "mixingOpacity": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "Mixing Opacity *"
+                },
+                "useSmudging": {
+                    "type": "boolean",
+                    "title": "Use Smudging"
+                }
+            }
+        },
+        "uischema": {
+            "minOpacity": {
+                "ui:widget": "range"
+            },
+            "maxOpacity": {
+                "ui:widget": "range"
+            },
+            "minLayerOpacity": {
+                "ui:widget": "range"
+            },
+            "maxLayerOpacity": {
+                "ui:widget": "range"
+            },
+            "minMixingOpacity": {
+                "ui:widget": "range"
+            },
+            "maxMixingOpacity": {
+                "ui:widget": "range"
+            },
+            "opacity": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "tint": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "tipIndex": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "textureOpacity": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "textureOffset": {
+                "ui:widget": "range"
+            },
+            "textureScale": {
+                "ui:widget": "range"
+            },
+            "mixingOpacity": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            }
+        }
+    }, {
+        "title": "Dual Tip",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "useDualTip": {
+                    "type": "boolean",
+                    "title": "Use Dual Tip"
+                },
+                "dualTipInterval": {
+                    "type": "integer",
+                    "minimum": -10,
+                    "maximum": 10,
+                    "title": "DT Interval"
+                },
+                "dualTipOval": {
+                    "type": "number",
+                    "minimum": -1,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "DT Oval"
+                },
+                "dualTipScale": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "DT Scale *"
+                },
+                "dualTipMinOpacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "DT Min Opacity"
+                },
+                "dualTipMaxOpacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "DT Max Opacity"
+                },
+                "dualTipOpacity": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "DT Opacity *"
+                },
+                "dualTipSpray": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "DT Spray *"
+                },
+                "dualTipRotationType": {
+                    "type": "string",
+                    "enum": ["FIXED", "DIRECTION", "DIRECTION_FIRST_DOT", "FIXED_OR_AZIMUTH", "DIRECTION_OR_AZIMUTH", "DIRECTION_FIRST_DOT_OR_AZIMUTH"],
+                    "title": "DT Rotation Type"
+                },
+                "dualTipInitialAngle": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "DT Initial Angle"
+                },
+                "dualTipAngleJitter": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "DT Angle Jitter"
+                },
+                "dualTipDeltaAngle": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "DT Delta Angle"
+                }
+            }
+        },
+        "uischema": {
+            "dualTipInterval": {
+                "ui:widget": "range"
+            },
+            "dualTipOval": {
+                "ui:widget": "range"
+            },
+            "dualTipScale": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "dualTipMinOpacity": {
+                "ui:widget": "range"
+            },
+            "dualTipMaxOpacity": {
+                "ui:widget": "range"
+            },
+            "dualTipOpacity": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "dualTipSpray": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "dualTipRotationType": {
+                "ui:widget": "radio"
+            },
+            "dualTipInitialAngle": {
+                "ui:widget": "range"
+            },
+            "dualTipAngleJitter": {
+                "ui:widget": "range"
+            },
+            "dualTipDeltaAngle": {
+                "ui:widget": "range"
+            }
+        }
+    }, {
+        "title": "Layer Effect",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "dryType": {
+                    "type": "string",
+                    "enum": ["AUTO", "MANUAL"],
+                    "title": "Dry Type"
+                },
+                "useLayerTinting": {
+                    "type": "boolean",
+                    "title": "Use Layer Tinting"
+                },
+                "useLayerWetEdge": {
+                    "type": "boolean",
+                    "title": "Use Layer Wet Edge"
+                },
+                "layerLowCut": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Layer Low Cut"
+                },
+                "layerHighCut": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "multipleOf": 0.01,
+                    "title": "Layer High Cut"
+                },
+                "layerBlendmode": {
+                    "type": "string",
+                    "enum": ["NORMAL", "MULTIPLY", "ERASE"],
+                    "title": "Layer Blendmode"
+                }
+            }
+        },
+        "uischema": {
+            "dryType": {
+                "ui:widget": "radio"
+            },
+            "layerLowCut": {
+                "ui:widget": "range"
+            },
+            "layerHighCut": {
+                "ui:widget": "range"
+            },
+            "layerBlendmode": {
+                "ui:widget": "radio"
+            }
+        }
+    }, {
+        "title": "Second Color",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "colorVariationType": {
+                    "type": "string",
+                    "enum": ["NONE", "ALWAYS", "FIRST_DOT"],
+                    "title": "Color Variation Type"
+                },
+                "hue": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "Hue *"
+                },
+                "saturation": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "Saturation *"
+                },
+                "brightness": {
+                    "type": "object",
+                    "properties": {
+                        "min": {
+                            "title": "Min",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "max": {
+                            "title": "Max",
+                            "type": "number",
+                            "minimum": -10,
+                            "maximum": 10,
+                            "multipleOf": 0.01
+                        },
+                        "sources": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "title": "Type",
+                                        "type": "string",
+                                        "default": "FIXED_VALUE",
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                    },
+                                    "operation": {
+                                        "title": "Operation",
+                                        "type": "string",
+                                        "default": "PLUS",
+                                        "enum": ["PLUS", "MINUS", "MULTIPLY"]
+                                    },
+                                    "value": {
+                                        "title": "Value",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "weight": {
+                                        "title": "Weight",
+                                        "type": "number",
+                                        "default": 1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "multipleOf": 0.01
+                                    },
+                                    "exclusiveStylusSource": {
+                                        "title": "Exclusive Stylus Source",
+                                        "type": "string",
+                                        "default": "DEFAULT",
+                                        "enum": ["DEFAULT", "PRESSURE", "ALTITUDE_ANGLE", "ALTITUDE_ANGLE_HEAVY", "AZIMUTH_ANGLE"]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "title": "Brightness *"
+                }
+            }
+        },
+        "uischema": {
+            "colorVariationType": {
+                "ui:widget": "radio"
+            },
+            "hue": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "saturation": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            },
+            "brightness": {
+                "min": {
+                    "ui:widget": "range"
+                },
+                "max": {
+                    "ui:widget": "range"
+                },
+                "sources": {
+                    "items": {
+                        "value": {
+                            "ui:widget": "range"
+                        },
+                        "weight": {
+                            "ui:widget": "range"
+                        }
+                    }
+                }
+            }
+        }
+    }]
+}
