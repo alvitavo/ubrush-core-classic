@@ -185,7 +185,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER", "SLIDER_VALUE", "FADE"]
                                     },
                                     "operation": {
                                         "title": "Operation",

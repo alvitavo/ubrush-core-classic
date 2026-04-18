@@ -40,7 +40,9 @@ export enum ExpressionSourceType {
     FIXED_VALUE = "FIXED_VALUE",
     VELOCITY = "VELOCITY",
     INVERSE_VELOCITY = "INVERSE_VELOCITY",
-    JITTER = "JITTER"
+    JITTER = "JITTER",
+    SLIDER_VALUE = "SLIDER_VALUE", // DEPRECATED
+    FADE = "FADE", // DEPRECATED
 }
 
 export enum ExpressionOperation {

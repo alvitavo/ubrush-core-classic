@@ -79,7 +79,10 @@ export class ExpressionHelper {
                     break;
                 case ExpressionSourceType.JITTER:
                     result = Common.random() * expressionSource.value;
-
+                    break;
+                default:
+                    result = expressionSource.value;
+                    break;
             }
 
         }
