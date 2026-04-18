@@ -82,7 +82,7 @@ export class DotBuilder {
 
         if (!this.brush) return;
 
-        const colorParam: ICalcExpressionParam = { progressLength: 0, level: 0, fade: 0, pressure: 0, altitudeAngle: 0, azimuthAngle: 0 };
+        const colorParam: ICalcExpressionParam = { progressLength: 0, level: 0, pressure: 0, altitudeAngle: 0, azimuthAngle: 0 };
         let hue2: number = ExpressionHelper.calcExpression(this.brush.hue, colorParam) + this.hue;
         let sat2: number = ExpressionHelper.calcExpression(this.brush.saturation, colorParam) + this.sat;
         let val2: number = ExpressionHelper.calcExpression(this.brush.brightness, colorParam) + this.val;
@@ -119,7 +119,7 @@ export class DotBuilder {
 
     }
 
-    public prepareDot(param: {pt: Point, size: number, progressLength: number, level: number, fade: number, stylus: Stylus}): void {
+    public prepareDot(param: {pt: Point, size: number, progressLength: number, level: number, stylus: Stylus}): void {
         
         const dot: Dot = new Dot();
         dot.prepareX = param.pt.x;
@@ -127,7 +127,6 @@ export class DotBuilder {
         dot.prepareSize = param.size;
         dot.prepareProgressLength = param.progressLength;
         dot.prepareLevel = param.level;
-        dot.prepareFade = param.fade;
         dot.preparePressure = param.stylus.pressure;
         dot.prepareAltitudeAngle = param.stylus.altitudeAngle;
         dot.prepareAzimuthAngle = param.stylus.azimuthAngle;

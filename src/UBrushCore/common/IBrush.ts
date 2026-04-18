@@ -40,11 +40,6 @@ export enum ExpressionSourceType {
     FIXED_VALUE = "FIXED_VALUE",
     VELOCITY = "VELOCITY",
     INVERSE_VELOCITY = "INVERSE_VELOCITY",
-    FADE_IN = "FADE_IN",
-    FADE_OUT = "FADE_OUT",
-    FADE_OUT_FOR_TAIL = "FADE_OUT_FOR_TAIL",
-    FADE_IN_OUT = "FADE_IN_OUT",
-    FADE_IN_OUT_FOR_TAIL = "FADE_IN_OUT_FOR_TAIL",
     JITTER = "JITTER"
 }
 
@@ -109,7 +104,6 @@ export interface IBrush {
 
     angleJitter: number;
     followAcceleration: number;
-    tailLength: number;
     
     dualTipOval: number;
     dualTipDeltaAngle: number;

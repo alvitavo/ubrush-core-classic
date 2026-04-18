@@ -5,7 +5,6 @@ export interface ICalcExpressionParam {
 
     progressLength: number;
     level: number;
-    fade: number;
     pressure: number;
     altitudeAngle: number;
     azimuthAngle: number;
@@ -77,31 +76,6 @@ export class ExpressionHelper {
                     break;
                 case ExpressionSourceType.INVERSE_VELOCITY:
                     result = 1 - Common.clamp0_1(param.level * expressionSource.value);
-                    break;
-                case ExpressionSourceType.FADE_IN:
-                    result = Common.clamp0_1(param.progressLength * expressionSource.value * 0.1);
-                    result = Math.sin(result * (Math.PI * 0.5));
-                    break;
-                case ExpressionSourceType.FADE_OUT:
-                    result = 1 - Common.clamp0_1(param.progressLength * expressionSource.value * 0.1);
-                    result = Math.sin(result * (Math.PI * 0.5));
-                    break;
-                case ExpressionSourceType.FADE_IN_OUT:
-                    result = param.progressLength * expressionSource.value * 0.1;
-                    
-                    if (result > 1) {
-
-                        result = 2 - result;
-
-                    }
-
-                    result = Math.sin(Common.clamp0_1(result) * (Math.PI * 0.5));
-                    break;
-                case ExpressionSourceType.FADE_OUT_FOR_TAIL:
-                    result = Math.sin(Common.clamp0_1(param.fade / expressionSource.value) * (Math.PI * 0.5));
-                    break;
-                case ExpressionSourceType.FADE_IN_OUT_FOR_TAIL:
-                    result = Math.sin(Math.min(Common.clamp0_1(param.progressLength * expressionSource.value * 0.1), Common.clamp0_1(param.fade)) * (Math.PI * 0.5));
                     break;
                 case ExpressionSourceType.JITTER:
                     result = Common.random() * expressionSource.value;

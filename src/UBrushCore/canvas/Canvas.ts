@@ -74,7 +74,6 @@ export class Canvas implements LineDriverDelegate {
         dot.prepareSize = size;
         dot.prepareProgressLength = 0;
         dot.prepareLevel = 0;
-        dot.prepareFade = 0;
         dot.preparePressure = NaN;
         dot.prepareAltitudeAngle = NaN;
         dot.prepareAzimuthAngle = NaN;

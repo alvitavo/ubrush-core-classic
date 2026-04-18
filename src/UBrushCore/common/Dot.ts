@@ -9,7 +9,6 @@ export class Dot {
     public prepareSize: number = 0;
     public prepareProgressLength: number = 0;
     public prepareLevel: number = 0;
-    public prepareFade: number = 0;
     public preparePressure: number = 0;
     public prepareAltitudeAngle: number = 0;
     public prepareAzimuthAngle: number = 0;
@@ -47,7 +46,6 @@ export class Dot {
         dot.prepareSize = this.prepareSize;
         dot.prepareProgressLength = this.prepareProgressLength;
         dot.prepareLevel = this.prepareLevel;
-        dot.prepareFade = this.prepareFade;
         dot.preparePressure = this.preparePressure;
         dot.prepareAltitudeAngle = this.prepareAltitudeAngle;
         dot.prepareAzimuthAngle = this.prepareAzimuthAngle;
@@ -59,7 +57,6 @@ export class Dot {
         return {
             progressLength: this.prepareProgressLength,
             level: this.prepareLevel,
-            fade: this.prepareFade,
             pressure: this.preparePressure,
             altitudeAngle: this.prepareAltitudeAngle,
             azimuthAngle: this.prepareAzimuthAngle

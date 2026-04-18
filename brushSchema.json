@@ -145,12 +145,6 @@
                     "multipleOf": 0.01,
                     "title": "Follow Acceleration"
                 },
-                "tailLength": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 10,
-                    "title": "Tail Length"
-                },
                 "minSize": {
                     "type": "number",
                     "minimum": 1,
@@ -191,7 +185,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -281,7 +275,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -498,7 +492,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -560,7 +554,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -622,7 +616,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -684,7 +678,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -764,7 +758,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -970,7 +964,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -1046,7 +1040,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -1108,7 +1102,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -1341,7 +1335,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -1403,7 +1397,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
@@ -1465,7 +1459,7 @@
                                         "title": "Type",
                                         "type": "string",
                                         "default": "FIXED_VALUE",
-                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "FADE_IN", "FADE_OUT", "FADE_OUT_FOR_TAIL", "FADE_IN_OUT", "FADE_IN_OUT_FOR_TAIL", "JITTER"]
+                                        "enum": ["FIXED_VALUE", "VELOCITY", "INVERSE_VELOCITY", "JITTER"]
                                     },
                                     "operation": {
                                         "title": "Operation",
