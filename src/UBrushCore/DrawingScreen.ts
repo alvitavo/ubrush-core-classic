@@ -51,7 +51,9 @@ export class DrawingScreen implements CanvasDelegate {
 
     /** Called by App after the brush editor applies changes */
     applyBrush(brush: IBrush): void {
-        this.canvas?.setBrush(JSON.parse(JSON.stringify(brush)));
+        const cloned = JSON.parse(JSON.stringify(brush));
+        this.brushes[this.currentBrushIndex] = cloned;
+        this.canvas?.setBrush(JSON.parse(JSON.stringify(cloned)));
     }
 
     getCurrentBrush(): IBrush | undefined {
