@@ -271,11 +271,11 @@ export class DrawingScreen implements CanvasDelegate {
     private initWebGL(): void {
         const w = window.innerWidth - SIDEBAR_W;
         const h = window.innerHeight;
-        this.canvasWidth = w;
-        this.canvasHeight = h;
+        this.canvasWidth = w * 2;
+        this.canvasHeight = h * 2;
 
-        this.glCanvas.width = w;
-        this.glCanvas.height = h;
+        this.glCanvas.width = w * 2;
+        this.glCanvas.height = h * 2;
         this.glCanvas.style.width = w + 'px';
         this.glCanvas.style.height = h + 'px';
 
@@ -298,10 +298,10 @@ export class DrawingScreen implements CanvasDelegate {
             return;
         }
 
-        const context = new UBrushContext(gl, new Size(w, h));
+        const context = new UBrushContext(gl, new Size(w * 2, h * 2));
         this.glContext = context;
 
-        const canvas = new Canvas(context, new Size(w, h));
+        const canvas = new Canvas(context, new Size(w * 2, h * 2));
         canvas.delegate = this;
         this.canvas = canvas;
 
@@ -396,8 +396,10 @@ export class DrawingScreen implements CanvasDelegate {
             clientY = e.touches[0]?.clientY ?? 0;
         }
 
-        const x = clientX - rect.left;
-        const y = this.canvasHeight - (clientY - rect.top);
+        const scaleX = this.canvasWidth / rect.width;
+        const scaleY = this.canvasHeight / rect.height;
+        const x = (clientX - rect.left) * scaleX;
+        const y = this.canvasHeight - (clientY - rect.top) * scaleY;
         return new Point(x, y);
     }
 

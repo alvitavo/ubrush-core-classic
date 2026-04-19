@@ -59,7 +59,6 @@ export class BrushEditorScreen {
         this.onBack = onBack;
         this.onApply = onApply;
         this.element = this.buildLayout();
-        this.initPreviewGL();
     }
 
     async loadSchema(): Promise<void> {
@@ -83,8 +82,18 @@ export class BrushEditorScreen {
 
     show(): void {
         this.element.style.display = 'flex';
+        if (!this.previewGLContext) {
+            requestAnimationFrame(() => {
+                this.initPreviewGL();
+                this.startPreview();
+            });
+        } else {
+            this.startPreview();
+        }
+    }
+
+    private startPreview(): void {
         this.activatePreviewPM();
-        // If a brush was already loaded (re-opening editor), re-apply it
         if (this.currentBrush && this.previewDrawingCanvas) {
             this.previewDrawingCanvas.setBrush(JSON.parse(JSON.stringify(this.currentBrush)));
         }
@@ -115,8 +124,11 @@ export class BrushEditorScreen {
     // ---- preview GL init ----
 
     private initPreviewGL(): void {
-        this.previewCanvasW = PREVIEW_W;
-        this.previewCanvasH = Math.max(400, window.innerHeight - 56 - 52); // header + controls
+        const rect = this.previewGLCanvas.getBoundingClientRect();
+        const displayW = rect.width > 0 ? rect.width : PREVIEW_W;
+        const displayH = rect.height > 0 ? rect.height : Math.max(400, window.innerHeight - 195);
+        this.previewCanvasW = Math.round(displayW * 2);
+        this.previewCanvasH = Math.round(displayH * 2);
 
         this.previewGLCanvas.width = this.previewCanvasW;
         this.previewGLCanvas.height = this.previewCanvasH;
