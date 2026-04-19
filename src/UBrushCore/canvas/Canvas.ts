@@ -429,9 +429,14 @@ export class Canvas implements LineDriverDelegate {
 
     // private
 
-    private flushDots(): Rect | null{
+    private flushDots(): Rect | null {
 
-        const changedRect: Rect | null = this.drawingEngine!.drawDots(this.dots);
+        if (!this.drawingEngine) {
+            this.dots = [];
+            return null;
+        }
+
+        const changedRect: Rect | null = this.drawingEngine.drawDots(this.dots);
         this.dots = [];
 
         return changedRect;

@@ -28,6 +28,7 @@ export class DrawingScreen implements CanvasDelegate {
     private lastPos: Point = new Point();
     private lastStylus: Stylus = new Stylus();
     private undoStack: FixerGroup[] = [];
+    private loopPaused = false;
 
     private categories: BrushCategory[] = [];
     private currentCategoryIndex = 0;
@@ -49,8 +50,8 @@ export class DrawingScreen implements CanvasDelegate {
         this.initWebGL();
     }
 
-    show(): void { this.element.style.display = 'flex'; }
-    hide(): void { this.element.style.display = 'none'; }
+    show(): void { this.element.style.display = 'flex'; this.loopPaused = false; }
+    hide(): void { this.element.style.display = 'none'; this.loopPaused = true; }
 
     /** Called by App after the brush editor applies changes */
     applyBrush(brush: IBrush): void {
@@ -63,8 +64,18 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     getCurrentBrush(): IBrush | undefined {
-        const cat = this.categories[this.currentCategoryIndex];
-        return cat?.brushes?.[this.currentBrushIndex];
+        return this.categories[this.currentCategoryIndex]?.brushes?.[this.currentBrushIndex];
+    }
+
+    getCurrentBrushInfo(): { brush: IBrush; categoryFile: string } | undefined {
+        // Try current selection first; fall back to the first loaded brush in any category
+        for (let ci = this.currentCategoryIndex; ci < this.categories.length; ci++) {
+            const cat = this.categories[ci];
+            const bi = ci === this.currentCategoryIndex ? this.currentBrushIndex : 0;
+            const brush = cat?.brushes?.[bi];
+            if (brush) return { brush, categoryFile: cat.file };
+        }
+        return undefined;
     }
 
     // ---- CanvasDelegate ----
@@ -314,7 +325,7 @@ export class DrawingScreen implements CanvasDelegate {
     // ---- Render loop ----
 
     private loop(): void {
-        this.render();
+        if (!this.loopPaused) this.render();
         requestAnimationFrame(this.loop.bind(this));
     }
 

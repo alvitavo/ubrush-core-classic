@@ -12,11 +12,8 @@ export interface BrushCategory {
 export class App {
     private drawingScreen?: DrawingScreen;
     private editorScreen?: BrushEditorScreen;
-    private container!: HTMLElement;
 
     async init(container: HTMLElement): Promise<void> {
-        this.container = container;
-
         const categories = await this.loadCategories();
 
         this.drawingScreen = new DrawingScreen(categories, () => this.showEditor());
@@ -28,23 +25,20 @@ export class App {
         container.appendChild(this.drawingScreen.element);
         container.appendChild(this.editorScreen.element);
 
-        // Load the brush editor schema (async, non-blocking)
         this.editorScreen.loadSchema().catch(console.error);
-
-        // Start on drawing screen
         this.showDrawing();
     }
 
     private showDrawing(): void {
-        this.editorScreen?.hide();
-        this.drawingScreen?.show();
+        this.editorScreen?.hide();   // restore main PM
+        this.drawingScreen?.show();  // resume main loop
     }
 
     private showEditor(): void {
-        const brush = this.drawingScreen?.getCurrentBrush();
-        if (brush) this.editorScreen?.loadBrush(brush);
-        this.drawingScreen?.hide();
-        this.editorScreen?.show();
+        const info = this.drawingScreen?.getCurrentBrushInfo();
+        this.drawingScreen?.hide();  // pause main loop first
+        this.editorScreen?.show();   // activate preview PM
+        if (info) this.editorScreen?.loadBrush(info.brush, info.categoryFile); // setBrush with preview PM active
     }
 
     private applyBrushFromEditor(brush: IBrush): void {
@@ -56,8 +50,6 @@ export class App {
         try {
             const resp = await fetch('brushCategories.json');
             const manifest: BrushCategory[] = await resp.json();
-
-            // Load brushes for the first category eagerly; others are lazy-loaded
             if (manifest.length > 0) {
                 manifest[0].brushes = await App.loadCategoryBrushes(manifest[0].file);
             }
