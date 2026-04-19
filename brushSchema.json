@@ -128,14 +128,6 @@
         "schema": {
             "type": "object",
             "properties": {
-                "alphaSmudgingMode": {
-                    "type": "boolean",
-                    "title": "Alpha Smudging Mode"
-                },
-                "useSecondaryMask": {
-                    "type": "boolean",
-                    "title": "Use Secondary Mask"
-                },
                 "strokeType": {
                     "type": "string",
                     "enum": ["LINE", "CURVE", "FOLLOW"],
@@ -1251,6 +1243,14 @@
         "schema": {
             "type": "object",
             "properties": {
+                "alphaSmudgingMode": {
+                    "type": "boolean",
+                    "title": "Alpha Smudging Mode"
+                },
+                "useSecondaryMask": {
+                    "type": "boolean",
+                    "title": "Use Secondary Mask"
+                },
                 "dryType": {
                     "type": "string",
                     "enum": ["AUTO", "MANUAL"],
