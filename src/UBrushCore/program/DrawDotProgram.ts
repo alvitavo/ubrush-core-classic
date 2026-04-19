@@ -90,7 +90,7 @@ export class DrawDotProgram {
 
     }
     
-    public drawRects(renderTarget: RenderTarget, 
+    public drawRects(renderTarget: RenderTarget,
         param: {
 
             tipTexture: Texture,
@@ -107,7 +107,8 @@ export class DrawDotProgram {
             colors: number[],
             opacities: number[],
             numberOfPoints: number,
-            useDualTip: boolean
+            useDualTip: boolean,
+            blend: RenderObjectBlend
 
         }): void {
         
@@ -137,7 +138,7 @@ export class DrawDotProgram {
         this.renderObject.uniforms.push({name: "u_smudging0RefTexture", value: param.smudging0Texture});
         this.renderObject.uniforms.push({name: "u_smudgingRefTexture", value: param.smudgingTexture});
         
-        this.renderObject.blend = RenderObjectBlend.Normal;
+        this.renderObject.blend = param.blend;
         this.renderObject.indexData = new Uint16Array(param.indexData);
         this.renderObject.numberOfPoints = param.numberOfPoints;
 

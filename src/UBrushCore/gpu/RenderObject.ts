@@ -16,7 +16,10 @@ export interface Uniform {
 export enum RenderObjectBlend {
 
     None,
-    Normal
+    Normal,
+    Add,
+    Screen,
+    Max
 
 }
 

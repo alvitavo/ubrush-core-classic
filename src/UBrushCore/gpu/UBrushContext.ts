@@ -115,15 +115,33 @@ export class UBrushContext {
         }
 
         if (renderObject.blend === RenderObjectBlend.None) {
-            
+
             gl.disable(gl.BLEND);
+
+        } else if (renderObject.blend === RenderObjectBlend.Add) {
+
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.ONE, gl.ONE);
+
+        } else if (renderObject.blend === RenderObjectBlend.Screen) {
+
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR);
+
+        } else if (renderObject.blend === RenderObjectBlend.Max) {
+
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.ONE, gl.ONE);
+            const ext = gl.getExtension('EXT_blend_minmax');
+            if (ext) {
+                gl.blendEquation(ext.MAX_EXT);
+            }
 
         } else {
 
             gl.enable(gl.BLEND);
-
             gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-            
+
         }
 
         let mode: number = gl.TRIANGLES;
@@ -151,8 +169,11 @@ export class UBrushContext {
         }
 
 
-        gl.disable(gl.BLEND);
+        if (renderObject.blend === RenderObjectBlend.Max) {
+            gl.blendEquation(gl.FUNC_ADD);
+        }
 
+        gl.disable(gl.BLEND);
 
         for (let i = 0; i < renderObject.attributes.length; i++) {
 

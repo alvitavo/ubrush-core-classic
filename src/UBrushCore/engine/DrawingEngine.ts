@@ -10,7 +10,7 @@ import { ProgramManager } from "../program/ProgramManager";
 import { RenderObjectBlend } from "../gpu/RenderObject";
 import { AffineTransform } from "../common/AffineTransform";
 import { Fixer, FixerRenderTarget } from "../common/Fixer";
-import { LayerBlendmode } from "../common/IBrush";
+import { LayerBlendmode, DotBlendmode } from "../common/IBrush";
 import { Color } from "../common/Color";
 
 export type DrawingMode = 'basic' | 'smudging' | 'water';
@@ -66,6 +66,10 @@ export class DrawingEngine {
     public useLayerWetEdge: boolean = false;
     public liquidLayerBlendmode: LayerBlendmode | string = LayerBlendmode.NORMAL;
     public brushColor: Color = new Color();
+    public dotBlendmode: DotBlendmode | string = DotBlendmode.NORMAL;
+    public maskDotBlendmode: DotBlendmode | string = DotBlendmode.NORMAL;
+
+    private _currentDotBlend: RenderObjectBlend = RenderObjectBlend.Normal;
 
     constructor(context: UBrushContext, size: Size) {
         this.context = context;
@@ -614,6 +618,7 @@ export class DrawingEngine {
         const firstDot = dots[0];
         const lastDot = dots[dots.length - 1];
         this.layerOpacity = firstDot.layerOpacity;
+        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.dotBlendmode);
 
         let rect: Rect | null = null;
 
@@ -659,6 +664,7 @@ export class DrawingEngine {
     private _renderMultiDotsSmudging(dots: Dot[]): Rect | null {
         const firstDot = dots[0];
         const lastDot = dots[dots.length - 1];
+        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.dotBlendmode);
 
         let rect: Rect | null = null;
 
@@ -714,6 +720,7 @@ export class DrawingEngine {
         let rect: Rect | null = null;
 
         this.currentRenderTarget = this.drawingRenderTarget;
+        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.dotBlendmode);
 
         if (this._useSmudging) {
             if (!this.smudgingDot && drawingDots.length > 0) {
@@ -734,6 +741,7 @@ export class DrawingEngine {
         }
 
         this.currentRenderTarget = this.maskDrawingRenderTarget!;
+        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.maskDotBlendmode);
         const maskRect = this.renderDots(maskDots, true);
 
         if (rect !== null && maskRect !== null) {
@@ -971,12 +979,20 @@ export class DrawingEngine {
                 colors: param.colors,
                 opacities: param.opacities,
                 numberOfPoints: param.numberOfPoints,
-                useDualTip: param.useDualTip
+                useDualTip: param.useDualTip,
+                blend: this._currentDotBlend
             });
         }
     }
 
     // ---- private helpers ----
+
+    private _dotBlendToRenderObjectBlend(mode: DotBlendmode | string): RenderObjectBlend {
+        if (mode === DotBlendmode.ADD) return RenderObjectBlend.Add;
+        if (mode === DotBlendmode.SCREEN) return RenderObjectBlend.Screen;
+        if (mode === DotBlendmode.MAX) return RenderObjectBlend.Max;
+        return RenderObjectBlend.Normal;
+    }
 
     private _fill(dst: RenderTarget, src: Texture): void {
         ProgramManager.getInstance().fillRectProgram.fill(dst, {

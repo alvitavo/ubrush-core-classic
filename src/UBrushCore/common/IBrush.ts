@@ -1,7 +1,14 @@
 export enum LayerBlendmode {
-    NORMAL = "NORMAL", 
-    MULTIPLY = "MULTIPLY", 
+    NORMAL = "NORMAL",
+    MULTIPLY = "MULTIPLY",
     ERASE = "ERASE"
+}
+
+export enum DotBlendmode {
+    NORMAL = "Normal",
+    ADD = "Add",
+    SCREEN = "Screen",
+    MAX = "Max"
 }
 
 export enum DryType {
@@ -148,6 +155,8 @@ export interface IBrush {
     name?: string;
     
     layerBlendmode: LayerBlendmode | string;
+    dotBlendmode: DotBlendmode | string;
+    maskDotBlendmode: DotBlendmode | string;
     dryType: DryType | string;
     dualTipRotationType: RotationType | string;
     rotationType: RotationType | string;

@@ -1282,6 +1282,16 @@
                     "type": "string",
                     "enum": ["NORMAL", "MULTIPLY", "ERASE"],
                     "title": "Layer Blendmode"
+                },
+                "dotBlendmode": {
+                    "type": "string",
+                    "enum": ["Normal", "Add", "Screen", "Max"],
+                    "title": "Dot Blendmode"
+                },
+                "maskDotBlendmode": {
+                    "type": "string",
+                    "enum": ["Normal", "Add", "Screen", "Max"],
+                    "title": "Mask Dot Blendmode"
                 }
             }
         },
@@ -1296,6 +1306,12 @@
                 "ui:widget": "range"
             },
             "layerBlendmode": {
+                "ui:widget": "radio"
+            },
+            "dotBlendmode": {
+                "ui:widget": "radio"
+            },
+            "maskDotBlendmode": {
                 "ui:widget": "radio"
             }
         }
