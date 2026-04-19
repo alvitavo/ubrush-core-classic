@@ -11,6 +11,14 @@ export enum DotBlendmode {
     MAX = "Max"
 }
 
+export enum EdgeStyle {
+    NONE = "NONE",
+    WET = "WET",
+    BURN = "BURN",
+    HARD = "HARD",
+    SOFT = "SOFT"
+}
+
 export enum DryType {
     AUTO = "AUTO", 
     MANUAL = "MANUAL"
@@ -140,7 +148,6 @@ export interface IBrush {
     useTextureFitting: boolean;
     useColor: boolean;
     useLayerTinting: boolean;
-    useLayerWetEdge: boolean;
     useSmudging: boolean;
     useDualTip: boolean;
     alphaSmudgingMode: boolean;
@@ -157,6 +164,8 @@ export interface IBrush {
     layerBlendmode: LayerBlendmode | string;
     dotBlendmode: DotBlendmode | string;
     maskDotBlendmode: DotBlendmode | string;
+    edgeStyle: EdgeStyle | string;
+    dualTipEdgeStyle: EdgeStyle | string;
     dryType: DryType | string;
     dualTipRotationType: RotationType | string;
     rotationType: RotationType | string;

@@ -8,7 +8,7 @@ import { RenderObject, RenderObjectBlend, RenderObjectDrawModes } from "../gpu/R
 import { AffineTransform } from "../common/AffineTransform";
 import { Color } from "../common/Color";
 import { Common } from "../common/Common";
-import { LayerBlendmode } from "../common/IBrush";
+import { LayerBlendmode, EdgeStyle } from "../common/IBrush";
 
 export class HighLowCutProgram {
 
@@ -38,27 +38,27 @@ export class HighLowCutProgram {
     uniform lowp float u_highCut;
     
     uniform int u_liquidTinting;
-    uniform int u_wetEdge;
+    uniform int u_hasEdge;
     uniform int u_blendmode; // 0:normal 1:multiply 2:erase
-    
+
     void main()
     {
         highp vec4 dryColor     = texture2D(u_dryTexture,    v_textureCoordinate);
         highp vec4 liquidColor  = texture2D(u_liquidTexture, v_textureCoordinate);
-        
-        if (u_lowCut == 0.0 && u_highCut == 1.0 && u_wetEdge == 0)
+
+        if (u_lowCut == 0.0 && u_highCut == 1.0 && u_hasEdge == 0)
         {
             liquidColor = liquidColor * u_opacity;
         }
         else
         {
             lowp float newAlpha = clamp((liquidColor.a - u_lowCut) / (u_highCut - u_lowCut), 0.0, 1.0) * u_opacity;
-            
-            if (u_wetEdge == 1)
+
+            if (u_hasEdge == 1)
             {
                 newAlpha = texture2D(u_wetedgeTexture, vec2(((newAlpha * 255.0) + 0.5) / 256.0, 0.5)).r;
             }
-            
+
             liquidColor = clamp(vec4(vec3((liquidColor.rgb / liquidColor.a) * newAlpha), newAlpha), vec4(0.0), vec4(1.0));
         }
         
@@ -81,7 +81,7 @@ export class HighLowCutProgram {
         }
     }`;
     
-    private wetedgeTexture: Texture;
+    private edgeTextures: Map<string, Texture> = new Map();
 
     private program: Program;
 
@@ -90,17 +90,26 @@ export class HighLowCutProgram {
     private renderObject: RenderObject;
 
     constructor(context: UBrushContext) {
-        
+
         this.context = context;
 
         this.program = context.createProgram(this.vertexShaderSource, this.fragmentShaderSource);
 
         this.renderObject = new RenderObject();
 
-        this.wetedgeTexture = context.createTexture();
-        
-        this.wetedgeTexture.loadFromBase64("data:image/png;base64," + Common.wetedgeBase64());
+        for (const style of ['WET', 'BURN', 'HARD', 'SOFT']) {
+            const lut = Common.edgeLUT(style);
+            if (lut) {
+                const tex = context.createTexture();
+                tex.loadFromRGBA(lut, 256, 1);
+                this.edgeTextures.set(style, tex);
+            }
+        }
 
+    }
+
+    private getEdgeTexture(style: EdgeStyle | string): Texture | null {
+        return this.edgeTextures.get(style as string) ?? null;
     }
     
     public distroy(): void {
@@ -123,7 +132,7 @@ export class HighLowCutProgram {
             highCut: number,
             liquidColor: Color,
             liquidTinting: boolean,
-            wetEdge: boolean
+            edgeStyle: EdgeStyle | string
         }): void {
         
         const imageVertices = new Array<number>(8);
@@ -209,7 +218,8 @@ export class HighLowCutProgram {
         this.renderObject.attributes.push({name: "a_position", data: new Float32Array(imageVertices), size: 2});
         this.renderObject.attributes.push({name: "a_textureCoordinate", data: new Float32Array(textureCoordinates), size: 2});
 
-        this.renderObject.uniforms.push({name: "u_wetedgeTexture", value: this.wetedgeTexture});
+        const edgeTex = this.getEdgeTexture(param.edgeStyle);
+        this.renderObject.uniforms.push({name: "u_wetedgeTexture", value: edgeTex ?? this.edgeTextures.get('WET')!});
         this.renderObject.uniforms.push({name: "u_dryTexture", value: param.drySource});
         this.renderObject.uniforms.push({name: "u_liquidTexture", value: param.liquidSource});
         this.renderObject.uniforms.push({name: "u_liquidColor", value: param.liquidColor});
@@ -219,7 +229,7 @@ export class HighLowCutProgram {
         this.renderObject.uniforms.push({name: "u_lowCut", value: param.lowCut});
         this.renderObject.uniforms.push({name: "u_highCut", value: param.highCut});
         this.renderObject.uniforms.push({name: "u_liquidTinting", value: param.liquidTinting ? 1 : 0});
-        this.renderObject.uniforms.push({name: "u_wetEdge", value: param.wetEdge ? 1 : 0});
+        this.renderObject.uniforms.push({name: "u_hasEdge", value: edgeTex ? 1 : 0});
         
         const bm = param.liquidSourceBlendmode;
         const blendModeCode: number = (bm === LayerBlendmode.NORMAL) ? 0 : (bm === LayerBlendmode.MULTIPLY ? 1 : 2);

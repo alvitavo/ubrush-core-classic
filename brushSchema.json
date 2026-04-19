@@ -1260,9 +1260,15 @@
                     "type": "boolean",
                     "title": "Use Layer Tinting"
                 },
-                "useLayerWetEdge": {
-                    "type": "boolean",
-                    "title": "Use Layer Wet Edge"
+                "edgeStyle": {
+                    "type": "string",
+                    "enum": ["NONE", "WET", "BURN", "HARD", "SOFT"],
+                    "title": "Edge Style"
+                },
+                "dualTipEdgeStyle": {
+                    "type": "string",
+                    "enum": ["NONE", "WET", "BURN", "HARD", "SOFT"],
+                    "title": "Dual Tip Edge Style"
                 },
                 "layerLowCut": {
                     "type": "number",
@@ -1312,6 +1318,12 @@
                 "ui:widget": "radio"
             },
             "maskDotBlendmode": {
+                "ui:widget": "radio"
+            },
+            "edgeStyle": {
+                "ui:widget": "radio"
+            },
+            "dualTipEdgeStyle": {
                 "ui:widget": "radio"
             }
         }

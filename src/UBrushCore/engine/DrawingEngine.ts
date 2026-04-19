@@ -10,7 +10,7 @@ import { ProgramManager } from "../program/ProgramManager";
 import { RenderObjectBlend } from "../gpu/RenderObject";
 import { AffineTransform } from "../common/AffineTransform";
 import { Fixer, FixerRenderTarget } from "../common/Fixer";
-import { LayerBlendmode, DotBlendmode } from "../common/IBrush";
+import { LayerBlendmode, DotBlendmode, EdgeStyle } from "../common/IBrush";
 import { Color } from "../common/Color";
 
 export type DrawingMode = 'basic' | 'smudging' | 'water';
@@ -63,7 +63,8 @@ export class DrawingEngine {
     // ---- layer effects ----
     public layerOpacity: number = 1;
     public useLayerTinting: boolean = false;
-    public useLayerWetEdge: boolean = false;
+    public edgeStyle: EdgeStyle | string = EdgeStyle.NONE;
+    public dualTipEdgeStyle: EdgeStyle | string = EdgeStyle.NONE;
     public liquidLayerBlendmode: LayerBlendmode | string = LayerBlendmode.NORMAL;
     public brushColor: Color = new Color();
     public dotBlendmode: DotBlendmode | string = DotBlendmode.NORMAL;
@@ -276,7 +277,8 @@ export class DrawingEngine {
                 opacity: this.layerOpacity,
                 lowCut: this.liquidCutMin,
                 highCut: this.liquidCutMax,
-                wetEdge: this.useLayerWetEdge
+                edgeStyle: this.edgeStyle,
+                maskEdgeStyle: this.dualTipEdgeStyle
             });
         } else {
             ProgramManager.getInstance().highLowCutProgram.fill(renderTarget, {
@@ -292,7 +294,7 @@ export class DrawingEngine {
                 highCut: this.liquidCutMax,
                 liquidColor: this.brushColor,
                 liquidTinting: this.useLayerTinting,
-                wetEdge: this.useLayerWetEdge
+                edgeStyle: this.edgeStyle
             });
         }
     }
@@ -372,7 +374,8 @@ export class DrawingEngine {
                 opacity: this.layerOpacity,
                 lowCut: this.liquidCutMin,
                 highCut: this.liquidCutMax,
-                wetEdge: this.useLayerWetEdge
+                edgeStyle: this.edgeStyle,
+                maskEdgeStyle: this.dualTipEdgeStyle
             });
         } else {
             ProgramManager.getInstance().highLowCutProgram.fill(tempRenderTarget, {
@@ -388,7 +391,7 @@ export class DrawingEngine {
                 highCut: this.liquidCutMax,
                 liquidColor: this.brushColor,
                 liquidTinting: this.useLayerTinting,
-                wetEdge: this.useLayerWetEdge
+                edgeStyle: this.edgeStyle
             });
         }
 
@@ -489,7 +492,8 @@ export class DrawingEngine {
                 opacity: this.layerOpacity,
                 lowCut: this.liquidCutMin,
                 highCut: this.liquidCutMax,
-                wetEdge: this.useLayerWetEdge
+                edgeStyle: this.edgeStyle,
+                maskEdgeStyle: this.dualTipEdgeStyle
             });
         } else {
             ProgramManager.getInstance().highLowCutProgram.fill(tempRenderTarget, {
@@ -505,7 +509,7 @@ export class DrawingEngine {
                 highCut: this.liquidCutMax,
                 liquidColor: this.brushColor,
                 liquidTinting: this.useLayerTinting,
-                wetEdge: this.useLayerWetEdge
+                edgeStyle: this.edgeStyle
             });
         }
 
@@ -654,7 +658,7 @@ export class DrawingEngine {
                 highCut: this.liquidCutMax,
                 liquidColor: this.brushColor,
                 liquidTinting: this.useLayerTinting,
-                wetEdge: this.useLayerWetEdge
+                edgeStyle: this.edgeStyle
             });
         }
 
@@ -765,7 +769,8 @@ export class DrawingEngine {
                 opacity: this.layerOpacity,
                 lowCut: this.liquidCutMin,
                 highCut: this.liquidCutMax,
-                wetEdge: this.useLayerWetEdge
+                edgeStyle: this.edgeStyle,
+                maskEdgeStyle: this.dualTipEdgeStyle
             });
         }
 

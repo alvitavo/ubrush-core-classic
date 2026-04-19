@@ -7,7 +7,7 @@ import { UBrushContext } from "../gpu/UBrushContext";
 import { RenderTarget } from "../gpu/RenderTarget";
 import { DrawingEngine, DrawingMode } from "../engine/DrawingEngine";
 import { Rect } from "../common/Rect";
-import { IBrush, DryType, DotBlendmode } from "../common/IBrush";
+import { IBrush, DryType, DotBlendmode, EdgeStyle } from "../common/IBrush";
 import { Common } from "../common/Common";
 import { AffineTransform } from "../common/AffineTransform";
 import { Color } from "../common/Color";
@@ -119,7 +119,8 @@ export class Canvas implements LineDriverDelegate {
             this.drawingEngine.layerLowCut = brush.layerLowCut;
             this.drawingEngine.layerHighCut = brush.layerHighCut;
             this.drawingEngine.useLayerTinting = brush.useLayerTinting;
-            this.drawingEngine.useLayerWetEdge = brush.useLayerWetEdge;
+            this.drawingEngine.edgeStyle = brush.edgeStyle ?? EdgeStyle.NONE;
+            this.drawingEngine.dualTipEdgeStyle = brush.dualTipEdgeStyle ?? EdgeStyle.NONE;
             this.drawingEngine.liquidLayerBlendmode = brush.layerBlendmode;
             this.drawingEngine.dotBlendmode = brush.dotBlendmode ?? DotBlendmode.NORMAL;
             this.drawingEngine.maskDotBlendmode = brush.maskDotBlendmode ?? DotBlendmode.NORMAL;
