@@ -1,0 +1,62 @@
+[
+  {
+    "key": "airbrush",
+    "displayName": "Airbrush",
+    "file": "brushes/airbrush.json"
+  },
+  {
+    "key": "impressionist",
+    "displayName": "Impressionist",
+    "file": "brushes/impressionist.json"
+  },
+  {
+    "key": "dry_media",
+    "displayName": "Dry Media",
+    "file": "brushes/dry_media.json"
+  },
+  {
+    "key": "watercolor",
+    "displayName": "Watercolor",
+    "file": "brushes/watercolor.json"
+  },
+  {
+    "key": "wet",
+    "displayName": "Wet",
+    "file": "brushes/wet.json"
+  },
+  {
+    "key": "oil_mix",
+    "displayName": "Oil & Mix",
+    "file": "brushes/oil_mix.json"
+  },
+  {
+    "key": "acrylic",
+    "displayName": "Acrylic",
+    "file": "brushes/acrylic.json"
+  },
+  {
+    "key": "pen",
+    "displayName": "Pen",
+    "file": "brushes/pen.json"
+  },
+  {
+    "key": "sketch",
+    "displayName": "Sketch",
+    "file": "brushes/sketch.json"
+  },
+  {
+    "key": "marker",
+    "displayName": "Marker",
+    "file": "brushes/marker.json"
+  },
+  {
+    "key": "halftone",
+    "displayName": "Halftone",
+    "file": "brushes/halftone.json"
+  },
+  {
+    "key": "special",
+    "displayName": "Special",
+    "file": "brushes/special.json"
+  }
+]

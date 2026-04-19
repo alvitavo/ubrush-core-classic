@@ -2,6 +2,13 @@ import { IBrush } from '../UBrushCore/common/IBrush';
 import { DrawingScreen } from './DrawingScreen';
 import { BrushEditorScreen } from './BrushEditorScreen';
 
+export interface BrushCategory {
+    key: string;
+    displayName: string;
+    file: string;
+    brushes?: IBrush[];
+}
+
 export class App {
     private drawingScreen?: DrawingScreen;
     private editorScreen?: BrushEditorScreen;
@@ -10,9 +17,9 @@ export class App {
     async init(container: HTMLElement): Promise<void> {
         this.container = container;
 
-        const brushes = await this.loadBrushes();
+        const categories = await this.loadCategories();
 
-        this.drawingScreen = new DrawingScreen(brushes, () => this.showEditor());
+        this.drawingScreen = new DrawingScreen(categories, () => this.showEditor());
         this.editorScreen = new BrushEditorScreen(
             () => this.showDrawing(),
             (brush) => this.applyBrushFromEditor(brush)
@@ -45,14 +52,29 @@ export class App {
         this.showDrawing();
     }
 
-    private async loadBrushes(): Promise<IBrush[]> {
+    private async loadCategories(): Promise<BrushCategory[]> {
         try {
-            const resp = await fetch('brushes.json');
+            const resp = await fetch('brushCategories.json');
+            const manifest: BrushCategory[] = await resp.json();
+
+            // Load brushes for the first category eagerly; others are lazy-loaded
+            if (manifest.length > 0) {
+                manifest[0].brushes = await App.loadCategoryBrushes(manifest[0].file);
+            }
+            return manifest;
+        } catch (e) {
+            console.warn('Could not load brushCategories.json', e);
+            return [];
+        }
+    }
+
+    static async loadCategoryBrushes(file: string): Promise<IBrush[]> {
+        try {
+            const resp = await fetch(file);
             const data = await resp.json();
-            // brushes.json is a JSON array
             return Array.isArray(data) ? data as IBrush[] : [];
         } catch (e) {
-            console.warn('Could not load brushes.json', e);
+            console.warn(`Could not load ${file}`, e);
             return [];
         }
     }

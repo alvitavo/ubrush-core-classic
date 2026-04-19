@@ -11,6 +11,7 @@ import { RenderObjectBlend } from '../UBrushCore/gpu/RenderObject';
 import { Common } from '../UBrushCore/common/Common';
 import { Rect } from '../UBrushCore/common/Rect';
 import { FixerGroup } from '../UBrushCore/common/FixerGroup';
+import { BrushCategory } from './App';
 
 const SIDEBAR_W = 220;
 
@@ -28,19 +29,21 @@ export class DrawingScreen implements CanvasDelegate {
     private lastStylus: Stylus = new Stylus();
     private undoStack: FixerGroup[] = [];
 
-    private brushes: IBrush[] = [];
+    private categories: BrushCategory[] = [];
+    private currentCategoryIndex = 0;
     private currentBrushIndex = 0;
     private currentColor = new Color(0, 0, 0, 1);
     private currentSize = 0.5;
     private currentOpacity = 1.0;
 
+    private categorySelectEl!: HTMLSelectElement;
     private brushSelectEl!: HTMLSelectElement;
     private undoBtnEl!: HTMLButtonElement;
 
     private onEditBrush: () => void;
 
-    constructor(brushes: IBrush[], onEditBrush: () => void) {
-        this.brushes = brushes;
+    constructor(categories: BrushCategory[], onEditBrush: () => void) {
+        this.categories = categories;
         this.onEditBrush = onEditBrush;
         this.element = this.buildLayout();
         this.initWebGL();
@@ -52,12 +55,16 @@ export class DrawingScreen implements CanvasDelegate {
     /** Called by App after the brush editor applies changes */
     applyBrush(brush: IBrush): void {
         const cloned = JSON.parse(JSON.stringify(brush));
-        this.brushes[this.currentBrushIndex] = cloned;
+        const cat = this.categories[this.currentCategoryIndex];
+        if (cat?.brushes) {
+            cat.brushes[this.currentBrushIndex] = cloned;
+        }
         this.canvas?.setBrush(JSON.parse(JSON.stringify(cloned)));
     }
 
     getCurrentBrush(): IBrush | undefined {
-        return this.brushes[this.currentBrushIndex];
+        const cat = this.categories[this.currentCategoryIndex];
+        return cat?.brushes?.[this.currentBrushIndex];
     }
 
     // ---- CanvasDelegate ----
@@ -121,23 +128,38 @@ export class DrawingScreen implements CanvasDelegate {
         title.style.cssText = `font-size:14px; font-weight:700; color:#4a90d9; padding-bottom:8px; border-bottom:1px solid #3a3a3a;`;
         sidebar.appendChild(title);
 
+        // Category selector
+        sidebar.appendChild(row('Category', () => {
+            this.categorySelectEl = document.createElement('select');
+            this.categorySelectEl.style.cssText = inputCSS;
+            this.categories.forEach((cat, i) => {
+                const opt = document.createElement('option');
+                opt.value = String(i);
+                opt.textContent = cat.displayName;
+                this.categorySelectEl.appendChild(opt);
+            });
+            this.categorySelectEl.addEventListener('change', () => {
+                this.currentCategoryIndex = parseInt(this.categorySelectEl.value);
+                this.currentBrushIndex = 0;
+                this.loadCategoryAndRefreshBrushList();
+            });
+            return this.categorySelectEl;
+        }));
+
         // Brush selector
         sidebar.appendChild(row('Brush', () => {
             this.brushSelectEl = document.createElement('select');
             this.brushSelectEl.style.cssText = inputCSS;
-            this.brushes.forEach((b, i) => {
-                const opt = document.createElement('option');
-                opt.value = String(i);
-                opt.textContent = b.name ?? `Brush ${i + 1}`;
-                this.brushSelectEl.appendChild(opt);
-            });
             this.brushSelectEl.addEventListener('change', () => {
                 this.currentBrushIndex = parseInt(this.brushSelectEl.value);
-                const brush = this.brushes[this.currentBrushIndex];
+                const cat = this.categories[this.currentCategoryIndex];
+                const brush = cat?.brushes?.[this.currentBrushIndex];
                 if (brush && this.canvas) {
                     this.canvas.setBrush(JSON.parse(JSON.stringify(brush)));
                 }
             });
+            // Populate with first category's brushes (already loaded)
+            this.refreshBrushList();
             return this.brushSelectEl;
         }));
 
@@ -193,10 +215,49 @@ export class DrawingScreen implements CanvasDelegate {
         return sidebar;
     }
 
+    /** Repopulates the brush <select> from the current category's brushes (must already be loaded). */
+    private refreshBrushList(): void {
+        const cat = this.categories[this.currentCategoryIndex];
+        const brushes = cat?.brushes ?? [];
+
+        while (this.brushSelectEl.firstChild) {
+            this.brushSelectEl.removeChild(this.brushSelectEl.firstChild);
+        }
+        brushes.forEach((b, i) => {
+            const opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = b.name ?? `Brush ${i + 1}`;
+            this.brushSelectEl.appendChild(opt);
+        });
+        this.brushSelectEl.value = '0';
+
+        // Apply first brush of this category to canvas
+        if (brushes.length > 0 && this.canvas) {
+            this.canvas.setBrush(JSON.parse(JSON.stringify(brushes[0])));
+        }
+    }
+
+    /** Lazy-loads the category if needed, then refreshes the brush list. */
+    private loadCategoryAndRefreshBrushList(): void {
+        const cat = this.categories[this.currentCategoryIndex];
+        if (!cat) return;
+
+        if (cat.brushes) {
+            this.refreshBrushList();
+        } else {
+            fetch(cat.file)
+                .then(r => r.json())
+                .then((data: IBrush[]) => {
+                    cat.brushes = Array.isArray(data) ? data : [];
+                    this.refreshBrushList();
+                })
+                .catch(e => console.warn(`Could not load ${cat.file}`, e));
+        }
+    }
+
     // ---- WebGL initialization ----
 
     private initWebGL(): void {
-        // Size canvas to fill available area
         const w = window.innerWidth - SIDEBAR_W;
         const h = window.innerHeight;
         this.canvasWidth = w;
@@ -235,10 +296,11 @@ export class DrawingScreen implements CanvasDelegate {
 
         ProgramManager.init(context);
 
-        // Apply first brush
-        if (this.brushes.length > 0) {
-            const brush = this.brushes[0];
-            canvas.setBrush(JSON.parse(JSON.stringify(brush)));
+        // Apply first brush of first category
+        const firstCat = this.categories[0];
+        const firstBrush = firstCat?.brushes?.[0];
+        if (firstBrush) {
+            canvas.setBrush(JSON.parse(JSON.stringify(firstBrush)));
         }
 
         canvas.setColor(this.currentColor.clone());
@@ -324,7 +386,6 @@ export class DrawingScreen implements CanvasDelegate {
         }
 
         const x = clientX - rect.left;
-        // Flip Y: WebGL origin is bottom-left, DOM is top-left
         const y = this.canvasHeight - (clientY - rect.top);
         return new Point(x, y);
     }
@@ -421,7 +482,6 @@ function actionBtn(text: string, bg: string, onClick: () => void): HTMLButtonEle
     b.addEventListener('click', onClick);
     b.addEventListener('mouseenter', () => { b.style.opacity = '.8'; });
     b.addEventListener('mouseleave', () => { b.style.opacity = '1'; });
-    b.disabled;
     return b;
 }
 

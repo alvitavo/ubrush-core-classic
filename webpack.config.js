@@ -35,6 +35,8 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [
         { from: 'brushes.json', to: 'brushes.json' },
+        { from: 'brushCategories.json', to: 'brushCategories.json' },
+        { from: 'brushes', to: 'brushes' },
         { from: 'brushSchema.json', to: 'brushSchema.json' }
       ]
     })
