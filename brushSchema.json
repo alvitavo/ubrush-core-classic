@@ -128,10 +128,13 @@
         "schema": {
             "type": "object",
             "properties": {
-                "engineType": {
-                    "type": "string",
-                    "enum": ["BASIC_DOTS", "SMUDGING_DOTS", "WATER_DOTS"],
-                    "title": "Engine Type"
+                "alphaSmudgingMode": {
+                    "type": "boolean",
+                    "title": "Alpha Smudging Mode"
+                },
+                "useSecondaryMask": {
+                    "type": "boolean",
+                    "title": "Use Secondary Mask"
                 },
                 "strokeType": {
                     "type": "string",
@@ -340,9 +343,6 @@
             }
         },
         "uischema": {
-            "engineType": {
-                "ui:widget": "radio"
-            },
             "strokeType": {
                 "ui:widget": "radio"
             },

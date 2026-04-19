@@ -30,11 +30,6 @@ export enum StrokeType {
     FOLLOW = "FOLLOW"
 }
 
-export enum EngineType {
-    BASIC_DOTS = "BASIC_DOTS", 
-    SMUDGING_DOTS = "SMUDGING_DOTS", 
-    WATER_DOTS = "WATER_DOTS"
-}
 
 export enum ExpressionSourceType {
     FIXED_VALUE = "FIXED_VALUE",
@@ -141,6 +136,8 @@ export interface IBrush {
     useLayerWetEdge: boolean;
     useSmudging: boolean;
     useDualTip: boolean;
+    alphaSmudgingMode: boolean;
+    useSecondaryMask: boolean;
 
     icon?: string;
     preview?: string;
@@ -156,5 +153,4 @@ export interface IBrush {
     rotationType: RotationType | string;
     colorVariationType: ColorVariationType | string;
     strokeType: StrokeType | string;
-    engineType: EngineType | string;
 }

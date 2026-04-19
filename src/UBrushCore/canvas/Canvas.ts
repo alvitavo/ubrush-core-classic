@@ -5,16 +5,14 @@ import { LineDriver, LineDriverDelegate } from "../driver/LineDriver";
 import { Dot } from "../common/Dot";
 import { UBrushContext } from "../gpu/UBrushContext";
 import { RenderTarget } from "../gpu/RenderTarget";
-import { DrawingEngine } from "../engine/DrawingEngine";
+import { DrawingEngine, DrawingMode } from "../engine/DrawingEngine";
 import { Rect } from "../common/Rect";
-import { IBrush, DryType, EngineType } from "../common/IBrush";
+import { IBrush, DryType } from "../common/IBrush";
 import { Common } from "../common/Common";
 import { AffineTransform } from "../common/AffineTransform";
 import { Color } from "../common/Color";
 import { ProgramManager } from "../program/ProgramManager";
 import { RenderObjectBlend } from "../gpu/RenderObject";
-import { SmudgingDrawingEngine } from "../engine/SmudgingDrawingEngine";
-import { WaterDrawingEngine } from "../engine/WaterDrawingEngine";
 import { Fixer, FixerRenderTarget } from "../common/Fixer";
 import { FixerGroup } from "../common/FixerGroup";
 
@@ -40,7 +38,7 @@ export class Canvas implements LineDriverDelegate {
     public temporary: boolean = false;
 
     private autoDry: boolean = false;
-    private drawingEngine?: DrawingEngine;
+    private drawingEngine: DrawingEngine;
     private dots: Dot[] = [];
     private lineRect: Rect | null = null;
     private size: Size;
@@ -55,14 +53,13 @@ export class Canvas implements LineDriverDelegate {
         this.outputRenderTarget = context.createRenderTarget(size);
         this.size = size;
         this.context = context;
-        
+        this.drawingEngine = new DrawingEngine(context, size);
+
     }
 
     public getDebuggingTarget(): RenderTarget | undefined {
 
-        // return this.drawingEngine?.smudging0CopyRenderTarget;
-
-        return (this.drawingEngine as SmudgingDrawingEngine)?.smudging0CopyAlphaRenderTarget;
+        return this.drawingEngine.debuggingRenderTarget;
 
     }
 
@@ -109,51 +106,30 @@ export class Canvas implements LineDriverDelegate {
         if (this.brush === brush) return;
 
         this.brush = brush;
-        
+
         this.lineDriver.setBrush(brush);
-        
-        const engineType: EngineType | string = brush?.engineType ?? "";
-    
-        switch (engineType) {
 
-            case EngineType.BASIC_DOTS: {
-                this.drawingEngine = new DrawingEngine(this.context, this.size);
-                break;
-            }
-            case EngineType.SMUDGING_DOTS: {
-                this.drawingEngine = new SmudgingDrawingEngine(this.context, this.size);
-                break;
-            }
-            case EngineType.WATER_DOTS: {
-                this.drawingEngine = new WaterDrawingEngine(this.context, this.size);
-                break;
-            }
-            default: {
-                this.drawingEngine = undefined;
-            }
+        const mode: DrawingMode = brush?.alphaSmudgingMode ? 'smudging'
+            : brush?.useSecondaryMask ? 'water'
+            : 'basic';
+        this.drawingEngine.mode = mode;
 
-        }
-
-        if (brush && this.drawingEngine) {
-
+        if (brush) {
             this.drawingEngine.useSmudging = brush.useSmudging;
             this.drawingEngine.layerLowCut = brush.layerLowCut;
             this.drawingEngine.layerHighCut = brush.layerHighCut;
             this.drawingEngine.useLayerTinting = brush.useLayerTinting;
             this.drawingEngine.useLayerWetEdge = brush.useLayerWetEdge;
             this.drawingEngine.liquidLayerBlendmode = brush.layerBlendmode;
-            
+
             await this.drawingEngine.setTipTextureImageBase64(brush.tipSource);
             await this.drawingEngine.setDualTipTextureImageBase64(brush.dualTipSource);
             await this.drawingEngine.setPatternTextureImageBase64(brush.textureSource);
-    
-            this.drawingEngine.layerOpacity = 1;
 
-            const color = this.lineDriver.getColor();
-            this.drawingEngine.brushColor = color;
-            
+            this.drawingEngine.layerOpacity = 1;
+            this.drawingEngine.brushColor = this.lineDriver.getColor();
         }
-        
+
         this.engineSetupWithRenderTarget(this.outputRenderTarget);
 
         this.autoDry = (brush?.dryType === DryType.AUTO);
@@ -281,14 +257,14 @@ export class Canvas implements LineDriverDelegate {
             if (this.autoDry) {
 
                 fixerGroup.undoFixer = this.fixer(this.lineRect || undefined) || undefined;
-                this.drawingEngine?.releaseDrawing();
+                this.drawingEngine.releaseDrawing();
                 this.engineDry();
 
             } else {
 
                 fixerGroup.undoFixerLiquid = this.liquidFixer(this.lineRect || undefined) || undefined;
                 fixerGroup.undoFixer = this.fixer(this.lineRect || undefined) || undefined;
-                this.drawingEngine?.releaseDrawing();
+                this.drawingEngine.releaseDrawing();
 
             }
 
@@ -298,12 +274,12 @@ export class Canvas implements LineDriverDelegate {
 
             if (this.autoDry) {
 
-                this.drawingEngine?.releaseDrawing();
+                this.drawingEngine.releaseDrawing();
                 this.engineDry();
 
             } else {
 
-                this.drawingEngine?.releaseDrawing();
+                this.drawingEngine.releaseDrawing();
 
             }
         }
@@ -315,7 +291,7 @@ export class Canvas implements LineDriverDelegate {
 
     public cancelLine(): void {
 
-        this.drawingEngine?.cancelDrawing();
+        this.drawingEngine.cancelDrawing();
     
         if (this.lineRect) {
             this.updateCanvasInRect(this.lineRect);
@@ -344,37 +320,31 @@ export class Canvas implements LineDriverDelegate {
 
     public async fix(fixer: Fixer, toLiquidLayer: boolean): Promise<void> {
 
-        if (!this.drawingEngine) console.log("error: fix");
-        
         if (!fixer) return;
-        
-        const changeRect = await this.drawingEngine?.fix(fixer, toLiquidLayer);
-        
+
+        const changeRect = await this.drawingEngine.fix(fixer, toLiquidLayer);
+
         if (changeRect) {
 
             this.updateCanvasInRect(changeRect);
-            
+
         }
-        
-        this.age ++;
+
+        this.age++;
 
     }
 
     public fixer(rect: Rect = Common.stageRect()): Fixer | null {
-        
-        return this.drawingEngine?.fixer(FixerRenderTarget.Merged, rect) ?? null;
+
+        return this.drawingEngine.fixer(FixerRenderTarget.Merged, rect);
 
     }
 
     public liquidFixer(rect: Rect = Common.stageRect()): Fixer | null {
-        
-        if (this.autoDry) {
 
-            return null;
+        if (this.autoDry) return null;
 
-        }
-        
-        return this.drawingEngine?.fixer(FixerRenderTarget.Liquid, rect) ?? null;
+        return this.drawingEngine.fixer(FixerRenderTarget.Liquid, rect);
 
     }
 
@@ -420,7 +390,7 @@ export class Canvas implements LineDriverDelegate {
     public clear(): void {
 
         this.clearOutputRenderTarget();
-        this.drawingEngine?.clear();
+        this.drawingEngine.clear();
         this.updateCanvas();
         
         this.age ++;
@@ -431,7 +401,7 @@ export class Canvas implements LineDriverDelegate {
 
     private flushDots(): Rect | null {
 
-        if (!this.drawingEngine) {
+        if (!this.brush) {
             this.dots = [];
             return null;
         }
@@ -449,7 +419,7 @@ export class Canvas implements LineDriverDelegate {
 
             const tempRenderTarget = this.context.createRenderTarget(this.size);
 
-            this.drawingEngine?.printToRenderTarget(tempRenderTarget, rect, new AffineTransform());
+            this.drawingEngine.printToRenderTarget(tempRenderTarget, rect, new AffineTransform());
 
             ProgramManager.getInstance().maskProgram.fill(
                 this.outputRenderTarget,
@@ -470,7 +440,7 @@ export class Canvas implements LineDriverDelegate {
 
         } else {
             
-            this.drawingEngine?.printToRenderTarget(this.outputRenderTarget, rect, new AffineTransform());
+            this.drawingEngine.printToRenderTarget(this.outputRenderTarget, rect, new AffineTransform());
 
         }
 
@@ -480,7 +450,7 @@ export class Canvas implements LineDriverDelegate {
 
     private engineSetupWithRenderTarget(renderTarget: RenderTarget): void {
 
-        this.drawingEngine?.setupWithRenderTarget(renderTarget);
+        this.drawingEngine.setupWithRenderTarget(renderTarget);
 
         if (this.delegate?.didDryCanvas) {
 
@@ -492,7 +462,7 @@ export class Canvas implements LineDriverDelegate {
 
     private engineDry(): void {
 
-        this.drawingEngine?.dry();
+        this.drawingEngine.dry();
 
         if (this.delegate?.didDryCanvas) {
 
