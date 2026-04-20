@@ -34,8 +34,6 @@ export class LineDriver {
     private actionPrevLevel: number = 0;
     private actionPrevStylus: Stylus = new Stylus();
 
-    private pointBuffer: [Point, Stylus][] = [];
-
     private dotBuilder: DotBuilder = new DotBuilder();
 
     private brush?: IBrush;

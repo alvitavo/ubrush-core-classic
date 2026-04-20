@@ -2256,7 +2256,7 @@
       "sources": []
     },
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false
+    "useSecondaryMask": true
   },
   {
     "name": "Airbrush 312 Mix",
@@ -2414,6 +2414,6 @@
       "sources": []
     },
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false
+    "useSecondaryMask": true
   }
 ]

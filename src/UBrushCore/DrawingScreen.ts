@@ -27,6 +27,7 @@ export class DrawingScreen implements CanvasDelegate {
 
     private lastPos: Point = new Point();
     private lastStylus: Stylus = new Stylus();
+    private stylusEventCount: number = 0;
     private undoStack: FixerGroup[] = [];
     private loopPaused = false;
 
@@ -356,6 +357,7 @@ export class DrawingScreen implements CanvasDelegate {
 
     private onPointerDown = (e: MouseEvent | TouchEvent): void => {
         e.preventDefault();
+        this.stylusEventCount = 0;
         this.lastPos = this.eventPoint(e);
         this.lastStylus = this.eventStylus(e);
         this.canvas?.moveTo(this.lastPos, this.lastStylus);
@@ -408,7 +410,8 @@ export class DrawingScreen implements CanvasDelegate {
 
         const touch = e.touches[0];
         if ((touch as any).touchType === 'stylus') {
-            const pressure = touch.force;
+            const pressure = this.stylusEventCount < 2 ? 0 : touch.force;
+            this.stylusEventCount++;
             const altitude = 1.0 - (touch as any).altitudeAngle / (0.5 * Math.PI);
             const azimuth = 0.25 - (touch as any).azimuthAngle / (2 * Math.PI);
             return new Stylus(pressure, altitude, azimuth);
