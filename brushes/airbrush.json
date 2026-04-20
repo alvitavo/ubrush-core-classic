@@ -171,7 +171,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -401,7 +401,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -639,7 +639,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -890,7 +890,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -1065,7 +1065,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -1245,7 +1245,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -1395,7 +1395,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -1554,7 +1554,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -1720,7 +1720,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -1900,7 +1900,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -2080,7 +2080,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -2238,7 +2238,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,
@@ -2396,7 +2396,7 @@
     "useLayerWetEdge": false,
     "layerLowCut": 0,
     "layerHighCut": 1,
-    "layerBlendmode": "NORMAL",
+    "layerBlendmode": "Normal",
     "colorVariationType": "NONE",
     "hue": {
       "min": 0,

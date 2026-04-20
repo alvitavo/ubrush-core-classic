@@ -1287,12 +1287,12 @@
                 "layerBlendmode": {
                     "type": "string",
                     "enum": [
-                        "NORMAL", "Darken", "MULTIPLY", "Color Burn", "Linear Burn", "Darker Color",
+                        "Normal", "Darken", "Muliply", "Color Burn", "Linear Burn", "Darker Color",
                         "Lighten", "Screen", "Color Dodge", "Linear Dodge", "Lighter Color",
                         "Overlay", "Soft Light", "Hard Light", "Vivid Light", "Linear Light", "Pin Light", "Hard Mix",
                         "Difference", "Exclusion", "Subtract", "Divide",
                         "Hue", "Saturation", "Color", "Luminosity",
-                        "ERASE"
+                        "Erase"
                     ],
                     "title": "Layer Blendmode"
                 },
