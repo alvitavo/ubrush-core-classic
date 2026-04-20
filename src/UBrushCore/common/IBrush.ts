@@ -1,7 +1,31 @@
 export enum LayerBlendmode {
-    NORMAL = "NORMAL",
-    MULTIPLY = "MULTIPLY",
-    ERASE = "ERASE"
+    NORMAL = "Normal",
+    DARKEN = "Darken",
+    MULTIPLY = "Multiply",
+    COLOR_BURN = "Color Burn",
+    LINEAR_BURN = "Linear Burn",
+    DARKER_COLOR = "Darker Color",
+    LIGHTEN = "Lighten",
+    SCREEN = "Screen",
+    COLOR_DODGE = "Color Dodge",
+    LINEAR_DODGE = "Linear Dodge",
+    LIGHTER_COLOR = "Lighter Color",
+    OVERLAY = "Overlay",
+    SOFT_LIGHT = "Soft Light",
+    HARD_LIGHT = "Hard Light",
+    VIVID_LIGHT = "Vivid Light",
+    LINEAR_LIGHT = "Linear Light",
+    PIN_LIGHT = "Pin Light",
+    HARD_MIX = "Hard Mix",
+    DIFFERENCE = "Difference",
+    EXCLUSION = "Exclusion",
+    SUBTRACT = "Subtract",
+    DIVIDE = "Divide",
+    HUE = "Hue",
+    SATURATION = "Saturation",
+    COLOR = "Color",
+    LUMINOSITY = "Luminosity",
+    ERASE = "Erase"
 }
 
 export enum DotBlendmode {

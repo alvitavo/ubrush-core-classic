@@ -932,7 +932,8 @@
       ]
     },
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false
+    "useSecondaryMask": false,
+    "dotBlendmode": "Max"
   },
   {
     "name": "Airbrush 101",
@@ -1412,7 +1413,7 @@
       "sources": []
     },
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false
+    "useSecondaryMask": true
   },
   {
     "name": "Airbrush 202",

@@ -27,19 +27,37 @@ export class HighLowCutProgram {
 
     private fragmentShaderSource: string = `
     varying highp vec2 v_textureCoordinate;
- 
+
     uniform sampler2D  u_wetedgeTexture;
     uniform sampler2D  u_dryTexture;
     uniform sampler2D  u_liquidTexture;
-    
+
     uniform lowp vec4  u_liquidColor;
     uniform lowp float u_opacity;
     uniform lowp float u_lowCut;
     uniform lowp float u_highCut;
-    
+
     uniform int u_liquidTinting;
     uniform int u_hasEdge;
-    uniform int u_blendmode; // 0:normal 1:multiply 2:erase
+    uniform int u_blendmode;
+
+    highp float blendLum(highp vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+    highp float blendSat(highp vec3 c) { return max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b); }
+    highp vec3 blendClipColor(highp vec3 c) {
+        highp float l = blendLum(c);
+        highp float n = min(min(c.r, c.g), c.b);
+        highp float x = max(max(c.r, c.g), c.b);
+        if (n < 0.0) { c = l + (c - l) * l / (l - n); }
+        if (x > 1.0) { c = l + (c - l) * (1.0 - l) / (x - l); }
+        return c;
+    }
+    highp vec3 blendSetLum(highp vec3 c, highp float l) { return blendClipColor(c + (l - blendLum(c))); }
+    highp vec3 blendSetSat(highp vec3 c, highp float s) {
+        highp float lo = min(min(c.r, c.g), c.b);
+        highp float hi = max(max(c.r, c.g), c.b);
+        if (hi > lo) { return (c - lo) * s / (hi - lo); }
+        return vec3(0.0);
+    }
 
     void main()
     {
@@ -61,23 +79,86 @@ export class HighLowCutProgram {
 
             liquidColor = clamp(vec4(vec3((liquidColor.rgb / liquidColor.a) * newAlpha), newAlpha), vec4(0.0), vec4(1.0));
         }
-        
+
         if (u_liquidTinting == 1)
         {
             liquidColor = u_liquidColor * liquidColor.a;
         }
-        
-        if (u_blendmode == 0)
-        {
-            gl_FragColor = dryColor * (1.0 - liquidColor.a) + liquidColor;
-        }
-        else if (u_blendmode == 1)
-        {
-            gl_FragColor = (dryColor * liquidColor) + (dryColor * (1.0 - liquidColor.a)) + (liquidColor * (1.0 - dryColor.a));
-        }
-        else //if (u_blendmode == 2)
+
+        if (u_blendmode == 26)
         {
             gl_FragColor = dryColor * (1.0 - liquidColor.a);
+        }
+        else
+        {
+            highp vec3 cb = (dryColor.a > 0.0) ? dryColor.rgb / dryColor.a : vec3(0.0);
+            highp vec3 cs = (liquidColor.a > 0.0) ? liquidColor.rgb / liquidColor.a : vec3(0.0);
+            highp vec3 blended;
+            highp vec3 sl_d = vec3(0.0);
+
+            if (u_blendmode == 1) {
+                blended = min(cb, cs);
+            } else if (u_blendmode == 2) {
+                blended = cb * cs;
+            } else if (u_blendmode == 3) {
+                blended = clamp(1.0 - (1.0 - cb) / max(cs, vec3(0.0001)), vec3(0.0), vec3(1.0));
+            } else if (u_blendmode == 4) {
+                blended = clamp(cb + cs - 1.0, vec3(0.0), vec3(1.0));
+            } else if (u_blendmode == 5) {
+                blended = (blendLum(cb) <= blendLum(cs)) ? cb : cs;
+            } else if (u_blendmode == 6) {
+                blended = max(cb, cs);
+            } else if (u_blendmode == 7) {
+                blended = cb + cs - cb * cs;
+            } else if (u_blendmode == 8) {
+                blended = clamp(cb / max(1.0 - cs, vec3(0.0001)), vec3(0.0), vec3(1.0));
+            } else if (u_blendmode == 9) {
+                blended = clamp(cb + cs, vec3(0.0), vec3(1.0));
+            } else if (u_blendmode == 10) {
+                blended = (blendLum(cb) >= blendLum(cs)) ? cb : cs;
+            } else if (u_blendmode == 11) {
+                blended = mix(2.0*cb*cs, 1.0 - 2.0*(1.0-cb)*(1.0-cs), step(0.5, cb));
+            } else if (u_blendmode == 12) {
+                sl_d = mix(((16.0*cb - 12.0)*cb + 4.0)*cb, sqrt(max(cb, vec3(0.0))), step(0.25, cb));
+                blended = mix(cb - (1.0 - 2.0*cs)*cb*(1.0 - cb), cb + (2.0*cs - 1.0)*(sl_d - cb), step(0.5, cs));
+            } else if (u_blendmode == 13) {
+                blended = mix(2.0*cb*cs, 1.0 - 2.0*(1.0-cb)*(1.0-cs), step(0.5, cs));
+            } else if (u_blendmode == 14) {
+                blended = mix(
+                    clamp(1.0 - (1.0-cb) / max(2.0*cs, vec3(0.0001)), vec3(0.0), vec3(1.0)),
+                    clamp(cb / max(2.0*(1.0-cs), vec3(0.0001)), vec3(0.0), vec3(1.0)),
+                    step(0.5, cs));
+            } else if (u_blendmode == 15) {
+                blended = clamp(cb + 2.0*cs - 1.0, vec3(0.0), vec3(1.0));
+            } else if (u_blendmode == 16) {
+                blended = mix(min(cb, 2.0*cs), max(cb, 2.0*cs - 1.0), step(0.5, cs));
+            } else if (u_blendmode == 17) {
+                blended = step(1.0, cb + cs);
+            } else if (u_blendmode == 18) {
+                blended = abs(cb - cs);
+            } else if (u_blendmode == 19) {
+                blended = cb + cs - 2.0*cb*cs;
+            } else if (u_blendmode == 20) {
+                blended = clamp(cb - cs, vec3(0.0), vec3(1.0));
+            } else if (u_blendmode == 21) {
+                blended = clamp(cb / max(cs, vec3(0.0001)), vec3(0.0), vec3(1.0));
+            } else if (u_blendmode == 22) {
+                blended = blendSetLum(blendSetSat(cs, blendSat(cb)), blendLum(cb));
+            } else if (u_blendmode == 23) {
+                blended = blendSetLum(blendSetSat(cb, blendSat(cs)), blendLum(cb));
+            } else if (u_blendmode == 24) {
+                blended = blendSetLum(cs, blendLum(cb));
+            } else if (u_blendmode == 25) {
+                blended = blendSetLum(cb, blendLum(cs));
+            } else {
+                blended = cs;
+            }
+
+            highp float resultAlpha = liquidColor.a + dryColor.a * (1.0 - liquidColor.a);
+            gl_FragColor = vec4(
+                liquidColor.rgb * (1.0 - dryColor.a) + dryColor.rgb * (1.0 - liquidColor.a) + dryColor.a * liquidColor.a * blended,
+                resultAlpha
+            );
         }
     }`;
     
@@ -232,7 +313,36 @@ export class HighLowCutProgram {
         this.renderObject.uniforms.push({name: "u_hasEdge", value: edgeTex ? 1 : 0});
         
         const bm = param.liquidSourceBlendmode;
-        const blendModeCode: number = (bm === LayerBlendmode.NORMAL) ? 0 : (bm === LayerBlendmode.MULTIPLY ? 1 : 2);
+        const blendModeMap: {[key: string]: number} = {
+            [LayerBlendmode.NORMAL]: 0,
+            [LayerBlendmode.DARKEN]: 1,
+            [LayerBlendmode.MULTIPLY]: 2,
+            [LayerBlendmode.COLOR_BURN]: 3,
+            [LayerBlendmode.LINEAR_BURN]: 4,
+            [LayerBlendmode.DARKER_COLOR]: 5,
+            [LayerBlendmode.LIGHTEN]: 6,
+            [LayerBlendmode.SCREEN]: 7,
+            [LayerBlendmode.COLOR_DODGE]: 8,
+            [LayerBlendmode.LINEAR_DODGE]: 9,
+            [LayerBlendmode.LIGHTER_COLOR]: 10,
+            [LayerBlendmode.OVERLAY]: 11,
+            [LayerBlendmode.SOFT_LIGHT]: 12,
+            [LayerBlendmode.HARD_LIGHT]: 13,
+            [LayerBlendmode.VIVID_LIGHT]: 14,
+            [LayerBlendmode.LINEAR_LIGHT]: 15,
+            [LayerBlendmode.PIN_LIGHT]: 16,
+            [LayerBlendmode.HARD_MIX]: 17,
+            [LayerBlendmode.DIFFERENCE]: 18,
+            [LayerBlendmode.EXCLUSION]: 19,
+            [LayerBlendmode.SUBTRACT]: 20,
+            [LayerBlendmode.DIVIDE]: 21,
+            [LayerBlendmode.HUE]: 22,
+            [LayerBlendmode.SATURATION]: 23,
+            [LayerBlendmode.COLOR]: 24,
+            [LayerBlendmode.LUMINOSITY]: 25,
+            [LayerBlendmode.ERASE]: 26,
+        };
+        const blendModeCode: number = blendModeMap[bm as string] ?? 0;
         this.renderObject.uniforms.push({name: "u_blendmode", value: blendModeCode});
 
         this.renderObject.blend = RenderObjectBlend.None;
