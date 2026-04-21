@@ -2,7 +2,7 @@ import { Point } from "../common/Point";
 import { Stylus } from "../common/Stylus";
 import { DotBuilder } from "./DotBuilder";
 import { ExpressionHelper, ICalcExpressionParam } from "./ExpressionHelper";
-import { IBrush, StrokeType, ColorVariationType } from "../common/IBrush";
+import { IBrush, ColorVariationType } from "../common/IBrush";
 import { Dot } from "../common/Dot";
 import { Common } from "../common/Common";
 import { Color } from "../common/Color";
@@ -17,7 +17,6 @@ export class LineDriver {
 
     private SPLINE_STEP = 5;
 
-    private tempPt: Point = new Point();
     private movedPt: Point = new Point();
     private followedPt: Point = new Point();
     private bSplineBufferPt: Point = new Point();
@@ -114,20 +113,7 @@ export class LineDriver {
         if (!this.brush) return;
 
         this.dotBuilder.resetDotIndex();
-
-        switch (this.brush.strokeType) {
-
-            case StrokeType.CURVE:
-                this.cMoveTo(pt, stylus);
-                break;
-            case StrokeType.FOLLOW:
-                this.fMoveTo(pt, stylus);
-                break;
-            case StrokeType.LINE:
-                this.nMoveTo(pt, stylus);
-                break;
-
-        }
+        this.fMoveTo(pt, stylus);
 
     }
 
@@ -135,19 +121,7 @@ export class LineDriver {
 
         if (!this.brush) return;
 
-        switch (this.brush.strokeType) {
-
-            case StrokeType.CURVE:
-                this.cLineTo(pt, stylus);
-                break;
-            case StrokeType.FOLLOW:
-                this.fLineTo(pt, stylus);
-                break;
-            case StrokeType.LINE:
-                this.nLineTo(pt, stylus);
-                break;
-
-        }
+        this.fLineTo(pt, stylus);
 
     }
 
@@ -155,71 +129,8 @@ export class LineDriver {
 
         if (!this.brush) return;
 
-        switch (this.brush.strokeType) {
-
-            case StrokeType.CURVE:
-                this.cEndLine(pt, stylus);
-                break;
-            case StrokeType.FOLLOW:
-                this.fEndLine(pt, stylus);
-                break;
-            case StrokeType.LINE:
-                this.nEndLine(pt, stylus);
-                break;
-
-        }
-
+        this.fEndLine(pt, stylus);
         this.dotBuilder.flushDotBuffer();
-
-    }
-
-    // stroke level 4 (normal mode)
-
-    private nMoveTo(pt: Point, stylus: Stylus): void {
-
-        this.tempPt = pt.clone();
-        this.moveToAction(pt, 0, stylus);
-
-    }
-
-    private nLineTo(pt: Point, stylus: Stylus): void {
-
-        const level: number = Common.distance(pt, this.tempPt) / 100;
-        this.lineToAction(pt, level, stylus);
-        this.tempPt = pt.clone();
-
-    }
-
-    private nEndLine(pt: Point, stylus: Stylus): void {
-
-        const level: number = Common.distance(pt, this.tempPt) / 100;
-        this.lineToAction(pt, level, stylus);
-        this.tempPt = pt.clone();
-
-    }
-
-    // stroke level 4 (curve mode)
-
-    private cMoveTo(pt: Point, stylus: Stylus): void {
-
-        this.tempPt = pt.clone();
-        this.bSplineMoveTo(pt, 0, stylus);
-
-    }
-
-    private cLineTo(pt: Point, stylus: Stylus): void {
-
-        const level: number = Common.distance(pt, this.tempPt) / 100;
-        this.bSplineLineTo(pt, level, stylus, 0.5);
-        this.tempPt = pt.clone();
-
-    }
-
-    private cEndLine(pt: Point, stylus: Stylus): void {
-
-        const level: number = Common.distance(pt, this.tempPt) / 100;
-        this.bSplineLineTo(pt, level, stylus, 1.0);
-        this.tempPt = pt.clone();
 
     }
 

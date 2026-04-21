@@ -128,11 +128,6 @@
         "schema": {
             "type": "object",
             "properties": {
-                "strokeType": {
-                    "type": "string",
-                    "enum": ["LINE", "CURVE", "FOLLOW"],
-                    "title": "Stroke Type"
-                },
                 "followAcceleration": {
                     "type": "number",
                     "minimum": 0,
@@ -335,9 +330,6 @@
             }
         },
         "uischema": {
-            "strokeType": {
-                "ui:widget": "radio"
-            },
             "followAcceleration": {
                 "ui:widget": "range"
             },

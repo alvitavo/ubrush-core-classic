@@ -63,13 +63,6 @@ export enum ColorVariationType {
     FIRST_DOT = "FIRST_DOT"
 }
 
-export enum StrokeType {
-    LINE = "LINE", 
-    CURVE = "CURVE",
-    FOLLOW = "FOLLOW"
-}
-
-
 export enum ExpressionSourceType {
     FIXED_VALUE = "FIXED_VALUE",
     VELOCITY = "VELOCITY",
@@ -194,5 +187,4 @@ export interface IBrush {
     dualTipRotationType: RotationType | string;
     rotationType: RotationType | string;
     colorVariationType: ColorVariationType | string;
-    strokeType: StrokeType | string;
 }
