@@ -39,6 +39,11 @@ export class Dot {
     public tintBlue: number = 0;
     public tinting: number = 1;
 
+    public tipCorrosion: number = 0;
+    public textureCorrosion: number = 0;
+    public tipCorrosionSize: number = 1;
+    public textureCorrosionSize: number = 1;
+
     public copyForPrepare(): Dot {
         const dot: Dot = new Dot();
         dot.prepareX = this.prepareX;

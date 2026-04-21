@@ -284,6 +284,12 @@ export class DotBuilder {
         dot.opacity = ExpressionHelper.calcExpression(this.brush.opacity, dot.expresstionParam) * brushOpacityFactor;
         dot.patternOpacity = ExpressionHelper.calcExpression(this.brush.textureOpacity, dot.expresstionParam);
 
+        const noCorrosion: import("../common/IBrush").IBrushExpression = { min: 0, max: 0, sources: [] };
+        dot.tipCorrosion = ExpressionHelper.calcExpression(this.brush.tipCorrosion ?? noCorrosion, dot.expresstionParam);
+        dot.textureCorrosion = ExpressionHelper.calcExpression(this.brush.textureCorrosion ?? noCorrosion, dot.expresstionParam);
+        dot.tipCorrosionSize = this.brush.tipCorrosionSize ?? 1;
+        dot.textureCorrosionSize = this.brush.textureCorrosionSize ?? 1;
+
         dot.patternOffsetX = this.brush.textureOffset;
         dot.patternOffsetY = this.brush.textureOffset;
 
@@ -391,6 +397,12 @@ export class DotBuilder {
         const dualTipOpacityFactor: number = Common.interpolate(this.brush.dualTipMinOpacity, this.brush.dualTipMaxOpacity, this.brushOpacity);
 
         dot.opacity = ExpressionHelper.calcExpression(this.brush.dualTipOpacity, dot.expresstionParam) * dualTipOpacityFactor;
+
+        const noCorrosion2: import("../common/IBrush").IBrushExpression = { min: 0, max: 0, sources: [] };
+        dot.tipCorrosion = ExpressionHelper.calcExpression(this.brush.dualTipCorrosion ?? noCorrosion2, dot.expresstionParam);
+        dot.textureCorrosion = ExpressionHelper.calcExpression(this.brush.dualTipTextureCorrosion ?? noCorrosion2, dot.expresstionParam);
+        dot.tipCorrosionSize = this.brush.dualTipCorrosionSize ?? 1;
+        dot.textureCorrosionSize = this.brush.dualTipTextureCorrosionSize ?? 1;
 
         const spray: number = ExpressionHelper.calcExpression(this.brush.dualTipSpray, dot.expresstionParam)
 

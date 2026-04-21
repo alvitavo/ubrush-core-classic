@@ -15,14 +15,16 @@ export class DrawDotProgram {
         attribute vec2 a_smudging0TexturePosition;
         attribute vec2 a_smudgingTexturePosition;
         attribute vec4 a_opacity;
-        
+        attribute vec4 a_corrosion;
+
         varying vec4 v_tintColor;
         varying vec2 v_tipTextureCoordinate;
         varying vec2 v_patternTextureCoordinate;
         varying vec2 v_smudging0TexturePosition;
         varying vec2 v_smudgingTexturePosition;
         varying vec4 v_opacity;
-        
+        varying vec4 v_corrosion;
+
         void main()
         {
             gl_Position = a_tipPosition;
@@ -32,6 +34,7 @@ export class DrawDotProgram {
             v_smudgingTexturePosition = a_smudgingTexturePosition.xy;
             v_tintColor = a_tintColor;
             v_opacity = a_opacity;
+            v_corrosion = a_corrosion;
         }`;
 
     private fragmentShaderSource: string = `
@@ -41,31 +44,40 @@ export class DrawDotProgram {
         varying highp vec2 v_smudging0TexturePosition;
         varying highp vec2 v_smudgingTexturePosition;
         varying lowp  vec4 v_opacity; //0:opacity 1:pattern opacity 2:mixing opacity 3:smudging progress
-        
+        varying lowp  vec4 v_corrosion; //0:tipCorrosion 1:textureCorrosion 2:tipCorrosionSize 3:textureCorrosionSize
+
         uniform sampler2D u_tipTexture;
         uniform sampler2D u_patternTexture;
         uniform sampler2D u_smudging0RefTexture;
         uniform sampler2D u_smudgingRefTexture;
-        
+
+        lowp float corrosionFn(lowp float v, lowp float c, lowp float size) {
+            lowp float s = max(0.001, size);
+            return clamp((v - 1.0 + min(1.0, s + c)) / s, 0.0, 1.0);
+        }
+
         void main()
         {
-            lowp float s_patternMaskAlpha = 1.0 - texture2D(u_patternTexture, v_patternTextureCoordinate).a * v_opacity[1];
-            
+            lowp float s_rawPatternAlpha = texture2D(u_patternTexture, v_patternTextureCoordinate).a;
+            s_rawPatternAlpha = corrosionFn(s_rawPatternAlpha, v_corrosion[1], v_corrosion[3]);
+            lowp float s_patternMaskAlpha = 1.0 - s_rawPatternAlpha * v_opacity[1];
+
             lowp vec4 s_tipColor = texture2D(u_tipTexture, v_tipTextureCoordinate);
-            
+            s_tipColor.a = corrosionFn(s_tipColor.a, v_corrosion[0], v_corrosion[2]);
+
             s_tipColor.rgb *= s_tipColor.a;
-            
+
             s_tipColor.rgb = s_tipColor.rgb * (1.0 - v_tintColor.a) + v_tintColor.rgb * s_tipColor.a * v_tintColor.a;
-            
+
             lowp vec4 s_smudging0Color = texture2D(u_smudging0RefTexture, v_smudging0TexturePosition) * (1.0 - v_opacity[3]);
             lowp vec4 s_smudgingColor = texture2D(u_smudgingRefTexture, v_smudgingTexturePosition) * v_opacity[3];
-            
+
             s_tipColor = (s_tipColor * v_opacity[0]) + ((s_smudging0Color + s_smudgingColor) * s_tipColor.a * v_opacity[2] * (1.0 - v_opacity[0]));
-            
+
             s_tipColor *= s_patternMaskAlpha;
-            
+
             gl_FragColor = s_tipColor;
-            
+
         }`;
     
     private program: Program;
@@ -106,6 +118,7 @@ export class DrawDotProgram {
             smudgingTexturePositions: number[],
             colors: number[],
             opacities: number[],
+            corrosions: number[],
             numberOfPoints: number,
             useDualTip: boolean,
             blend: RenderObjectBlend
@@ -123,7 +136,8 @@ export class DrawDotProgram {
         this.renderObject.attributes.push({name: "a_smudging0TexturePosition", data: new Float32Array(param.smudging0TexturePositions), size: 2});
         this.renderObject.attributes.push({name: "a_smudgingTexturePosition", data: new Float32Array(param.smudgingTexturePositions), size: 2});
         this.renderObject.attributes.push({name: "a_opacity", data: new Float32Array(param.opacities), size: 4});
-        
+        this.renderObject.attributes.push({name: "a_corrosion", data: new Float32Array(param.corrosions), size: 4});
+
         if (param.useDualTip) {
 
             this.renderObject.uniforms.push({name: "u_tipTexture", value: param.dualTipTexture});

@@ -791,6 +791,7 @@ export class DrawingEngine {
         const smudging0TexturePositions: number[] = [];
         const smudgingTexturePositions: number[] = [];
         const opacities: number[] = [];
+        const corrosions: number[] = [];
 
         let rectX1 = Infinity, rectX2 = -Infinity;
         let rectY1 = Infinity, rectY2 = -Infinity;
@@ -912,12 +913,17 @@ export class DrawingEngine {
                 opacities[i * 16 + j * 4 + 1] = dot.patternOpacity;
                 opacities[i * 16 + j * 4 + 2] = dot.mixingOpacity;
                 opacities[i * 16 + j * 4 + 3] = i / numberOfDots;
+
+                corrosions[i * 16 + j * 4 + 0] = dot.tipCorrosion;
+                corrosions[i * 16 + j * 4 + 1] = dot.textureCorrosion;
+                corrosions[i * 16 + j * 4 + 2] = dot.tipCorrosionSize;
+                corrosions[i * 16 + j * 4 + 3] = dot.textureCorrosionSize;
             }
         }
 
         this.excuteDotProgram({
             points, indexData, tipTextureCoordinates, patternTextureCoordinates,
-            smudging0TexturePositions, smudgingTexturePositions, colors, opacities,
+            smudging0TexturePositions, smudgingTexturePositions, colors, opacities, corrosions,
             numberOfPoints: 6 * numberOfDots, useDualTip
         });
 
@@ -935,6 +941,7 @@ export class DrawingEngine {
         smudgingTexturePositions: number[],
         colors: number[],
         opacities: number[],
+        corrosions: number[],
         numberOfPoints: number,
         useDualTip: boolean
     }): void {
@@ -958,6 +965,7 @@ export class DrawingEngine {
                     smudgingTexturePositions: param.smudgingTexturePositions,
                     colors: param.colors,
                     opacities: param.opacities,
+                    corrosions: param.corrosions,
                     numberOfPoints: param.numberOfPoints,
                     useDualTip: param.useDualTip
                 }
@@ -983,6 +991,7 @@ export class DrawingEngine {
                 smudgingTexturePositions: param.smudgingTexturePositions,
                 colors: param.colors,
                 opacities: param.opacities,
+                corrosions: param.corrosions,
                 numberOfPoints: param.numberOfPoints,
                 useDualTip: param.useDualTip,
                 blend: this._currentDotBlend

@@ -161,7 +161,16 @@ export interface IBrush {
     dualTipOpacity: IBrushExpression;
     dualTipScale: IBrushExpression;
     dualTipSpray: IBrushExpression;
-    
+
+    tipCorrosion?: IBrushExpression;
+    tipCorrosionSize?: number;
+    textureCorrosion?: IBrushExpression;
+    textureCorrosionSize?: number;
+    dualTipCorrosion?: IBrushExpression;
+    dualTipCorrosionSize?: number;
+    dualTipTextureCorrosion?: IBrushExpression;
+    dualTipTextureCorrosionSize?: number;
+
     useTextureFitting: boolean;
     useColor: boolean;
     useLayerTinting: boolean;

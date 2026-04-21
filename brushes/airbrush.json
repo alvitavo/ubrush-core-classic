@@ -212,7 +212,31 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false
+        "useSecondaryMask": false,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 002",
@@ -442,7 +466,31 @@
         },
         "alphaSmudgingMode": false,
         "useSecondaryMask": false,
-        "dotBlendmode": "Max"
+        "dotBlendmode": "Max",
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 011",
@@ -678,7 +726,31 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false
+        "useSecondaryMask": false,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 012",
@@ -929,7 +1001,31 @@
         },
         "alphaSmudgingMode": false,
         "useSecondaryMask": false,
-        "dotBlendmode": "Max"
+        "dotBlendmode": "Max",
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 101",
@@ -1078,7 +1174,31 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false
+        "useSecondaryMask": false,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 102",
@@ -1257,7 +1377,31 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false
+        "useSecondaryMask": false,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 201",
@@ -1406,7 +1550,31 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": true
+        "useSecondaryMask": true,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 202",
@@ -1564,7 +1732,31 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false
+        "useSecondaryMask": false,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 203",
@@ -1729,7 +1921,31 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false
+        "useSecondaryMask": false,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 201 Mix",
@@ -1908,7 +2124,31 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false
+        "useSecondaryMask": false,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 301 Mix",
@@ -2087,7 +2327,31 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false
+        "useSecondaryMask": false,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 311 Mix",
@@ -2244,7 +2508,31 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": true
+        "useSecondaryMask": true,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     },
     {
         "name": "Airbrush 312 Mix",
@@ -2401,6 +2689,30 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": true
+        "useSecondaryMask": true,
+        "tipCorrosionSize": 1,
+        "tipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "textureCorrosionSize": 1,
+        "textureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipCorrosionSize": 1,
+        "dualTipCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        },
+        "dualTipTextureCorrosionSize": 1,
+        "dualTipTextureCorrosion": {
+            "min": 0,
+            "max": 0,
+            "sources": []
+        }
     }
 ]

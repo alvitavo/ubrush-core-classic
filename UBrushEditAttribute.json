@@ -140,6 +140,26 @@
             "type": "float",
             "valueRange": [0, 4]
         }, {
+            "key": "tipCorrosionSize",
+            "name": "Tip Corrosion Size",
+            "type": "float",
+            "valueRange": [0, 1]
+        }, {
+            "key": "tipCorrosion",
+            "name": "Tip Corrosion",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
+            "key": "textureCorrosionSize",
+            "name": "Texture Corrosion Size",
+            "type": "float",
+            "valueRange": [0, 1]
+        }, {
+            "key": "textureCorrosion",
+            "name": "Texture Corrosion",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
             "key": "mixingOpacityRange",
             "name": "Mixing Opacity Range",
             "type": "floatRange",
@@ -210,6 +230,26 @@
             "key": "dualTipDeltaAngle",
             "name": "DT Delta Angle",
             "type": "float",
+            "valueRange": [0, 1]
+        }, {
+            "key": "dualTipCorrosionSize",
+            "name": "DT Corrosion Size",
+            "type": "float",
+            "valueRange": [0, 1]
+        }, {
+            "key": "dualTipCorrosion",
+            "name": "DT Corrosion",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
+            "key": "dualTipTextureCorrosionSize",
+            "name": "DT Texture Corrosion Size",
+            "type": "float",
+            "valueRange": [0, 1]
+        }, {
+            "key": "dualTipTextureCorrosion",
+            "name": "DT Texture Corrosion",
+            "type": "expression",
             "valueRange": [0, 1]
         }]
     }, {
