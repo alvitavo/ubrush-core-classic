@@ -1,5 +1,5 @@
 import { IBrush } from '../UBrushCore/common/IBrush';
-import { SchemaFormRenderer } from './SchemaFormRenderer';
+import { BrushAttributeRenderer, AttributeGroup } from './BrushAttributeRenderer';
 import { UBrushContext } from '../UBrushCore/gpu/UBrushContext';
 import { Canvas, CanvasDelegate } from '../UBrushCore/canvas/Canvas';
 import { ProgramManager } from '../UBrushCore/program/ProgramManager';
@@ -15,10 +15,8 @@ import { FixerGroup } from '../UBrushCore/common/FixerGroup';
 
 const PREVIEW_W = 440;
 
-interface BrushSchemaSection {
-    title: string;
-    schema: any;
-    uischema: any;
+interface EditAttributeData {
+    dataModel: AttributeGroup[];
 }
 
 export class BrushEditorScreen {
@@ -30,8 +28,8 @@ export class BrushEditorScreen {
     private activeTab: number = 0;
     private currentBrush: IBrush | null = null;
     private currentCategoryFile: string = '';
-    private schema: BrushSchemaSection[] = [];
-    private renderer = new SchemaFormRenderer();
+    private schema: AttributeGroup[] = [];
+    private renderer = new BrushAttributeRenderer();
     private onBack: () => void;
     private onApply: (brush: IBrush) => void;
     private applyBtn!: HTMLButtonElement;
@@ -62,9 +60,9 @@ export class BrushEditorScreen {
     }
 
     async loadSchema(): Promise<void> {
-        const resp = await fetch('brushSchema.json');
-        const json = await resp.json();
-        this.schema = json.data as BrushSchemaSection[];
+        const resp = await fetch('UBrushEditAttribute.json');
+        const json = await resp.json() as EditAttributeData;
+        this.schema = json.dataModel;
         this.buildTabs();
     }
 
@@ -495,7 +493,7 @@ export class BrushEditorScreen {
 
         this.schema.forEach((section, idx) => {
             const tabBtn = document.createElement('button');
-            tabBtn.textContent = section.title;
+            tabBtn.textContent = section.name;
             tabBtn.style.cssText = `
                 background: none; border: none; color: #999;
                 text-align: left; padding: 10px 16px; font-size: 13px;
@@ -532,7 +530,9 @@ export class BrushEditorScreen {
         const panel = this.tabPanels[this.activeTab];
         if (!section || !panel) return;
         this.renderer.render(
-            panel, section.schema, section.uischema, this.currentBrush,
+            panel,
+            section,
+            this.currentBrush as unknown as Record<string, unknown>,
             () => this.schedulePreviewBrushUpdate()
         );
     }

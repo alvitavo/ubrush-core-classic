@@ -1,0 +1,297 @@
+{
+    "dataModel": [{
+        "key": "property",
+        "name": "Property",
+        "value": [{
+            "key": "name",
+            "name": "Name",
+            "type": "text"
+        }, {
+            "key": "useColor",
+            "name": "Use Color",
+            "type": "boolean"
+        }, {
+            "key": "followAcceleration",
+            "name": "Follow Acceleration",
+            "type": "float",
+            "valueRange": [0, 1]
+        }]
+    }, {
+        "key": "resource",
+        "name": "Resource",
+        "value": [{
+            "key": "tipMinSize",
+            "name": "Tip Min Size",
+            "type": "int",
+            "valueRange": [0, 10]
+        }, {
+            "key": "tipSource",
+            "name": "Tip Source",
+            "type": "image"
+        }, {
+            "key": "tipDivideX",
+            "name": "Tip Divide X",
+            "type": "int",
+            "valueRange": [0, 10]
+        }, {
+            "key": "tipDivideY",
+            "name": "Tip Divide Y",
+            "type": "int",
+            "valueRange": [0, 10]
+        }, {
+            "key": "dualTipSource",
+            "name": "Dual Tip Source",
+            "type": "image"
+        }, {
+            "key": "textureSource",
+            "name": "Texture Source",
+            "type": "image"
+        }]
+    }, {
+        "key": "stroke",
+        "name": "Stroke",
+        "value": [{
+            "key": "sizeRange",
+            "name": "Size Range",
+            "type": "intRange",
+            "valueRange": [1, 3000]
+        }, {
+            "key": "scale",
+            "name": "Scale",
+            "type": "expression",
+            "valueRange": [0, 3]
+        }, {
+            "key": "oval",
+            "name": "Oval",
+            "type": "expression",
+            "valueRange": [-1, 1]
+        }, {
+            "key": "spacing",
+            "name": "Spacing",
+            "type": "float",
+            "valueRange": [0, 2]
+        }, {
+            "key": "minSpacing",
+            "name": "Min Spacing",
+            "type": "float",
+            "valueRange": [0.5, 5]
+        }, {
+            "key": "spray",
+            "name": "Spray",
+            "type": "expression",
+            "valueRange": [0, 10]
+        }, {
+            "key": "rotationType",
+            "name": "Rotation Type",
+            "type": "picker",
+            "valueRange": ["FIXED", "DIRECTION", "DIRECTION_FIRST_DOT", "FIXED_OR_AZIMUTH", "DIRECTION_OR_AZIMUTH", "DIRECTION_FIRST_DOT_OR_AZIMUTH"]
+        }, {
+            "key": "initialAngle",
+            "name": "Initial Angle",
+            "type": "float",
+            "valueRange": [0, 1]
+        }, {
+            "key": "angleJitter",
+            "name": "Angle Jitter",
+            "type": "float",
+            "valueRange": [0, 1]
+        }]
+    }, {
+        "key": "shape",
+        "name": "Shape",
+        "value": [{
+            "key": "opacityRange",
+            "name": "Opacity Range",
+            "type": "floatRange",
+            "valueRange": [0, 1]
+        }, {
+            "key": "layerOpacityRange",
+            "name": "Layer Opacity Range",
+            "type": "floatRange",
+            "valueRange": [0, 1]
+        }, {
+            "key": "opacity",
+            "name": "Opacity",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
+            "key": "tint",
+            "name": "Tint",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
+            "key": "tipIndex",
+            "name": "Tip Index",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
+            "key": "textureOpacity",
+            "name": "Texture Opacity",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
+            "key": "textureOffset",
+            "name": "Texture Offset",
+            "type": "float",
+            "valueRange": [0, 1]
+        }, {
+            "key": "textureScale",
+            "name": "Texture Scale",
+            "type": "float",
+            "valueRange": [0, 4]
+        }, {
+            "key": "mixingOpacityRange",
+            "name": "Mixing Opacity Range",
+            "type": "floatRange",
+            "valueRange": [0, 1]
+        }, {
+            "key": "mixingOpacity",
+            "name": "Mixing Opacity",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
+            "key": "useSmudging",
+            "name": "Use Smudging",
+            "type": "boolean"
+        }]
+    }, {
+        "key": "dualTip",
+        "name": "Dual Tip",
+        "value": [{
+            "key": "useDualTip",
+            "name": "Use Dual Tip",
+            "type": "boolean"
+        }, {
+            "key": "dualTipInterval",
+            "name": "DT Interval",
+            "type": "int",
+            "valueRange": [-10, 10]
+        }, {
+            "key": "dualTipOval",
+            "name": "DT Oval",
+            "type": "expression",
+            "valueRange": [-1, 1]
+        }, {
+            "key": "dualTipScale",
+            "name": "DT Scale",
+            "type": "expression",
+            "valueRange": [0, 10]
+        }, {
+            "key": "dualTipOpacityRange",
+            "name": "DT Opacity Range",
+            "type": "floatRange",
+            "valueRange": [0, 1]
+        }, {
+            "key": "dualTipOpacity",
+            "name": "DT Opacity",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
+            "key": "dualTipSpray",
+            "name": "DT Spray",
+            "type": "expression",
+            "valueRange": [0, 10]
+        }, {
+            "key": "dualTipRotationType",
+            "name": "DT Rotation Type",
+            "type": "picker",
+            "valueRange": ["FIXED", "DIRECTION", "DIRECTION_FIRST_DOT", "FIXED_OR_AZIMUTH", "DIRECTION_OR_AZIMUTH", "DIRECTION_FIRST_DOT_OR_AZIMUTH"]
+        }, {
+            "key": "dualTipInitialAngle",
+            "name": "DT Initial Angle",
+            "type": "float",
+            "valueRange": [0, 1]
+        }, {
+            "key": "dualTipAngleJitter",
+            "name": "DT Angle Jitter",
+            "type": "float",
+            "valueRange": [0, 1]
+        }, {
+            "key": "dualTipDeltaAngle",
+            "name": "DT Delta Angle",
+            "type": "float",
+            "valueRange": [0, 1]
+        }]
+    }, {
+        "key": "layerEffect",
+        "name": "Layer Effect",
+        "value": [{
+            "key": "dryType",
+            "name": "Dry Type",
+            "type": "segmented",
+            "valueRange": ["AUTO", "MANUAL"]
+        }, {
+            "key": "alphaSmudgingMode",
+            "name": "Alpha Smudging Mode",
+            "type": "boolean"
+        }, {
+            "key": "useSecondaryMask",
+            "name": "Use Secondary Mask",
+            "type": "boolean"
+        }, {
+            "key": "useLayerTinting",
+            "name": "Use Layer Tinting",
+            "type": "boolean"
+        }, {
+            "key": "dotBlendmode",
+            "name": "Dot Blendmode",
+            "type": "picker",
+            "valueRange": ["Normal", "Add", "Screen", "Max"]
+        }, {
+            "key": "maskDotBlendmode",
+            "name": "Mask Dot Blendmode",
+            "type": "picker",
+            "valueRange": ["Normal", "Add", "Screen", "Max"]
+        }, {
+            "key": "edgeStyle",
+            "name": "Edge Style",
+            "type": "picker",
+            "valueRange": ["NONE", "WET", "BURN", "HARD", "SOFT"]
+        }, {
+            "key": "dualTipEdgeStyle",
+            "name": "DT Edge Style",
+            "type": "picker",
+            "valueRange": ["NONE", "WET", "BURN", "HARD", "SOFT"]
+        }, {
+            "key": "layerCutRange",
+            "name": "Layer Cut Range",
+            "type": "floatRange",
+            "valueRange": [0, 1]
+        }, {
+            "key": "layerBlendmode",
+            "name": "Layer Blendmode",
+            "type": "picker",
+            "valueRange": [
+                "Normal", "Darken", "Multiply", "Color Burn", "Linear Burn", "Darker Color",
+                "Lighten", "Screen", "Color Dodge", "Linear Dodge", "Lighter Color",
+                "Overlay", "Soft Light", "Hard Light", "Vivid Light", "Linear Light",
+                "Pin Light", "Hard Mix", "Difference", "Exclusion", "Subtract", "Divide",
+                "Hue", "Saturation", "Color", "Luminosity"
+            ]
+        }]
+    }, {
+        "key": "secondColor",
+        "name": "Second Color",
+        "value": [{
+            "key": "colorVariationType",
+            "name": "Color Variation Type",
+            "type": "segmented",
+            "valueRange": ["NONE", "ALWAYS", "FIRST_DOT"]
+        }, {
+            "key": "hue",
+            "name": "Hue",
+            "type": "expression",
+            "valueRange": [-1, 1]
+        }, {
+            "key": "saturation",
+            "name": "Saturation",
+            "type": "expression",
+            "valueRange": [-1, 1]
+        }, {
+            "key": "brightness",
+            "name": "Brightness",
+            "type": "expression",
+            "valueRange": [-1, 1]
+        }]
+    }]
+}

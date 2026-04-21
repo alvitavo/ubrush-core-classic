@@ -7,7 +7,7 @@ const BRUSHES_DIR = path.resolve(__dirname, 'brushes');
 const BRUSHES_ORIGINAL_DIR = path.resolve(__dirname, 'brushes_original');
 
 module.exports = {
-  entry: './src/ubrushCore/main.ts',
+  entry: './src/UBrushCore/main.ts',
   module: {
     rules: [
       {
@@ -33,7 +33,7 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      template: './src/ubrushCore/index.html',
+      template: './src/UBrushCore/index.html',
       filename: 'index.html'
     }),
     new CopyWebpackPlugin({
@@ -41,7 +41,7 @@ module.exports = {
         { from: 'brushes.json', to: 'brushes.json' },
         { from: 'brushCategories.json', to: 'brushCategories.json' },
         { from: 'brushes', to: 'brushes' },
-        { from: 'brushSchema.json', to: 'brushSchema.json' }
+        { from: 'UBrushEditAttribute.json', to: 'UBrushEditAttribute.json' }
       ]
     })
   ],
