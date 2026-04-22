@@ -77,7 +77,13 @@ export class Texture {
                 
             }
 
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, img.width, img.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(UPNG.toRGBA8(img)[0]));
+            const raw = new Uint8Array(UPNG.toRGBA8(img)[0]);
+            const rowBytes = img.width * 4;
+            const flipped = new Uint8Array(raw.length);
+            for (let row = 0; row < img.height; row++) {
+                flipped.set(raw.subarray(row * rowBytes, (row + 1) * rowBytes), (img.height - 1 - row) * rowBytes);
+            }
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, img.width, img.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, flipped);
             
             resolve();
                 

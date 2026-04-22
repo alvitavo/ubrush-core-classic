@@ -619,6 +619,9 @@ export class DrawingEngine {
     }
 
     private _renderMultiDotsBasic(dots: Dot[]): Rect | null {
+        const drawingDots = dots.filter(d => !d.isMask);
+        const maskDots = dots.filter(d => d.isMask);
+
         const firstDot = dots[0];
         const lastDot = dots[dots.length - 1];
         this.layerOpacity = firstDot.layerOpacity;
@@ -631,12 +634,17 @@ export class DrawingEngine {
                 this.smudging0Dot = firstDot;
                 this.smudgingDot = firstDot;
             }
-            rect = this.renderDots(dots, false);
+            rect = this.renderDots(drawingDots, false);
             this.smudging0Dot = this.smudgingDot;
             this.smudgingDot = lastDot;
         } else {
-            rect = this.renderDots(dots, false);
+            rect = this.renderDots(drawingDots, false);
         }
+
+        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.maskDotBlendmode);
+        const maskRect = this.renderDots(maskDots, true);
+        if (rect !== null && maskRect !== null) rect = Rect.union(rect, maskRect);
+        else if (maskRect !== null) rect = maskRect;
 
         if (rect === null) return null;
 
@@ -666,6 +674,9 @@ export class DrawingEngine {
     }
 
     private _renderMultiDotsSmudging(dots: Dot[]): Rect | null {
+        const drawingDots = dots.filter(d => !d.isMask);
+        const maskDots = dots.filter(d => d.isMask);
+
         const firstDot = dots[0];
         const lastDot = dots[dots.length - 1];
         this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.dotBlendmode);
@@ -674,19 +685,24 @@ export class DrawingEngine {
 
         if (this._useSmudging) {
             if (this.smudgingDot === undefined) {
-                const tempDots = dots.concat();
+                const tempDots = drawingDots.concat();
                 this.smudging0Dot = firstDot;
                 this.smudgingDot = firstDot;
                 tempDots.splice(0, 1);
                 rect = this.renderDots(tempDots, false);
             } else {
-                rect = this.renderDots(dots, false);
+                rect = this.renderDots(drawingDots, false);
             }
             this.smudging0Dot = this.smudgingDot;
             this.smudgingDot = lastDot;
         } else {
-            rect = this.renderDots(dots, false);
+            rect = this.renderDots(drawingDots, false);
         }
+
+        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.maskDotBlendmode);
+        const maskRect = this.renderDots(maskDots, true);
+        if (rect !== null && maskRect !== null) rect = Rect.union(rect, maskRect);
+        else if (maskRect !== null) rect = maskRect;
 
         if (rect === null) return null;
 
