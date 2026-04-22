@@ -283,6 +283,10 @@
             "type": "picker",
             "valueRange": ["Normal", "Add", "Screen", "Max"]
         }, {
+            "key": "useLayerWetEdge",
+            "name": "Use Layer Wet Edge",
+            "type": "boolean"
+        }, {
             "key": "edgeStyle",
             "name": "Edge Style",
             "type": "picker",

@@ -178,31 +178,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Seurat",
@@ -391,31 +367,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Monet 1",
@@ -588,31 +540,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Monet 2",
@@ -815,31 +743,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Cezanne 1",
@@ -1020,31 +924,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Cezanne 2",
@@ -1233,30 +1113,6 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     }
 ]

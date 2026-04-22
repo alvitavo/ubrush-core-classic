@@ -248,31 +248,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Felt marker 002",
@@ -428,31 +404,7 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Felt marker 003",
@@ -616,31 +568,7 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Felt marker 004",
@@ -796,31 +724,7 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Wide lettering 001",
@@ -1042,31 +946,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Wide lettering 002",
@@ -1288,31 +1168,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Wide lettering 003",
@@ -1490,31 +1346,7 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Wide lettering 004",
@@ -1670,30 +1502,6 @@
             "sources": []
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     }
 ]

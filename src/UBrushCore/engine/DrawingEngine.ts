@@ -937,7 +937,7 @@ export class DrawingEngine {
             }
         }
 
-        this.excuteDotProgram({
+        this.executeDotProgram({
             points, indexData, tipTextureCoordinates, patternTextureCoordinates,
             smudging0TexturePositions, smudgingTexturePositions, colors, opacities, corrosions,
             numberOfPoints: 6 * numberOfDots, useDualTip
@@ -948,7 +948,7 @@ export class DrawingEngine {
 
     // ---- excuteDotProgram ----
 
-    protected excuteDotProgram(param: {
+    protected executeDotProgram(param: {
         points: number[],
         indexData: number[],
         tipTextureCoordinates: number[],

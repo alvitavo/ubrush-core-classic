@@ -234,31 +234,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Pen 002",
@@ -502,31 +478,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Pen 003",
@@ -755,31 +707,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Pen 004",
@@ -1001,31 +929,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Pen 101",
@@ -1262,31 +1166,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Pen 102",
@@ -1530,31 +1410,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Pen 103",
@@ -1805,31 +1661,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Pen 201",
@@ -2066,31 +1898,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Pen 202",
@@ -2334,31 +2142,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Pen 203",
@@ -2573,31 +2357,7 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     },
     {
         "name": "Pen 204",
@@ -2848,30 +2608,6 @@
             ]
         },
         "alphaSmudgingMode": false,
-        "useSecondaryMask": false,
-        "tipCorrosionSize": 1,
-        "tipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "textureCorrosionSize": 1,
-        "textureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipCorrosionSize": 1,
-        "dualTipCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        },
-        "dualTipTextureCorrosionSize": 1,
-        "dualTipTextureCorrosion": {
-            "min": 0,
-            "max": 0,
-            "sources": []
-        }
+        "useSecondaryMask": false
     }
 ]
