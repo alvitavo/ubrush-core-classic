@@ -398,7 +398,7 @@ export class BrushAttributeRenderer {
         (['src-value', 'src-weight'] as const).forEach(cls => {
             const field = cls === 'src-value' ? 'value' : 'weight';
             const input = sec.querySelector<HTMLInputElement>(`.${cls}`)!;
-            const valEl = input.closest('div')!.previousElementSibling!.querySelector<HTMLElement>('span:last-child')!;
+            const valEl = input.previousElementSibling!.querySelector<HTMLElement>('span:last-child')!;
             input.addEventListener('input', () => {
                 const v = parseFloat(input.value);
                 valEl.textContent = fmt(v, false);

@@ -57,6 +57,11 @@ export class SmudgingDrawDotProgram {
             return clamp((v - 1.0 + min(1.0, s + c)) / s, 0.0, 1.0);
         }
 
+        lowp float textureCorrosionFn(lowp float v, lowp float c, lowp float size) {
+            lowp float s = max(0.001, size);
+            return 1.0 - clamp((min(1.0, s + c) - v) / s, 0.0, 1.0);
+        }
+
         void main()
         {
             if (u_mode == 0)
@@ -65,7 +70,7 @@ export class SmudgingDrawDotProgram {
                 lowp float s_alpha;
 
                 lowp float s_rawPatternAlpha = texture2D(u_patternTexture, v_patternTextureCoordinate).a;
-                s_rawPatternAlpha = corrosionFn(s_rawPatternAlpha, v_corrosion[1], v_corrosion[3]);
+                s_rawPatternAlpha = textureCorrosionFn(s_rawPatternAlpha, v_corrosion[1], v_corrosion[3]);
                 lowp float s_patternMaskAlpha = 1.0 - s_rawPatternAlpha * v_opacity[1];
                 lowp float s_tipAlpha = texture2D(u_tipTexture, v_tipTextureCoordinate).a;
                 s_tipAlpha = corrosionFn(s_tipAlpha, v_corrosion[0], v_corrosion[2]);
@@ -81,7 +86,7 @@ export class SmudgingDrawDotProgram {
             else
             {
                 lowp float s_rawPatternAlpha = texture2D(u_patternTexture, v_patternTextureCoordinate).a;
-                s_rawPatternAlpha = corrosionFn(s_rawPatternAlpha, v_corrosion[1], v_corrosion[3]);
+                s_rawPatternAlpha = textureCorrosionFn(s_rawPatternAlpha, v_corrosion[1], v_corrosion[3]);
                 lowp float s_patternMaskAlpha = 1.0 - s_rawPatternAlpha * v_opacity[1];
                 lowp vec4 s_tipColor = texture2D(u_tipTexture, v_tipTextureCoordinate);
                 s_tipColor.a = corrosionFn(s_tipColor.a, v_corrosion[0], v_corrosion[2]);
