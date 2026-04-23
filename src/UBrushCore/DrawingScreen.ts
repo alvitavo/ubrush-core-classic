@@ -35,7 +35,7 @@ export class DrawingScreen implements CanvasDelegate {
     private currentCategoryIndex = 0;
     private currentBrushIndex = 0;
     private currentColor = new Color(0, 0, 0, 1);
-    private currentSize = 0.5;
+    private currentSize = 0.1;
     private currentOpacity = 1.0;
 
     private categorySelectEl!: HTMLSelectElement;
@@ -193,7 +193,7 @@ export class DrawingScreen implements CanvasDelegate {
         }));
 
         // Size slider
-        sidebar.appendChild(sliderRow('Size', 0, 1, 0.05, this.currentSize, (v) => {
+        sidebar.appendChild(sliderRow('Size', 0, 0.5, 0.001, this.currentSize, (v) => {
             this.currentSize = v;
             this.canvas?.lineDriver.setBrushSize(v);
         }));
@@ -216,6 +216,8 @@ export class DrawingScreen implements CanvasDelegate {
         // Undo button
         this.undoBtnEl = actionBtn('Undo', '#4a4a4a', () => this.undo());
         this.undoBtnEl.disabled = true;
+        this.undoBtnEl.hidden = true;
+
         sidebar.appendChild(this.undoBtnEl);
 
         // Divider
