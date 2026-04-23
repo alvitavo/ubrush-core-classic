@@ -5,6 +5,7 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 const BRUSHES_DIR = path.resolve(__dirname, 'brushes');
 const BRUSHES_ORIGINAL_DIR = path.resolve(__dirname, 'brushes_original');
+const FAVORITES_FILE = path.resolve(__dirname, 'favorites.json');
 
 module.exports = {
   entry: './src/UBrushCore/main.ts',
@@ -40,7 +41,11 @@ module.exports = {
       patterns: [
         { from: 'brushCategories.json', to: 'brushCategories.json' },
         { from: 'brushes', to: 'brushes' },
-        { from: 'UBrushEditAttribute.json', to: 'UBrushEditAttribute.json' }
+        { from: 'UBrushEditAttribute.json', to: 'UBrushEditAttribute.json' },
+        { from: 'src/public/manifest.json', to: 'manifest.json' },
+        { from: 'src/public/icon.svg', to: 'icon.svg' },
+        { from: 'src/public/sw.js', to: 'sw.js' },
+        { from: 'favorites.json', to: 'favorites.json' }
       ]
     })
   ],
@@ -126,6 +131,23 @@ module.exports = {
           res.json({ ok: true, brush: origBrush });
         } catch (e) {
           console.error('[restore-brush]', e);
+          res.status(500).json({ error: String(e) });
+        }
+      });
+
+      // POST /api/save-favorites
+      // Body: FavoriteEntry[]
+      app.post('/api/save-favorites', (req, res) => {
+        try {
+          const entries = req.body;
+          if (!Array.isArray(entries)) {
+            return res.status(400).json({ error: 'body must be an array' });
+          }
+          fs.writeFileSync(FAVORITES_FILE, JSON.stringify(entries, null, 2), 'utf8');
+          console.log(`[save-favorites] Saved ${entries.length} entries`);
+          res.json({ ok: true });
+        } catch (e) {
+          console.error('[save-favorites]', e);
           res.status(500).json({ error: String(e) });
         }
       });

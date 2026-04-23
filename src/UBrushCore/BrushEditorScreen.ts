@@ -33,8 +33,8 @@ export class BrushEditorScreen {
     private onBack: () => void;
     private onApply: (brush: IBrush) => void;
     private applyBtn!: HTMLButtonElement;
-    private saveBtn!: HTMLButtonElement;
-    private restoreBtn!: HTMLButtonElement;
+    private saveBtn?: HTMLButtonElement;
+    private restoreBtn?: HTMLButtonElement;
     private statusEl!: HTMLElement;
     private _tabNav!: HTMLElement;
     private _tabContent!: HTMLElement;
@@ -71,7 +71,6 @@ export class BrushEditorScreen {
         this.currentBrush = JSON.parse(JSON.stringify(brush));
         this.currentCategoryFile = categoryFile;
         this.statusEl.textContent = '';
-        // Apply brush to preview canvas (preview PM is active)
         if (this.previewDrawingCanvas) {
             this.previewDrawingCanvas.setBrush(JSON.parse(JSON.stringify(brush)));
         }
@@ -418,13 +417,15 @@ export class BrushEditorScreen {
         });
         header.appendChild(this.applyBtn);
 
-        this.saveBtn = btn('Save to JSON', '#2a7a4a', '#fff');
-        this.saveBtn.addEventListener('click', () => this.saveBrush());
-        header.appendChild(this.saveBtn);
+        if (process.env.NODE_ENV !== 'production') {
+            this.saveBtn = btn('Save to JSON', '#2a7a4a', '#fff');
+            this.saveBtn.addEventListener('click', () => this.saveBrush());
+            header.appendChild(this.saveBtn);
 
-        this.restoreBtn = btn('Restore Original', '#7a4a2a', '#fff');
-        this.restoreBtn.addEventListener('click', () => this.restoreBrush());
-        header.appendChild(this.restoreBtn);
+            this.restoreBtn = btn('Restore Original', '#7a4a2a', '#fff');
+            this.restoreBtn.addEventListener('click', () => this.restoreBrush());
+            header.appendChild(this.restoreBtn);
+        }
 
         return header;
     }
@@ -433,7 +434,7 @@ export class BrushEditorScreen {
 
     private async saveBrush(): Promise<void> {
         if (!this.currentBrush || !this.currentCategoryFile) return;
-        this.saveBtn.disabled = true;
+        if (this.saveBtn) this.saveBtn.disabled = true;
         this.setStatus('Saving…');
         try {
             const resp = await fetch('/api/save-brush', {
@@ -446,14 +447,14 @@ export class BrushEditorScreen {
         } catch (e) {
             this.setStatus(`Network error: ${e}`);
         } finally {
-            this.saveBtn.disabled = false;
+            if (this.saveBtn) this.saveBtn.disabled = false;
         }
     }
 
     private async restoreBrush(): Promise<void> {
         if (!this.currentBrush || !this.currentCategoryFile) return;
         if (!confirm(`"${this.currentBrush.name}" 을 원본으로 복원하시겠습니까?`)) return;
-        this.restoreBtn.disabled = true;
+        if (this.restoreBtn) this.restoreBtn.disabled = true;
         this.setStatus('Restoring…');
         try {
             const resp = await fetch('/api/restore-brush', {
@@ -475,7 +476,7 @@ export class BrushEditorScreen {
         } catch (e) {
             this.setStatus(`Network error: ${e}`);
         } finally {
-            this.restoreBtn.disabled = false;
+            if (this.restoreBtn) this.restoreBtn.disabled = false;
         }
     }
 

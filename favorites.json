@@ -1,0 +1,78 @@
+[
+  {
+    "name": "Airbrush 011",
+    "file": "brushes/airbrush.json"
+  },
+  {
+    "name": "Airbrush 012",
+    "file": "brushes/airbrush.json"
+  },
+  {
+    "name": "Watercolor 001",
+    "file": "brushes/watercolor.json"
+  },
+  {
+    "name": "Watercolor 008",
+    "file": "brushes/watercolor.json"
+  },
+  {
+    "name": "Wet ink 001",
+    "file": "brushes/wet.json"
+  },
+  {
+    "name": "Wet ink 002",
+    "file": "brushes/wet.json"
+  },
+  {
+    "name": "Wet acrylic 003",
+    "file": "brushes/wet.json"
+  },
+  {
+    "name": "Wet acrylic 102",
+    "file": "brushes/wet.json"
+  },
+  {
+    "name": "Palette knife 001 Mix",
+    "file": "brushes/oil_mix.json"
+  },
+  {
+    "name": "Oil pastel 001 Mix",
+    "file": "brushes/oil_mix.json"
+  },
+  {
+    "name": "Oil pastel 004 Mix",
+    "file": "brushes/oil_mix.json"
+  },
+  {
+    "name": "Oil paint 001 Mix",
+    "file": "brushes/oil_mix.json"
+  },
+  {
+    "name": "Oil paint 003 Mix",
+    "file": "brushes/oil_mix.json"
+  },
+  {
+    "name": "Sketch 001",
+    "file": "brushes/sketch.json"
+  },
+  {
+    "name": "Felt marker 002",
+    "file": "brushes/marker.json"
+  },
+  {
+    "name": "Wide lettering 002",
+    "file": "brushes/marker.json"
+  },
+  {
+    "name": "Halftone dot 1",
+    "file": "brushes/halftone.json"
+  },
+  {
+    "name": "Ink roller",
+    "file": "brushes/special.json"
+  },
+  {
+    "name": "Fur",
+    "file": "brushes/special.json"
+  }
+]

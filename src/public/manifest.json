@@ -1,0 +1,17 @@
+{
+  "name": "UBrush Core Demo",
+  "short_name": "UBrush",
+  "description": "UBrush Core brushstroke engine demo",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#252525",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
