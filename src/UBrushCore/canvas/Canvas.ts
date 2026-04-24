@@ -5,7 +5,7 @@ import { LineDriver, LineDriverDelegate } from "../driver/LineDriver";
 import { Dot } from "../common/Dot";
 import { UBrushContext } from "../gpu/UBrushContext";
 import { RenderTarget } from "../gpu/RenderTarget";
-import { DrawingEngine, DrawingMode } from "../engine/DrawingEngine";
+import { DrawingEngine } from "../engine/DrawingEngine";
 import { Rect } from "../common/Rect";
 import { IBrush, DryType, DotBlendmode, EdgeStyle } from "../common/IBrush";
 import { Common } from "../common/Common";
@@ -109,10 +109,11 @@ export class Canvas implements LineDriverDelegate {
 
         this.lineDriver.setBrush(brush);
 
-        const mode: DrawingMode = brush?.alphaSmudgingMode ? 'smudging'
-            : brush?.useSecondaryMask ? 'water'
-            : 'basic';
-        this.drawingEngine.mode = mode;
+        // Swift parity: alphaSmudgingMode 먼저 → useSecondaryMask 나중 순서로 대입.
+        // alphaSmudgingMode setter가 _resyncDynamicBuffersForMode 를 호출하므로
+        // useSecondaryMask가 이미 설정된 상태에서 alphaSmudgingMode가 뒤늦게 바뀌면 버퍼 정합성이 깨진다.
+        this.drawingEngine.alphaSmudgingMode = brush?.alphaSmudgingMode ?? false;
+        this.drawingEngine.useSecondaryMask  = brush?.useSecondaryMask  ?? false;
 
         if (brush) {
             this.drawingEngine.useSmudging = brush.useSmudging;

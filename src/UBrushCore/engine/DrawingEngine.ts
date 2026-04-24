@@ -13,8 +13,6 @@ import { Fixer, FixerRenderTarget } from "../common/Fixer";
 import { LayerBlendmode, DotBlendmode, EdgeStyle } from "../common/IBrush";
 import { Color } from "../common/Color";
 
-export type DrawingMode = 'basic' | 'smudging' | 'water';
-
 const maxSmudgingLength = 1000;
 
 export class DrawingEngine {
@@ -36,8 +34,9 @@ export class DrawingEngine {
 
     public readonly size: Size;
 
-    // ---- mode ----
-    private _mode: DrawingMode = 'basic';
+    // ---- independent flags (Swift parity) ----
+    private _alphaSmudgingMode: boolean = false;
+    private _useSecondaryMask: boolean = false;
 
     // ---- core render targets (always allocated) ----
     public drawingRenderTarget: RenderTarget;
@@ -93,21 +92,66 @@ export class DrawingEngine {
         // TODO: delete render targets
     }
 
-    // ---- mode ----
+    // ---- alphaSmudgingMode / useSecondaryMask (Swift parity) ----
 
-    public set mode(value: DrawingMode) {
-        if (value === 'smudging') this._ensureSmudgingTargets();
-        if (value === 'water') this._ensureWaterTargets();
-        this._mode = value;
+    public set alphaSmudgingMode(value: boolean) {
+        if (this._alphaSmudgingMode === value) {
+            this.currentRenderTarget = this.drawingRenderTarget;
+            return;
+        }
+        this._alphaSmudgingMode = value;
+        if (value) this._ensureSmudgingTargets();
+        this._resyncDynamicBuffersForMode();
         this.currentRenderTarget = this.drawingRenderTarget;
     }
 
-    public get mode(): DrawingMode {
-        return this._mode;
+    public get alphaSmudgingMode(): boolean {
+        return this._alphaSmudgingMode;
+    }
+
+    public set useSecondaryMask(value: boolean) {
+        if (this._useSecondaryMask === value) return;
+        this._useSecondaryMask = value;
+        if (value) this._ensureWaterTargets();
+    }
+
+    public get useSecondaryMask(): boolean {
+        return this._useSecondaryMask;
     }
 
     public get debuggingRenderTarget(): RenderTarget | undefined {
-        return this._mode === 'smudging' ? this.drawingAlphaRenderTarget : undefined;
+        return this._alphaSmudgingMode ? this.drawingAlphaRenderTarget : undefined;
+    }
+
+    /**
+     * Swift `updateAlphaSmugingMode` 대응. `alphaSmudgingMode` 전환 시 호출되며,
+     * 동적 버퍼를 해당 모드의 기대 상태로 재-초기화한다.
+     */
+    private _resyncDynamicBuffersForMode(): void {
+        const s = Common.stageRect();
+        if (this._alphaSmudgingMode) {
+            // liquidRenderTarget 을 source 로 alpha/color 분리 세팅
+            ProgramManager.getInstance().separateLayersProgram.separate(
+                this.drawingAlphaRenderTarget!, this.drawingRenderTarget,
+                { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
+            );
+            ProgramManager.getInstance().separateLayersProgram.separate(
+                this.smudging1CopyAlphaRenderTarget!, this.smudging1CopyColorRenderTarget!,
+                { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
+            );
+            ProgramManager.getInstance().separateLayersProgram.separate(
+                this.smudging0CopyAlphaRenderTarget!, this.smudging0CopyColorRenderTarget!,
+                { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
+            );
+        } else {
+            // non-smudging 기대치로 복구: drawing/maskDrawing 클리어, smudging copy 버퍼를 dry 로 채움
+            this.context.clearRenderTarget(this.drawingRenderTarget, Color.clear());
+            this._fill(this.smudging0CopyRenderTarget, this.dryRenderTarget.texture);
+            this._fill(this.smudging1CopyRenderTarget, this.dryRenderTarget.texture);
+            if (this._useSecondaryMask && this.maskDrawingRenderTarget) {
+                this.context.clearRenderTarget(this.maskDrawingRenderTarget, Color.clear());
+            }
+        }
     }
 
     private _ensureSmudgingTargets(): void {
@@ -132,7 +176,7 @@ export class DrawingEngine {
         this.smudging0Dot = undefined;
         this.smudgingDot = undefined;
 
-        if (this._mode === 'smudging' && value) {
+        if (this._alphaSmudgingMode && value) {
             const s = Common.stageRect();
             ProgramManager.getInstance().separateLayersProgram.separate(
                 this.smudging1CopyAlphaRenderTarget!,
@@ -204,7 +248,7 @@ export class DrawingEngine {
     public setupWithRenderTarget(renderTarget: RenderTarget): void {
         const s = Common.stageRect();
 
-        if (this._mode === 'smudging') {
+        if (this._alphaSmudgingMode) {
             this._fill(this.liquidRenderTarget, renderTarget.texture);
             ProgramManager.getInstance().separateLayersProgram.separate(
                 this.drawingAlphaRenderTarget!, this.drawingRenderTarget,
@@ -225,7 +269,7 @@ export class DrawingEngine {
             this._fill(this.smudging0CopyRenderTarget, renderTarget.texture);
             this._fill(this.smudging1CopyRenderTarget, renderTarget.texture);
 
-            if (this._mode === 'water') {
+            if (this._useSecondaryMask) {
                 this.context.clearRenderTarget(this.maskDrawingRenderTarget!, Color.clear());
                 this.context.clearRenderTarget(this.maskLiquidRenderTarget!, Color.clear());
             }
@@ -255,7 +299,7 @@ export class DrawingEngine {
     // ---- printToRenderTarget ----
 
     public printToRenderTarget(renderTarget: RenderTarget, rect: Rect, transform: AffineTransform): void {
-        if (this._mode === 'smudging') {
+        if (this._alphaSmudgingMode) {
             ProgramManager.getInstance().mergeLayersProgram.merge(renderTarget, {
                 targetRect: rect,
                 alphaSource: this.drawingAlphaRenderTarget!.texture,
@@ -264,7 +308,7 @@ export class DrawingEngine {
                 canvasRect: Common.stageRect(),
                 transform: new AffineTransform()
             });
-        } else if (this._mode === 'water') {
+        } else if (this._useSecondaryMask) {
             ProgramManager.getInstance().maskAndCutProgram.fill(renderTarget, {
                 targetRect: rect,
                 drySource: this.dryRenderTarget.texture,
@@ -306,7 +350,7 @@ export class DrawingEngine {
         this.smudgingDot = undefined;
         const s = Common.stageRect();
 
-        if (this._mode === 'smudging') {
+        if (this._alphaSmudgingMode) {
             ProgramManager.getInstance().mergeLayersProgram.merge(this.liquidRenderTarget, {
                 targetRect: s,
                 alphaSource: this.drawingAlphaRenderTarget!.texture,
@@ -318,7 +362,7 @@ export class DrawingEngine {
         } else {
             this._fill(this.liquidRenderTarget, this.drawingRenderTarget.texture);
 
-            if (this._mode === 'water') {
+            if (this._useSecondaryMask) {
                 this._fill(this.maskLiquidRenderTarget!, this.maskDrawingRenderTarget!.texture);
             }
         }
@@ -329,7 +373,7 @@ export class DrawingEngine {
     public cancelDrawing(): void {
         const s = Common.stageRect();
 
-        if (this._mode === 'smudging') {
+        if (this._alphaSmudgingMode) {
             ProgramManager.getInstance().separateLayersProgram.separate(
                 this.drawingAlphaRenderTarget!, this.drawingRenderTarget,
                 { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
@@ -347,7 +391,7 @@ export class DrawingEngine {
         } else {
             this._fill(this.drawingRenderTarget, this.liquidRenderTarget.texture);
 
-            if (this._mode === 'water') {
+            if (this._useSecondaryMask) {
                 this._fill(this.maskDrawingRenderTarget!, this.maskLiquidRenderTarget!.texture);
             }
         }
@@ -356,12 +400,12 @@ export class DrawingEngine {
     // ---- dry ----
 
     public dry(): void {
-        if (this._mode === 'smudging') return;
+        if (this._alphaSmudgingMode) return;
 
         const s = Common.stageRect();
         const tempRenderTarget = this.context.createRenderTarget(this.size);
 
-        if (this._mode === 'water') {
+        if (this._useSecondaryMask) {
             ProgramManager.getInstance().maskAndCutProgram.fill(tempRenderTarget, {
                 targetRect: s,
                 drySource: this.dryRenderTarget.texture,
@@ -401,7 +445,7 @@ export class DrawingEngine {
         this.context.clearRenderTarget(this.liquidRenderTarget, Color.clear());
         this.context.clearRenderTarget(this.drawingRenderTarget, Color.clear());
 
-        if (this._mode === 'water') {
+        if (this._useSecondaryMask) {
             this.context.clearRenderTarget(this.maskLiquidRenderTarget!, Color.clear());
             this.context.clearRenderTarget(this.maskDrawingRenderTarget!, Color.clear());
             if (this._useSmudging) {
@@ -418,7 +462,7 @@ export class DrawingEngine {
     // ---- clear ----
 
     public clear(): void {
-        if (this._mode === 'smudging') {
+        if (this._alphaSmudgingMode) {
             this.context.clearRenderTarget(this.dryRenderTarget, Color.clear());
             this.context.clearRenderTarget(this.liquidRenderTarget, Color.clear());
             this.context.clearRenderTarget(this.drawingAlphaRenderTarget!, Color.black());
@@ -427,7 +471,7 @@ export class DrawingEngine {
             this.context.clearRenderTarget(this.smudging1CopyColorRenderTarget!, Color.black());
             this.context.clearRenderTarget(this.smudging0CopyAlphaRenderTarget!, Color.black());
             this.context.clearRenderTarget(this.smudging0CopyColorRenderTarget!, Color.black());
-        } else if (this._mode === 'water') {
+        } else if (this._useSecondaryMask) {
             this.context.clearRenderTarget(this.dryRenderTarget, Color.clear());
             this.context.clearRenderTarget(this.liquidRenderTarget, Color.clear());
             this.context.clearRenderTarget(this.drawingRenderTarget, Color.clear());
@@ -446,11 +490,11 @@ export class DrawingEngine {
     // ---- fixer ----
 
     public fixer(fixerRenderTarget: FixerRenderTarget, rect: Rect): Fixer | null {
-        if (this._mode === 'smudging') {
+        if (this._alphaSmudgingMode) {
             if (fixerRenderTarget === FixerRenderTarget.Liquid) return null;
             return this._buildFixer(FixerRenderTarget.Liquid, rect, false);
         }
-        return this._buildFixer(fixerRenderTarget, rect, this._mode === 'water');
+        return this._buildFixer(fixerRenderTarget, rect, this._useSecondaryMask);
     }
 
     private _buildFixer(fixerRenderTarget: FixerRenderTarget, rect: Rect, withMask: boolean): Fixer | null {
@@ -536,7 +580,7 @@ export class DrawingEngine {
         const texture = this.context.createTexture();
         await texture.loadFromBase64(fixer.patchImageUrl);
 
-        if (this._mode === 'smudging') {
+        if (this._alphaSmudgingMode) {
             ProgramManager.getInstance().fillRectProgram.fill(this.liquidRenderTarget, {
                 targetRect: fixer.patchRect, source: texture,
                 sourceRect: canvasRect, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
@@ -565,7 +609,7 @@ export class DrawingEngine {
                 sourceRect: canvasRect, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
 
-            if (this._mode === 'water' && fixer.patchMaskImageUrl) {
+            if (this._useSecondaryMask && fixer.patchMaskImageUrl) {
                 const maskTexture = this.context.createTexture();
                 await maskTexture.loadFromBase64(fixer.patchMaskImageUrl);
                 ProgramManager.getInstance().fillRectProgram.fill(this.maskLiquidRenderTarget!, {
@@ -584,7 +628,7 @@ export class DrawingEngine {
             });
         }
 
-        if (this._useSmudging && this._mode !== 'smudging') {
+        if (this._useSmudging && !this._alphaSmudgingMode) {
             const s = new Rect(0, 0, this.size.width, this.size.height);
             ProgramManager.getInstance().fillRectProgram.fill(this.smudging1CopyRenderTarget, {
                 targetRect: s, source: this.dryRenderTarget.texture,
@@ -613,8 +657,8 @@ export class DrawingEngine {
     protected renderMultiDots(dots: Dot[]): Rect | null {
         if (dots.length === 0) return null;
 
-        if (this._mode === 'water') return this._renderMultiDotsWater(dots);
-        if (this._mode === 'smudging') return this._renderMultiDotsSmudging(dots);
+        if (this._alphaSmudgingMode) return this._renderMultiDotsSmudging(dots);
+        if (this._useSecondaryMask) return this._renderMultiDotsWater(dots);
         return this._renderMultiDotsBasic(dots);
     }
 
@@ -961,7 +1005,7 @@ export class DrawingEngine {
         numberOfPoints: number,
         useDualTip: boolean
     }): void {
-        if (this._mode === 'smudging') {
+        if (this._alphaSmudgingMode) {
             ProgramManager.getInstance().smudgingDotProgram.drawRects(
                 this.drawingAlphaRenderTarget!,
                 this.drawingRenderTarget,
@@ -988,8 +1032,8 @@ export class DrawingEngine {
             );
         } else {
             // basic: use smudging0/1 copy pair
-            // water: use smudging1Copy for both (same texture for 0 and 1)
-            const smudging0Texture = this._mode === 'water'
+            // water (useSecondaryMask, non-alphaSmudging): use smudging1Copy for both (same texture for 0 and 1)
+            const smudging0Texture = this._useSecondaryMask
                 ? this.smudging1CopyRenderTarget.texture
                 : this.smudging0CopyRenderTarget.texture;
 
