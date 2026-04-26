@@ -189,7 +189,7 @@
     },
     "dryType": "AUTO",
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false,
+    "useSecondaryMask": true,
     "useLayerTinting": true,
     "useLayerWetEdge": false,
     "layerLowCut": 0,
@@ -454,7 +454,7 @@
     },
     "dryType": "AUTO",
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false,
+    "useSecondaryMask": true,
     "useLayerTinting": true,
     "dotBlendmode": "Max",
     "useLayerWetEdge": false,
@@ -526,8 +526,6 @@
     "tipSource": "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAAXNSR0IArs4c6QAAABxpRE9UAAAAAgAAAAAAAABAAAAAKAAAAEAAAABAAAAC+o908C8AAALGSURBVHgB7Jw9btRQFEZDR5clJJHSsAHKVBTUKVKwgTSUFLALRBnRUbIAOgoklHSkSpsmO6BDkeA7UlIwYvDYHo/t6/NJnyYZ+71377l3/jz27O0pCUhAAhKQgAQkIAEJSEACEpCABCQgAQlIQAISkIAEJCABCUhAAhKQgAQkIAEJSEACEpCABCQgAQlIQAISkIAEJDBNAs8S1mn8Nr6Iv8TX8V38M75/MH9zH9vYh30Zw1jmUDMhcJA4X8Uf4qv4V/y7p5mDuZiTuVlDTYjAfmI5iz/Gt3HfgjeNZw3WYk3WViMROM66b+JvcVPRhtrO2sRALGpHBI6yzrv4RzxUYdvOSyzERGxqIAJPM+95/D1uW6Bd7U9sxEisaosETjLXp3hXhey7DrESs+pJ4EnGv45v4r5F2fV4YiZ2clAdCBxmzPt414Xb9nrkQC6qBYHn2fdzvO1ijDUfuZCT2oDAi+zzNR6rWEOtS07kpv5D4GW2XcZDFWHsecmNHNU/CPDoqFz8x+YjR58JVhqA18eKT/uPRV+9JVffEzw0wWFuK73hWy32uv/JmdwXLT4jV/iot67ITfeT+6KPE3CgpAlS9e0wWKROkvVNXL3ATfnBABaLEl+WzOnYflMR+26HxaK+QDpPwn2hVRsPk0XoKFlO+SvdsRoLJrApL06cGAvy1NeFTWkdJ7spnckztYaADYzKivPnpgZ9avHAqKT2k9WYJ3BOrdDr4oERrMrpLBmtS9r7/2YDq3LiXHoLvRkDWJXSQbK5jW2AzRjACmZlxCVVFr8dA5iVEdfV2QDtGMCsjK6SiQ3QjgHMSojLq7nC1gZoxwBmJS5NP7X4nZsfdrMXP7Tgo78bA9jNXhfJwAboxgB2sxc/uWIDdGMAu9nrOhnYAN0YwG72uksGNkA3BrCbvfgFLhugGwPYzV73ycAG6MYAdoPqDwAAAP//0VoI0QAAApFJREFU7Zw9ThtRFIVJl44lABING6CkoqCmoMgGaFJSwC6ilCgdJQugSxEpgi5UtDTsIB1CgvMpKYxkWfbjz+++70hXGtnj9+75fKyZ8fysrLy9HjLFo9XEAHbd628cGIA2BrDrXndxYADaGMCue13HgQFoYwC77nURBwagjQHsutdpHBiANgaw617HcWAA2hjArnvtx4EBaGMAu+61FQf3KUOwGAOYwa6EruLCACzGAGZl9D1ODMBiDGBWRl/ixAAsxgBmZbQWJ7cpQzAfA1jBrJR+xI0BmI8BrMrpII4MwHwMYFVOq3H0K2UIZjOAEaxK6iiuDMBsBjAqq804+5MyBNMZwAZGpXUSdwZgOgPYlNdGHP5OGYLnDGACmyF0GJcG4DkDmAyjz3F6ljIE/xjAAiZDaSdub1KjhwAGsBhSX+N69ADAYFh9ivNvqVFDgHcYDK31uD9PjRYCPONdhcB26mdqlBDgFc9qgsBuli9T1UOAR7yqKQT28lrlEOANj2oGAX4dFTcHePKXP+OLn3yL7WOlHUO8uM2f/IbnWF7POhUOEfGAF9VAgGNk/ii5SfW2c0jP9D78cX4YvFg7GaGncwf0Ss/qFQlwsuQwtcynkumNHoc7sRPP76aNzMSFE8t0ZRG90BO9qXcisJl5uH7uIy80ZW56oBf1QQRWM+9Bimvpb1NvvbPIHMzFnMytlojAWnrhliruq7tKcYftSwPBGIzFmIzNHKoTAtxevZ/iQQunKR65cp26S/EErof/xTKv8R7rsC6f4bNlbtGOFyUBCUhAAhKQgAQkIAEJSEACEpCABCQgAQlIQAISkIAEJCABCUhAAhKQgAQkIAEJSEACEpCABCQgAQlIQAISkEAhAk9BNo+GMpN3iwAAAABJRU5ErkJggg==",
     "tipDivideX": 1,
     "tipDivideY": 1,
-    "dualTipSource": "",
-    "textureSource": "",
     "followAcceleration": 0.30000001192092896,
     "minSize": 1,
     "maxSize": 2000,
@@ -649,6 +647,18 @@
     "useTextureFitting": false,
     "textureOffset": 1,
     "textureScale": 1,
+    "tipCorrosionSize": 1,
+    "tipCorrosion": {
+      "min": 0,
+      "max": 1,
+      "sources": []
+    },
+    "textureCorrosionSize": 1,
+    "textureCorrosion": {
+      "min": 0,
+      "max": 1,
+      "sources": []
+    },
     "mixingOpacity": {
       "min": 0,
       "max": 1,
@@ -703,7 +713,21 @@
     "dualTipInitialAngle": 0,
     "dualTipAngleJitter": 0,
     "dualTipDeltaAngle": 0,
+    "dualTipCorrosionSize": 1,
+    "dualTipCorrosion": {
+      "min": 0,
+      "max": 1,
+      "sources": []
+    },
+    "dualTipTextureCorrosionSize": 1,
+    "dualTipTextureCorrosion": {
+      "min": 0,
+      "max": 1,
+      "sources": []
+    },
     "dryType": "AUTO",
+    "alphaSmudgingMode": false,
+    "useSecondaryMask": true,
     "useLayerTinting": true,
     "useLayerWetEdge": false,
     "layerLowCut": 0,
@@ -749,8 +773,6 @@
         }
       ]
     },
-    "alphaSmudgingMode": false,
-    "useSecondaryMask": false,
     "scaleForAltitude": 0,
     "textureJitter": 0,
     "alphaAngle": {
@@ -991,7 +1013,7 @@
     },
     "dryType": "AUTO",
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false,
+    "useSecondaryMask": true,
     "useLayerTinting": true,
     "dotBlendmode": "Max",
     "useLayerWetEdge": false,

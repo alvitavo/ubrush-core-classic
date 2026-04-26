@@ -163,7 +163,7 @@
     },
     "dryType": "AUTO",
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false,
+    "useSecondaryMask": true,
     "useLayerTinting": false,
     "useLayerWetEdge": false,
     "layerLowCut": 0,
@@ -390,11 +390,11 @@
     },
     "dryType": "AUTO",
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false,
+    "useSecondaryMask": true,
     "useLayerTinting": false,
     "useLayerWetEdge": false,
-    "layerLowCut": 0.26,
-    "layerHighCut": 0.63,
+    "layerLowCut": 0.25999999046325684,
+    "layerHighCut": 0.6299999952316284,
     "layerBlendmode": "Normal",
     "colorVariationType": "ALWAYS",
     "hue": {
@@ -599,7 +599,7 @@
     },
     "dryType": "AUTO",
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false,
+    "useSecondaryMask": true,
     "useLayerTinting": false,
     "useLayerWetEdge": false,
     "layerLowCut": 0,
@@ -922,8 +922,8 @@
       ]
     },
     "oval": -0.28999999165534973,
-    "spacing": 0.04,
-    "minSpacing": 0.61,
+    "spacing": 0.15000000596046448,
+    "minSpacing": 1,
     "spray": {
       "min": 0,
       "max": 1,
@@ -939,7 +939,7 @@
     },
     "rotationType": "DIRECTION",
     "initialAngle": 0.23999999463558197,
-    "angleJitter": 0.13,
+    "angleJitter": 0.019999999552965164,
     "deltaAngle": 0,
     "skipInterval": 0,
     "tailLength": 0,
@@ -995,7 +995,7 @@
     "useTextureFitting": false,
     "textureOffset": 0,
     "textureScale": 2.869999885559082,
-    "tipCorrosionSize": 1,
+    "tipCorrosionSize": 0.9800000190734863,
     "tipCorrosion": {
       "min": 0,
       "max": 1,
@@ -1067,11 +1067,11 @@
     },
     "dryType": "AUTO",
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false,
+    "useSecondaryMask": true,
     "useLayerTinting": false,
     "useLayerWetEdge": false,
-    "layerLowCut": 0.26,
-    "layerHighCut": 0.63,
+    "layerLowCut": 0.25999999046325684,
+    "layerHighCut": 0.6299999952316284,
     "layerBlendmode": "Normal",
     "colorVariationType": "ALWAYS",
     "hue": {
@@ -1214,6 +1214,18 @@
     "useTextureFitting": false,
     "textureOffset": 0,
     "textureScale": 3.369999885559082,
+    "tipCorrosionSize": 1,
+    "tipCorrosion": {
+      "min": 0,
+      "max": 1,
+      "sources": []
+    },
+    "textureCorrosionSize": 1,
+    "textureCorrosion": {
+      "min": 0,
+      "max": 1,
+      "sources": []
+    },
     "mixingOpacity": {
       "min": 0,
       "max": 1,
@@ -1260,7 +1272,21 @@
     "dualTipInitialAngle": 0,
     "dualTipAngleJitter": 0,
     "dualTipDeltaAngle": 0,
+    "dualTipCorrosionSize": 1,
+    "dualTipCorrosion": {
+      "min": 0,
+      "max": 1,
+      "sources": []
+    },
+    "dualTipTextureCorrosionSize": 1,
+    "dualTipTextureCorrosion": {
+      "min": 0,
+      "max": 1,
+      "sources": []
+    },
     "dryType": "AUTO",
+    "alphaSmudgingMode": false,
+    "useSecondaryMask": true,
     "useLayerTinting": false,
     "useLayerWetEdge": false,
     "layerLowCut": 0.25999999046325684,
@@ -1298,8 +1324,6 @@
         }
       ]
     },
-    "alphaSmudgingMode": false,
-    "useSecondaryMask": false,
     "scaleForAltitude": 0,
     "textureJitter": 1,
     "alphaAngle": {
