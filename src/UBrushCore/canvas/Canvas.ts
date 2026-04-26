@@ -112,8 +112,15 @@ export class Canvas implements LineDriverDelegate {
         // Swift parity: alphaSmudgingMode 먼저 → useSecondaryMask 나중 순서로 대입.
         // alphaSmudgingMode setter가 _resyncDynamicBuffersForMode 를 호출하므로
         // useSecondaryMask가 이미 설정된 상태에서 alphaSmudgingMode가 뒤늦게 바뀌면 버퍼 정합성이 깨진다.
+        //
+        // 가드: useDualTip 이 꺼져 있으면 secondary dot 이 0개라 maskDrawingRenderTarget 이
+        // 비어있는데, MaskAndCutProgram 이 mask=0 픽셀을 모두 cut 으로 처리해 화면이 비게 된다.
+        // useDualTip 없는 브러시는 useSecondaryMask 효과 자체가 의미 없으므로 무효화한다.
+        // (Swift 는 동일 시나리오에서 maskAndCut 이 dualTipBlendmode=Normal 일 때 mask 를 무시해
+        //  자동으로 통과되지만, watercolor 류 브러시가 maskDotBlendmode=Normal + useDualTip=true 인
+        //  케이스에서 mask 효과가 핵심이므로 셰이더는 건드리지 않는다.)
         this.drawingEngine.alphaSmudgingMode = brush?.alphaSmudgingMode ?? false;
-        this.drawingEngine.useSecondaryMask  = brush?.useSecondaryMask  ?? false;
+        this.drawingEngine.useSecondaryMask  = (brush?.useSecondaryMask ?? false) && (brush?.useDualTip ?? false);
 
         if (brush) {
             this.drawingEngine.useSmudging = brush.useSmudging;
