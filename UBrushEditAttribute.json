@@ -95,6 +95,21 @@
             "name": "Angle Jitter",
             "type": "float",
             "valueRange": [0, 1]
+        }, {
+            "key": "alphaAngle",
+            "name": "Alpha Angle",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
+            "key": "tipRepeatCount",
+            "name": "Tip Repeat Count",
+            "type": "int",
+            "valueRange": [1, 10]
+        }, {
+            "key": "scaleForAltitude",
+            "name": "Scale For Altitude",
+            "type": "float",
+            "valueRange": [0, 10]
         }]
     }, {
         "key": "shape",
@@ -139,6 +154,11 @@
             "name": "Texture Scale",
             "type": "float",
             "valueRange": [0, 4]
+        }, {
+            "key": "textureJitter",
+            "name": "Texture Jitter",
+            "type": "float",
+            "valueRange": [0, 1]
         }, {
             "key": "tipCorrosionSize",
             "name": "Tip Corrosion Size",
@@ -226,6 +246,16 @@
             "name": "DT Angle Jitter",
             "type": "float",
             "valueRange": [0, 1]
+        }, {
+            "key": "dualTipAlphaAngle",
+            "name": "DT Alpha Angle",
+            "type": "expression",
+            "valueRange": [0, 1]
+        }, {
+            "key": "dualTipRepeatCount",
+            "name": "DT Tip Repeat Count",
+            "type": "int",
+            "valueRange": [1, 10]
         }, {
             "key": "dualTipDeltaAngle",
             "name": "DT Delta Angle",

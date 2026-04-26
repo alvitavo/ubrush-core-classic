@@ -44,6 +44,9 @@ export class Dot {
     public tipCorrosionSize: number = 1;
     public textureCorrosionSize: number = 1;
 
+    public textureJitterOffsetX: number = 0;
+    public textureJitterOffsetY: number = 0;
+
     public copyForPrepare(): Dot {
         const dot: Dot = new Dot();
         dot.prepareX = this.prepareX;

@@ -916,6 +916,13 @@ export class DrawingEngine {
             patternTextureCoordinates[i * 8 + 6] = p4.x * pox + tipTextureCoordinates[i * 8 + 6] * poxc;
             patternTextureCoordinates[i * 8 + 7] = p4.y * poy + tipTextureCoordinates[i * 8 + 7] * poyc;
 
+            const jx = dot.textureJitterOffsetX;
+            const jy = dot.textureJitterOffsetY;
+            patternTextureCoordinates[i * 8 + 0] += jx; patternTextureCoordinates[i * 8 + 1] += jy;
+            patternTextureCoordinates[i * 8 + 2] += jx; patternTextureCoordinates[i * 8 + 3] += jy;
+            patternTextureCoordinates[i * 8 + 4] += jx; patternTextureCoordinates[i * 8 + 5] += jy;
+            patternTextureCoordinates[i * 8 + 6] += jx; patternTextureCoordinates[i * 8 + 7] += jy;
+
             if (this._useSmudging && this.smudgingDot && this.smudging0Dot) {
                 const sr = Math.sin(this.smudgingDot.rotation), cr = Math.cos(this.smudgingDot.rotation);
                 const sxs = dhw * sr, sys = dhh * sr, sxc = dhw * cr, syc = dhh * cr;

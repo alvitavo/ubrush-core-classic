@@ -114,8 +114,10 @@ export interface IBrush {
     maxMixingOpacity: number;
 
     offsetForAltitude: number;
+    scaleForAltitude?: number;
     initialAngle: number;
     textureOffset: number;
+    textureJitter?: number;
     
     layerLowCut: number;
     layerHighCut: number;
@@ -132,15 +134,20 @@ export interface IBrush {
     maxOpacity: number;
 
     angleJitter: number;
+    alphaAngle?: IBrushExpression;
     followAcceleration: number;
-    
+
+    tipRepeatCount?: number;
+
     dualTipOval: number;
     dualTipDeltaAngle: number;
     dualTipMinOpacity: number;
     dualTipMaxOpacity: number;
     dualTipInterval: number;
     dualTipAngleJitter: number;
+    dualTipAlphaAngle?: IBrushExpression;
     dualTipInitialAngle: number;
+    dualTipRepeatCount?: number;
     
     textureScale: number;
 

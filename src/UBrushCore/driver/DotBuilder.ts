@@ -2,7 +2,7 @@ import { Dot } from "../common/Dot";
 import { ExpressionHelper, ICalcExpressionParam } from "./ExpressionHelper";
 import { Point } from "../common/Point";
 import { Stylus } from "../common/Stylus";
-import { IBrush, RotationType, ColorVariationType } from "../common/IBrush";
+import { IBrush, IBrushExpression, RotationType, ColorVariationType } from "../common/IBrush";
 import { LineDriverDelegate } from "./LineDriver";
 import { Common } from "../common/Common";
 import { Color } from "../common/Color";
@@ -179,37 +179,41 @@ export class DotBuilder {
     private processDot(dot: Dot): void {
 
         if (!this.brush) return;
-        
-        if (this.brush.useDualTip) {
-            
-            if (this.brush.dualTipInterval >= 0 || this.dotIndex % this.brush.dualTipInterval === 0) {
-                
-                if (this.buildDot(dot)) {
-                    
-                    this.sendDot(dot);
 
+        const tipRepeatCount = Math.max(1, this.brush.tipRepeatCount ?? 1);
+
+        if (this.brush.useDualTip) {
+
+            if (this.brush.dualTipInterval >= 0 || this.dotIndex % this.brush.dualTipInterval === 0) {
+
+                for (let r = 0; r < tipRepeatCount; r++) {
+                    const repeatDot = dot.copyForPrepare();
+                    if (this.buildDot(repeatDot)) {
+                        this.sendDot(repeatDot);
+                    }
                 }
 
             }
 
             if (this.brush.dualTipInterval <= 0 || this.dotIndex % this.brush.dualTipInterval === 0) {
-                
-                const secondDot: Dot = dot.copyForPrepare();
 
-                if (this.buildSecondDot(secondDot)) {
-
-                    this.sendDot(secondDot);
-
+                const dualRepeatCount = Math.max(1, this.brush.dualTipRepeatCount ?? 1);
+                for (let r = 0; r < dualRepeatCount; r++) {
+                    const secondDot = dot.copyForPrepare();
+                    if (this.buildSecondDot(secondDot)) {
+                        this.sendDot(secondDot);
+                    }
                 }
 
             }
 
         } else {
-            
-            if (this.buildDot(dot)) {
 
-                this.sendDot(dot);
-
+            for (let r = 0; r < tipRepeatCount; r++) {
+                const repeatDot = dot.copyForPrepare();
+                if (this.buildDot(repeatDot)) {
+                    this.sendDot(repeatDot);
+                }
             }
 
         }
@@ -263,12 +267,22 @@ export class DotBuilder {
 
         }
 
-        if (this.brush.offsetForAltitude > 0 && !isNaN(dot.prepareAzimuthAngle)) {
+        const scaleForAltitude = this.brush.scaleForAltitude ?? 0;
+        if ((scaleForAltitude > 0 || this.brush.offsetForAltitude > 0) && !isNaN(dot.prepareAzimuthAngle)) {
 
-            const distance: number = dot.prepareSize * dot.prepareAltitudeAngle * this.brush.offsetForAltitude;
-            const direction: number = isNaN(dot.prepareAzimuthAngle) ? 0 : Math.PI * 2 * dot.prepareAzimuthAngle;
-            offsetX += Math.cos(direction) * distance;
-            offsetY += Math.sin(direction) * distance;
+            const altitudeAngleHeavy = Math.max(0.0, dot.prepareAltitudeAngle - 0.7) / 0.3;
+            const tiltShift = altitudeAngleHeavy * scaleForAltitude + 1.0;
+
+            if (scaleForAltitude > 0) {
+                dot.width *= tiltShift;
+            }
+
+            if (this.brush.offsetForAltitude > 0) {
+                const distance = dot.prepareSize * dot.prepareAltitudeAngle * tiltShift * this.brush.offsetForAltitude;
+                const direction = Math.PI * 2 * dot.prepareAzimuthAngle;
+                offsetX += Math.cos(direction) * distance;
+                offsetY += Math.sin(direction) * distance;
+            }
 
         }
 
@@ -352,6 +366,15 @@ export class DotBuilder {
             dot.opacity *= (dot.height / this.brush.tipMinSize);
             dot.height = this.brush.tipMinSize;
 
+        }
+
+        const textureJitter = this.brush.textureJitter ?? 0;
+        if (textureJitter > 0) {
+            dot.textureJitterOffsetX = (Common.random() * 2 - 1) * textureJitter;
+            dot.textureJitterOffsetY = (Common.random() * 2 - 1) * textureJitter;
+        } else {
+            dot.textureJitterOffsetX = 0;
+            dot.textureJitterOffsetY = 0;
         }
 
         return true;
@@ -453,7 +476,13 @@ export class DotBuilder {
         const angleJitter: number = isDualTip ? this.brush.dualTipAngleJitter : this.brush.angleJitter;
         const rotationType = isDualTip ? this.brush.dualTipRotationType : this.brush.rotationType;
 
-        const angle: number = Math.PI * 2 * (initialAngle + Common.random() * angleJitter + deltaAngle * this.dotIndex);
+        const noExpression: IBrushExpression = { min: 0, max: 0, sources: [] };
+        const alphaAngleExpr = isDualTip
+            ? (this.brush.dualTipAlphaAngle ?? noExpression)
+            : (this.brush.alphaAngle ?? noExpression);
+        const alphaAngle = ExpressionHelper.calcExpression(alphaAngleExpr, dot.expresstionParam);
+
+        const angle: number = Math.PI * 2 * (initialAngle + Common.random() * angleJitter + deltaAngle * this.dotIndex + alphaAngle);
 
         if (rotationType === RotationType.FIXED || rotationType === RotationType.FIXED_OR_AZIMUTH) {
             

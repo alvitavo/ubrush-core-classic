@@ -54,17 +54,8 @@ export class BrushAttributeRenderer {
     ): void {
         container.innerHTML = '';
         for (const ui of group.value) {
-            if (!this._keyExists(ui.key, brush)) continue;
             container.appendChild(this._buildControl(ui, brush, onChange));
         }
-    }
-
-    private _keyExists(key: string, brush: Record<string, unknown>): boolean {
-        if (key in RANGE_KEY_MAP) {
-            const [minKey, maxKey] = RANGE_KEY_MAP[key];
-            return minKey in brush || maxKey in brush;
-        }
-        return key in brush;
     }
 
     private _buildControl(ui: UIInfo, brush: Record<string, unknown>, onChange: () => void): HTMLElement {
@@ -612,6 +603,21 @@ function wireDualSlider(
         }
         onChange(intMode ? Math.round(a) : a, intMode ? Math.round(b) : b);
     };
+
+    // Bring the thumb closer to the cursor to the front so both heads are reachable
+    const pickClosest = (e: PointerEvent) => {
+        if (e.buttons !== 0) return;
+        const rect = slA.getBoundingClientRect();
+        const ratio = (e.clientX - rect.left) / rect.width;
+        const hoverVal = min + Math.max(0, Math.min(1, ratio)) * span;
+        const distA = Math.abs(parseFloat(slA.value) - hoverVal);
+        const distB = Math.abs(parseFloat(slB.value) - hoverVal);
+        slA.style.zIndex = distA <= distB ? '2' : '1';
+        slB.style.zIndex = distA <= distB ? '1' : '2';
+    };
+    slA.addEventListener('pointermove', pickClosest);
+    slB.addEventListener('pointermove', pickClosest);
+
     slA.addEventListener('input', update);
     slB.addEventListener('input', update);
     update();
