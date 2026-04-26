@@ -15,6 +15,8 @@ import { Color } from "../common/Color";
 
 const maxSmudgingLength = 1000;
 
+export type DrawingTargetType = 'plain' | 'effect' | 'mask';
+
 export class DrawingEngine {
 
     protected context: UBrushContext;
@@ -56,9 +58,6 @@ export class DrawingEngine {
     private maskDrawingRenderTarget?: RenderTarget;
     private maskLiquidRenderTarget?: RenderTarget;
 
-    // Routes excuteDotProgram to the correct target in water mode
-    private currentRenderTarget: RenderTarget;
-
     // ---- layer effects ----
     public layerOpacity: number = 1;
     public useLayerTinting: boolean = false;
@@ -68,8 +67,6 @@ export class DrawingEngine {
     public brushColor: Color = new Color();
     public dotBlendmode: DotBlendmode | string = DotBlendmode.NORMAL;
     public maskDotBlendmode: DotBlendmode | string = DotBlendmode.NORMAL;
-
-    private _currentDotBlend: RenderObjectBlend = RenderObjectBlend.Normal;
 
     constructor(context: UBrushContext, size: Size) {
         this.context = context;
@@ -84,8 +81,6 @@ export class DrawingEngine {
         this.tipTexture = context.createTexture();
         this.patternTexture = context.createTexture();
         this.dualTipTexture = context.createTexture();
-
-        this.currentRenderTarget = this.drawingRenderTarget;
     }
 
     public destroy(): void {
@@ -95,14 +90,10 @@ export class DrawingEngine {
     // ---- alphaSmudgingMode / useSecondaryMask (Swift parity) ----
 
     public set alphaSmudgingMode(value: boolean) {
-        if (this._alphaSmudgingMode === value) {
-            this.currentRenderTarget = this.drawingRenderTarget;
-            return;
-        }
+        if (this._alphaSmudgingMode === value) return;
         this._alphaSmudgingMode = value;
         if (value) this._ensureSmudgingTargets();
         this._resyncDynamicBuffersForMode();
-        this.currentRenderTarget = this.drawingRenderTarget;
     }
 
     public get alphaSmudgingMode(): boolean {
@@ -656,190 +647,154 @@ export class DrawingEngine {
 
     protected renderMultiDots(dots: Dot[]): Rect | null {
         if (dots.length === 0) return null;
-
-        if (this._alphaSmudgingMode) return this._renderMultiDotsSmudging(dots);
-        if (this._useSecondaryMask) return this._renderMultiDotsWater(dots);
-        return this._renderMultiDotsBasic(dots);
-    }
-
-    private _renderMultiDotsBasic(dots: Dot[]): Rect | null {
         const drawingDots = dots.filter(d => !d.isMask);
         const maskDots = dots.filter(d => d.isMask);
+        return this._drawDotsCore(drawingDots, maskDots, dots);
+    }
 
-        const firstDot = dots[0];
-        const lastDot = dots[dots.length - 1];
-        this.layerOpacity = firstDot.layerOpacity;
-        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.dotBlendmode);
+    private _drawDotsCore(primaryDots: Dot[], secondaryDots: Dot[], allDots: Dot[]): Rect | null {
+        // Swift §1.2 표 (preview=false 행만)
+        const primaryType: DrawingTargetType = this._alphaSmudgingMode ? 'plain' : 'effect';
+        const secondaryType: DrawingTargetType = this._alphaSmudgingMode
+            ? 'plain'
+            : (this._useSecondaryMask ? 'mask' : 'effect');
+
+        // basic 모드만 layerOpacity 갱신 (기존 동작 보존)
+        if (!this._alphaSmudgingMode && !this._useSecondaryMask) {
+            this.layerOpacity = allDots[0].layerOpacity;
+        }
 
         let rect: Rect | null = null;
 
-        if (this._useSmudging) {
-            if (this.smudgingDot === undefined) {
-                this.smudging0Dot = firstDot;
-                this.smudgingDot = firstDot;
-            }
-            rect = this.renderDots(drawingDots, false);
-            this.smudging0Dot = this.smudgingDot;
-            this.smudgingDot = lastDot;
-        } else {
-            rect = this.renderDots(drawingDots, false);
+        if (primaryDots.length > 0) {
+            rect = this._renderPrimaryWithSmudging(primaryDots, allDots, primaryType);
         }
 
-        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.maskDotBlendmode);
-        const maskRect = this.renderDots(maskDots, true);
-        if (rect !== null && maskRect !== null) rect = Rect.union(rect, maskRect);
-        else if (maskRect !== null) rect = maskRect;
+        if (secondaryDots.length > 0) {
+            const secondaryRect = this.renderDots(secondaryDots, secondaryType, true);
+            if (secondaryRect !== null) {
+                rect = rect === null ? secondaryRect : Rect.union(rect, secondaryRect);
+            }
+        }
 
         if (rect === null) return null;
 
         if (this._useSmudging) {
-            ProgramManager.getInstance().fillRectProgram.fill(this.smudging0CopyRenderTarget, {
-                targetRect: rect, source: this.smudging1CopyRenderTarget.texture,
-                sourceRect: rect, canvasRect: Common.stageRect(), transform: new AffineTransform(), blend: RenderObjectBlend.None
-            });
-            ProgramManager.getInstance().highLowCutProgram.fill(this.smudging1CopyRenderTarget, {
-                targetRect: rect,
-                drySource: this.dryRenderTarget.texture,
-                liquidSource: this.drawingRenderTarget.texture,
-                sourceRect: rect,
-                transform: new AffineTransform(),
-                liquidSourceBlendmode: this.liquidLayerBlendmode,
-                canvasRect: Common.stageRect(),
-                opacity: this.layerOpacity,
-                lowCut: this.liquidCutMin,
-                highCut: this.liquidCutMax,
-                liquidColor: this.brushColor,
-                liquidTinting: this.useLayerTinting,
-                edgeStyle: this.edgeStyle
-            });
+            if (this._alphaSmudgingMode) this._rotateSmudgingBuffersAlphaSmudging(rect);
+            else if (this._useSecondaryMask) this._rotateSmudgingBuffersWater(rect);
+            else this._rotateSmudgingBuffersBasic(rect);
         }
 
         return rect;
     }
 
-    private _renderMultiDotsSmudging(dots: Dot[]): Rect | null {
-        const drawingDots = dots.filter(d => !d.isMask);
-        const maskDots = dots.filter(d => d.isMask);
+    private _renderPrimaryWithSmudging(primaryDots: Dot[], allDots: Dot[], type: DrawingTargetType): Rect | null {
+        if (!this._useSmudging) {
+            return this.renderDots(primaryDots, type, false);
+        }
 
-        const firstDot = dots[0];
-        const lastDot = dots[dots.length - 1];
-        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.dotBlendmode);
-
-        let rect: Rect | null = null;
-
-        if (this._useSmudging) {
-            if (this.smudgingDot === undefined) {
-                const tempDots = drawingDots.concat();
-                this.smudging0Dot = firstDot;
-                this.smudgingDot = firstDot;
+        // water: 첫 점 skip 부트스트랩 + smudging dots = primaryDots.last
+        if (this._useSecondaryMask) {
+            let rect: Rect | null;
+            if (!this.smudgingDot) {
+                const tempDots = primaryDots.concat();
+                this.smudging0Dot = primaryDots[0];
+                this.smudgingDot = primaryDots[0];
                 tempDots.splice(0, 1);
-                rect = this.renderDots(tempDots, false);
+                rect = this.renderDots(tempDots, type, false);
             } else {
-                rect = this.renderDots(drawingDots, false);
+                rect = this.renderDots(primaryDots, type, false);
+            }
+            const last = primaryDots[primaryDots.length - 1];
+            this.smudging0Dot = last;
+            this.smudgingDot = last;
+            return rect;
+        }
+
+        // alphaSmudging: 첫 점 skip 부트스트랩
+        if (this._alphaSmudgingMode) {
+            let rect: Rect | null;
+            if (this.smudgingDot === undefined) {
+                const tempDots = primaryDots.concat();
+                this.smudging0Dot = allDots[0];
+                this.smudgingDot = allDots[0];
+                tempDots.splice(0, 1);
+                rect = this.renderDots(tempDots, type, false);
+            } else {
+                rect = this.renderDots(primaryDots, type, false);
             }
             this.smudging0Dot = this.smudgingDot;
-            this.smudgingDot = lastDot;
-        } else {
-            rect = this.renderDots(drawingDots, false);
+            this.smudgingDot = allDots[allDots.length - 1];
+            return rect;
         }
 
-        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.maskDotBlendmode);
-        const maskRect = this.renderDots(maskDots, true);
-        if (rect !== null && maskRect !== null) rect = Rect.union(rect, maskRect);
-        else if (maskRect !== null) rect = maskRect;
-
-        if (rect === null) return null;
-
-        if (this._useSmudging) {
-            ProgramManager.getInstance().fillRectProgram.fill(this.smudging0CopyAlphaRenderTarget!, {
-                targetRect: rect, source: this.smudging1CopyAlphaRenderTarget!.texture,
-                sourceRect: rect, canvasRect: Common.stageRect(), transform: new AffineTransform(), blend: RenderObjectBlend.None
-            });
-            ProgramManager.getInstance().fillRectProgram.fill(this.smudging0CopyColorRenderTarget!, {
-                targetRect: rect, source: this.smudging1CopyColorRenderTarget!.texture,
-                sourceRect: rect, canvasRect: Common.stageRect(), transform: new AffineTransform(), blend: RenderObjectBlend.None
-            });
-            ProgramManager.getInstance().fillRectProgram.fill(this.smudging1CopyAlphaRenderTarget!, {
-                targetRect: rect, source: this.drawingAlphaRenderTarget!.texture,
-                sourceRect: rect, canvasRect: Common.stageRect(), transform: new AffineTransform(), blend: RenderObjectBlend.None
-            });
-            ProgramManager.getInstance().fillRectProgram.fill(this.smudging1CopyColorRenderTarget!, {
-                targetRect: rect, source: this.drawingRenderTarget.texture,
-                sourceRect: rect, canvasRect: Common.stageRect(), transform: new AffineTransform(), blend: RenderObjectBlend.None
-            });
+        // basic: 첫 점 그대로 그림
+        if (this.smudgingDot === undefined) {
+            this.smudging0Dot = allDots[0];
+            this.smudgingDot = allDots[0];
         }
-
+        const rect = this.renderDots(primaryDots, type, false);
+        this.smudging0Dot = this.smudgingDot;
+        this.smudgingDot = allDots[allDots.length - 1];
         return rect;
     }
 
-    private _renderMultiDotsWater(dots: Dot[]): Rect | null {
-        const maskDots: Dot[] = [];
-        const drawingDots: Dot[] = [];
+    private _rotateSmudgingBuffersBasic(rect: Rect): void {
+        ProgramManager.getInstance().fillRectProgram.fill(this.smudging0CopyRenderTarget, {
+            targetRect: rect, source: this.smudging1CopyRenderTarget.texture,
+            sourceRect: rect, canvasRect: Common.stageRect(), transform: new AffineTransform(), blend: RenderObjectBlend.None
+        });
+        ProgramManager.getInstance().highLowCutProgram.fill(this.smudging1CopyRenderTarget, {
+            targetRect: rect,
+            drySource: this.dryRenderTarget.texture,
+            liquidSource: this.drawingRenderTarget.texture,
+            sourceRect: rect,
+            transform: new AffineTransform(),
+            liquidSourceBlendmode: this.liquidLayerBlendmode,
+            canvasRect: Common.stageRect(),
+            opacity: this.layerOpacity,
+            lowCut: this.liquidCutMin,
+            highCut: this.liquidCutMax,
+            liquidColor: this.brushColor,
+            liquidTinting: this.useLayerTinting,
+            edgeStyle: this.edgeStyle
+        });
+    }
 
-        for (const dot of dots) {
-            if (dot.isMask) maskDots.push(dot);
-            else drawingDots.push(dot);
-        }
-
-        let rect: Rect | null = null;
-
-        this.currentRenderTarget = this.drawingRenderTarget;
-        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.dotBlendmode);
-
-        if (this._useSmudging) {
-            if (!this.smudgingDot && drawingDots.length > 0) {
-                const tempDots = drawingDots.concat();
-                this.smudging0Dot = drawingDots[0];
-                this.smudgingDot = drawingDots[0];
-                tempDots.splice(0, 1);
-                rect = this.renderDots(tempDots, false);
-            } else {
-                rect = this.renderDots(drawingDots, false);
-            }
-            if (drawingDots.length > 0) {
-                this.smudging0Dot = drawingDots[drawingDots.length - 1];
-                this.smudgingDot = drawingDots[drawingDots.length - 1];
-            }
-        } else {
-            rect = this.renderDots(drawingDots, false);
-        }
-
-        this.currentRenderTarget = this.maskDrawingRenderTarget!;
-        this._currentDotBlend = this._dotBlendToRenderObjectBlend(this.maskDotBlendmode);
-        const maskRect = this.renderDots(maskDots, true);
-
-        if (rect !== null && maskRect !== null) {
-            rect = Rect.union(rect, maskRect);
-        } else if (maskRect !== null) {
-            rect = maskRect;
-        }
-
-        if (rect === null) return null;
-
-        if (this._useSmudging) {
-            ProgramManager.getInstance().maskAndCutProgram.fill(this.smudging1CopyRenderTarget, {
-                targetRect: rect,
-                drySource: this.dryRenderTarget.texture,
-                liquidSource: this.drawingRenderTarget.texture,
-                maskSource: this.maskDrawingRenderTarget!.texture,
-                sourceRect: rect,
-                transform: new AffineTransform(),
-                liquidSourceBlendmode: this.liquidLayerBlendmode,
-                canvasRect: Common.stageRect(),
-                opacity: this.layerOpacity,
-                lowCut: this.liquidCutMin,
-                highCut: this.liquidCutMax,
-                edgeStyle: this.edgeStyle,
-                maskEdgeStyle: this.dualTipEdgeStyle
+    private _rotateSmudgingBuffersAlphaSmudging(rect: Rect): void {
+        const fill = (dst: RenderTarget, src: Texture): void => {
+            ProgramManager.getInstance().fillRectProgram.fill(dst, {
+                targetRect: rect, source: src,
+                sourceRect: rect, canvasRect: Common.stageRect(), transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
-        }
+        };
+        fill(this.smudging0CopyAlphaRenderTarget!, this.smudging1CopyAlphaRenderTarget!.texture);
+        fill(this.smudging0CopyColorRenderTarget!, this.smudging1CopyColorRenderTarget!.texture);
+        fill(this.smudging1CopyAlphaRenderTarget!, this.drawingAlphaRenderTarget!.texture);
+        fill(this.smudging1CopyColorRenderTarget!, this.drawingRenderTarget.texture);
+    }
 
-        return rect;
+    private _rotateSmudgingBuffersWater(rect: Rect): void {
+        ProgramManager.getInstance().maskAndCutProgram.fill(this.smudging1CopyRenderTarget, {
+            targetRect: rect,
+            drySource: this.dryRenderTarget.texture,
+            liquidSource: this.drawingRenderTarget.texture,
+            maskSource: this.maskDrawingRenderTarget!.texture,
+            sourceRect: rect,
+            transform: new AffineTransform(),
+            liquidSourceBlendmode: this.liquidLayerBlendmode,
+            canvasRect: Common.stageRect(),
+            opacity: this.layerOpacity,
+            lowCut: this.liquidCutMin,
+            highCut: this.liquidCutMax,
+            edgeStyle: this.edgeStyle,
+            maskEdgeStyle: this.dualTipEdgeStyle
+        });
     }
 
     // ---- renderDots (geometry + texture coord building) ----
 
-    protected renderDots(dots: Dot[], useDualTip: boolean): Rect | null {
+    protected renderDots(dots: Dot[], type: DrawingTargetType, useDualTip: boolean): Rect | null {
         const numberOfDots: number = dots.length;
         if (numberOfDots === 0) return null;
 
@@ -992,7 +947,7 @@ export class DrawingEngine {
             points, indexData, tipTextureCoordinates, patternTextureCoordinates,
             smudging0TexturePositions, smudgingTexturePositions, colors, opacities, corrosions,
             numberOfPoints: 6 * numberOfDots, useDualTip
-        });
+        }, type);
 
         return new Rect(rectX1, rectY1, rectX2 - rectX1, rectY2 - rectY1);
     }
@@ -1011,8 +966,9 @@ export class DrawingEngine {
         corrosions: number[],
         numberOfPoints: number,
         useDualTip: boolean
-    }): void {
-        if (this._alphaSmudgingMode) {
+    }, type: DrawingTargetType): void {
+        if (type === 'plain') {
+            // alphaSmudging 경로: alpha + color 두 RT 동시 그리기
             ProgramManager.getInstance().smudgingDotProgram.drawRects(
                 this.drawingAlphaRenderTarget!,
                 this.drawingRenderTarget,
@@ -1037,33 +993,40 @@ export class DrawingEngine {
                     useDualTip: param.useDualTip
                 }
             );
-        } else {
-            // basic: use smudging0/1 copy pair
-            // water (useSecondaryMask, non-alphaSmudging): use smudging1Copy for both (same texture for 0 and 1)
-            const smudging0Texture = this._useSecondaryMask
-                ? this.smudging1CopyRenderTarget.texture
-                : this.smudging0CopyRenderTarget.texture;
-
-            ProgramManager.getInstance().drawDotProgram.drawRects(this.currentRenderTarget, {
-                tipTexture: this.tipTexture,
-                patternTexture: this.patternTexture,
-                smudging0Texture,
-                smudgingTexture: this.smudging1CopyRenderTarget.texture,
-                dualTipTexture: this.dualTipTexture,
-                points: param.points,
-                indexData: param.indexData,
-                tipTextureCoordinates: param.tipTextureCoordinates,
-                patternTextureCoordinates: param.patternTextureCoordinates,
-                smudging0TexturePositions: param.smudging0TexturePositions,
-                smudgingTexturePositions: param.smudgingTexturePositions,
-                colors: param.colors,
-                opacities: param.opacities,
-                corrosions: param.corrosions,
-                numberOfPoints: param.numberOfPoints,
-                useDualTip: param.useDualTip,
-                blend: this._currentDotBlend
-            });
+            return;
         }
+
+        // type === 'effect' | 'mask'
+        const renderTarget = type === 'mask'
+            ? this.maskDrawingRenderTarget!
+            : this.drawingRenderTarget;
+        const blend = this._dotBlendToRenderObjectBlend(
+            type === 'mask' ? this.maskDotBlendmode : this.dotBlendmode
+        );
+        // water 경로(useSecondaryMask=true)에서는 smudging1Copy 를 0/1 양쪽에 재사용
+        const smudging0Texture = this._useSecondaryMask
+            ? this.smudging1CopyRenderTarget.texture
+            : this.smudging0CopyRenderTarget.texture;
+
+        ProgramManager.getInstance().drawDotProgram.drawRects(renderTarget, {
+            tipTexture: this.tipTexture,
+            patternTexture: this.patternTexture,
+            smudging0Texture,
+            smudgingTexture: this.smudging1CopyRenderTarget.texture,
+            dualTipTexture: this.dualTipTexture,
+            points: param.points,
+            indexData: param.indexData,
+            tipTextureCoordinates: param.tipTextureCoordinates,
+            patternTextureCoordinates: param.patternTextureCoordinates,
+            smudging0TexturePositions: param.smudging0TexturePositions,
+            smudgingTexturePositions: param.smudgingTexturePositions,
+            colors: param.colors,
+            opacities: param.opacities,
+            corrosions: param.corrosions,
+            numberOfPoints: param.numberOfPoints,
+            useDualTip: param.useDualTip,
+            blend
+        });
     }
 
     // ---- private helpers ----
