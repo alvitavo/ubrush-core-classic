@@ -592,7 +592,8 @@ function wireDualSlider(
     const fill = el.querySelector<HTMLElement>('.be-ds-fill')!;
     const span = max - min;
 
-    const update = () => {
+    // 시각만 동기화 (fill 위치/clamp). 초기 attach 시 호출되며 onChange 를 부르지 않는다.
+    const syncVisual = (): [number, number] => {
         let a = parseFloat(slA.value);
         let b = parseFloat(slB.value);
         if (a > b) { slA.value = String(b); a = b; }
@@ -601,6 +602,11 @@ function wireDualSlider(
             fill.style.left  = ((a - min) / span * 100).toFixed(1) + '%';
             fill.style.width = ((b - a)   / span * 100).toFixed(1) + '%';
         }
+        return [a, b];
+    };
+
+    const update = () => {
+        const [a, b] = syncVisual();
         onChange(intMode ? Math.round(a) : a, intMode ? Math.round(b) : b);
     };
 
@@ -620,5 +626,5 @@ function wireDualSlider(
 
     slA.addEventListener('input', update);
     slB.addEventListener('input', update);
-    update();
+    syncVisual();
 }
