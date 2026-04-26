@@ -290,7 +290,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Pen 002",
@@ -590,7 +604,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Pen 003",
@@ -841,7 +869,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Pen 004",
@@ -1085,7 +1127,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Pen 101",
@@ -1378,7 +1434,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Pen 102",
@@ -1678,7 +1748,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Pen 103",
@@ -1953,7 +2037,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Pen 201",
@@ -2214,7 +2312,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Pen 202",
@@ -2482,7 +2594,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Pen 203",
@@ -2719,7 +2845,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Pen 204",
@@ -2994,6 +3134,20 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   }
 ]

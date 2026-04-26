@@ -234,7 +234,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 002",
@@ -486,7 +500,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 011",
@@ -722,7 +750,21 @@
       ]
     },
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false
+    "useSecondaryMask": false,
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 012",
@@ -995,7 +1037,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 101",
@@ -1167,7 +1223,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 102",
@@ -1369,7 +1439,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 201",
@@ -1541,7 +1625,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 202",
@@ -1722,7 +1820,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 203",
@@ -1910,7 +2022,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 201 Mix",
@@ -2112,7 +2238,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 301 Mix",
@@ -2314,7 +2454,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 311 Mix",
@@ -2494,7 +2648,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Airbrush 312 Mix",
@@ -2674,6 +2842,20 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   }
 ]

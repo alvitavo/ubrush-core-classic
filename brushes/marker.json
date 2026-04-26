@@ -270,7 +270,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Felt marker 002",
@@ -449,7 +463,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Felt marker 003",
@@ -636,7 +664,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Felt marker 004",
@@ -815,7 +857,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Wide lettering 001",
@@ -1059,7 +1115,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Wide lettering 002",
@@ -1303,7 +1373,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Wide lettering 003",
@@ -1504,7 +1588,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Wide lettering 004",
@@ -1683,6 +1781,20 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   }
 ]

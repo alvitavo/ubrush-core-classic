@@ -200,7 +200,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Seurat",
@@ -413,7 +427,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 1,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 3,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Monet 1",
@@ -608,7 +636,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Monet 2",
@@ -835,7 +877,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Cezanne 1",
@@ -1040,7 +1096,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 1,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 2,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Cezanne 2",
@@ -1229,6 +1299,20 @@
       ]
     },
     "alphaSmudgingMode": false,
-    "useSecondaryMask": false
+    "useSecondaryMask": false,
+    "scaleForAltitude": 0,
+    "textureJitter": 1,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 2,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   }
 ]

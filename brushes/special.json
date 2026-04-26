@@ -171,7 +171,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Spray 002",
@@ -328,7 +342,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Spray 003",
@@ -499,7 +527,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Dot ink",
@@ -791,7 +833,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Ink roller",
@@ -1045,7 +1101,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Stars",
@@ -1210,7 +1280,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Fur",
@@ -1397,7 +1481,21 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Neon",
@@ -1547,7 +1645,21 @@
       "min": 0,
       "max": 1,
       "sources": []
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   },
   {
     "name": "Rust",
@@ -1815,6 +1927,20 @@
           "exclusiveStylusSource": "DEFAULT"
         }
       ]
-    }
+    },
+    "scaleForAltitude": 0,
+    "textureJitter": 0,
+    "alphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "tipRepeatCount": 1,
+    "dualTipAlphaAngle": {
+      "min": 0,
+      "max": 0,
+      "sources": []
+    },
+    "dualTipRepeatCount": 1
   }
 ]
