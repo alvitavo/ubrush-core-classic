@@ -313,7 +313,8 @@ export class DrawingEngine {
                 lowCut: this.liquidCutMin,
                 highCut: this.liquidCutMax,
                 edgeStyle: this.edgeStyle,
-                maskEdgeStyle: this.dualTipEdgeStyle
+                maskEdgeStyle: this.dualTipEdgeStyle,
+                maskBlendmode: this.maskDotBlendmode
             });
         } else {
             ProgramManager.getInstance().highLowCutProgram.fill(renderTarget, {
@@ -410,7 +411,8 @@ export class DrawingEngine {
                 lowCut: this.liquidCutMin,
                 highCut: this.liquidCutMax,
                 edgeStyle: this.edgeStyle,
-                maskEdgeStyle: this.dualTipEdgeStyle
+                maskEdgeStyle: this.dualTipEdgeStyle,
+                maskBlendmode: this.maskDotBlendmode
             });
         } else {
             ProgramManager.getInstance().highLowCutProgram.fill(tempRenderTarget, {
@@ -528,7 +530,8 @@ export class DrawingEngine {
                 lowCut: this.liquidCutMin,
                 highCut: this.liquidCutMax,
                 edgeStyle: this.edgeStyle,
-                maskEdgeStyle: this.dualTipEdgeStyle
+                maskEdgeStyle: this.dualTipEdgeStyle,
+                maskBlendmode: this.maskDotBlendmode
             });
         } else {
             ProgramManager.getInstance().highLowCutProgram.fill(tempRenderTarget, {
@@ -788,7 +791,8 @@ export class DrawingEngine {
             lowCut: this.liquidCutMin,
             highCut: this.liquidCutMax,
             edgeStyle: this.edgeStyle,
-            maskEdgeStyle: this.dualTipEdgeStyle
+            maskEdgeStyle: this.dualTipEdgeStyle,
+            maskBlendmode: this.maskDotBlendmode
         });
     }
 
