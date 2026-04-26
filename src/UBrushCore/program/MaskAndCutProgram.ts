@@ -7,7 +7,7 @@ import { Program } from "../gpu/Program";
 import { RenderObject, RenderObjectBlend, RenderObjectDrawModes } from "../gpu/RenderObject";
 import { AffineTransform } from "../common/AffineTransform";
 import { Common } from "../common/Common";
-import { LayerBlendmode, DotBlendmode, EdgeStyle } from "../common/IBrush";
+import { LayerBlendmode, EdgeStyle } from "../common/IBrush";
 
 export class MaskAndCutProgram {
 
@@ -40,7 +40,6 @@ export class MaskAndCutProgram {
     uniform int u_hasEdge;
     uniform int u_hasMaskEdge;
     uniform int u_blendmode;
-    uniform int u_maskBlendmode;
 
     highp float blendLum(highp vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
     highp float blendSat(highp vec3 c) { return max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b); }
@@ -71,10 +70,7 @@ export class MaskAndCutProgram {
             rawMask = texture2D(u_maskEdgeTexture, vec2(((rawMask * 255.0) + 0.5) / 256.0, 0.5)).r;
         }
 
-        // Swift parity: maskBlendmode=Normal 이면 mask 를 무시 (liquidAlpha 그대로).
-        // 그 외(Add/Screen/Max)에서만 mask 곱셈 적용.
-        // Swift MaskAndCutProgram.metal: blending1(dualTipBlendmode, mask, liquid)에서 Normal일 때 dest(=liquid) 반환.
-        highp float maskAlpha = (u_maskBlendmode == 0) ? liquidColor.a : rawMask * liquidColor.a;
+        highp float maskAlpha = rawMask * liquidColor.a;
         highp float newAlpha;
 
         if (u_lowCut == 0.0 && u_highCut == 1.0 && u_hasEdge == 0)
@@ -222,8 +218,7 @@ export class MaskAndCutProgram {
             lowCut: number,
             highCut: number,
             edgeStyle: EdgeStyle | string,
-            maskEdgeStyle: EdgeStyle | string,
-            maskBlendmode?: DotBlendmode | string
+            maskEdgeStyle: EdgeStyle | string
         }): void {
         
         const imageVertices = new Array<number>(8);
@@ -357,10 +352,6 @@ export class MaskAndCutProgram {
         };
         const blendModeCode: number = blendModeMap[bm as string] ?? 0;
         this.renderObject.uniforms.push({name: "u_blendmode", value: blendModeCode});
-
-        // 0 = Normal (mask 무시), 그 외는 mask 곱셈 (기존 동작)
-        const maskBlendCode: number = (param.maskBlendmode === undefined || param.maskBlendmode === DotBlendmode.NORMAL) ? 0 : 1;
-        this.renderObject.uniforms.push({name: "u_maskBlendmode", value: maskBlendCode});
 
         this.renderObject.blend = RenderObjectBlend.None;
         this.renderObject.drawMode = RenderObjectDrawModes.TriangleStrip;
