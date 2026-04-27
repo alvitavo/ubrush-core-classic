@@ -8,7 +8,10 @@ const BRUSHES_ORIGINAL_DIR = path.resolve(__dirname, 'brushes_original');
 const FAVORITES_FILE = path.resolve(__dirname, 'favorites.json');
 
 module.exports = {
-  entry: './src/UBrushCore/main.ts',
+  entry: {
+    main: './src/UBrushCore/main.ts',
+    benchmark: './src/UBrushCore/benchmark/main.ts',
+  },
   module: {
     rules: [
       {
@@ -28,14 +31,20 @@ module.exports = {
     extensions: ['.tsx', '.ts', '.js']
   },
   output: {
-    filename: 'bundle.js',
+    filename: '[name].bundle.js',
     path: path.resolve(__dirname, 'dist'),
     clean: true
   },
   plugins: [
     new HtmlWebpackPlugin({
       template: './src/UBrushCore/index.html',
-      filename: 'index.html'
+      filename: 'index.html',
+      chunks: ['main']
+    }),
+    new HtmlWebpackPlugin({
+      template: './src/UBrushCore/benchmark/index.html',
+      filename: 'benchmark.html',
+      chunks: ['benchmark']
     }),
     new CopyWebpackPlugin({
       patterns: [

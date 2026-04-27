@@ -1,0 +1,153 @@
+import { Canvas } from '../canvas/Canvas';
+import { UBrushContext } from '../gpu/UBrushContext';
+import { Point } from '../common/Point';
+import { Stylus } from '../common/Stylus';
+import { ProgramManager } from '../program/ProgramManager';
+import { Common } from '../common/Common';
+import { AffineTransform } from '../common/AffineTransform';
+import { RenderObjectBlend } from '../gpu/RenderObject';
+import { Color } from '../common/Color';
+
+export type Mode = 'throughput' | 'frame';
+
+export interface RunResult {
+    mode: Mode;
+    n: number;                  // number of input points
+    cpuMs: number;              // wall-clock around moveTo..endLine (no GPU flush)
+    flushMs: number;            // wall-clock including gl.finish() at end
+    pointsPerSec: number;       // n / (flushMs / 1000)
+    frameMs?: { p50: number; p95: number; p99: number; max: number; count: number };
+    heapDeltaMb?: number;
+}
+
+const POINTS_PER_FRAME = 4; // realistic batch size for frame mode
+
+function compositeToScreen(canvas: Canvas, ctx: UBrushContext): void {
+    ctx.clearRenderTarget(null, Color.white());
+    ProgramManager.getInstance().fillRectProgram.fill(null, {
+        targetRect: Common.stageRect(),
+        source: canvas.outputRenderTarget.texture,
+        sourceRect: Common.stageRect(),
+        canvasRect: Common.stageRect(),
+        transform: new AffineTransform(),
+        blend: RenderObjectBlend.Normal,
+    });
+}
+
+function readHeapMb(): number | undefined {
+    const mem = (performance as any).memory;
+    if (!mem || typeof mem.usedJSHeapSize !== 'number') return undefined;
+    return mem.usedJSHeapSize / (1024 * 1024);
+}
+
+function quantile(sorted: number[], q: number): number {
+    if (sorted.length === 0) return 0;
+    const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length));
+    return sorted[idx];
+}
+
+export async function runThroughput(
+    canvas: Canvas,
+    ctx: UBrushContext,
+    gl: WebGLRenderingContext,
+    points: Point[],
+): Promise<RunResult> {
+    const heapBefore = readHeapMb();
+    const stylus = new Stylus();
+
+    // Warm up: composite once so any first-time GL state is settled.
+    compositeToScreen(canvas, ctx);
+    gl.finish();
+
+    const t0 = performance.now();
+    canvas.moveTo(points[0], stylus);
+    for (let i = 1; i < points.length - 1; i++) {
+        canvas.lineTo(points[i], stylus);
+    }
+    canvas.endLine(points[points.length - 1], stylus);
+    const t1 = performance.now();
+
+    gl.finish();
+    const t2 = performance.now();
+
+    compositeToScreen(canvas, ctx);
+    gl.finish();
+
+    const heapAfter = readHeapMb();
+    const heapDelta = heapBefore !== undefined && heapAfter !== undefined
+        ? heapAfter - heapBefore : undefined;
+
+    const flushMs = t2 - t0;
+    return {
+        mode: 'throughput',
+        n: points.length,
+        cpuMs: t1 - t0,
+        flushMs,
+        pointsPerSec: points.length / (flushMs / 1000),
+        heapDeltaMb: heapDelta,
+    };
+}
+
+export function runFrame(
+    canvas: Canvas,
+    ctx: UBrushContext,
+    gl: WebGLRenderingContext,
+    points: Point[],
+): Promise<RunResult> {
+    return new Promise((resolve) => {
+        const heapBefore = readHeapMb();
+        const stylus = new Stylus();
+        const frameDurations: number[] = [];
+
+        compositeToScreen(canvas, ctx);
+        gl.finish();
+
+        canvas.moveTo(points[0], stylus);
+        let i = 1;
+        const t0 = performance.now();
+
+        const step = () => {
+            const frameStart = performance.now();
+            const end = Math.min(points.length - 1, i + POINTS_PER_FRAME);
+            for (; i < end; i++) {
+                canvas.lineTo(points[i], stylus);
+            }
+            const isLast = i >= points.length - 1;
+            if (isLast) {
+                canvas.endLine(points[points.length - 1], stylus);
+            }
+            compositeToScreen(canvas, ctx);
+            const frameEnd = performance.now();
+            frameDurations.push(frameEnd - frameStart);
+
+            if (isLast) {
+                gl.finish();
+                const t1 = performance.now();
+                const heapAfter = readHeapMb();
+                const heapDelta = heapBefore !== undefined && heapAfter !== undefined
+                    ? heapAfter - heapBefore : undefined;
+
+                const sorted = [...frameDurations].sort((a, b) => a - b);
+                resolve({
+                    mode: 'frame',
+                    n: points.length,
+                    cpuMs: t1 - t0,
+                    flushMs: t1 - t0,
+                    pointsPerSec: points.length / ((t1 - t0) / 1000),
+                    frameMs: {
+                        p50: quantile(sorted, 0.5),
+                        p95: quantile(sorted, 0.95),
+                        p99: quantile(sorted, 0.99),
+                        max: sorted[sorted.length - 1] ?? 0,
+                        count: sorted.length,
+                    },
+                    heapDeltaMb: heapDelta,
+                });
+            } else {
+                requestAnimationFrame(step);
+            }
+        };
+
+        requestAnimationFrame(step);
+    });
+}
