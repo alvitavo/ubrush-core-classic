@@ -55,6 +55,11 @@
     "file": "brushes/halftone.json"
   },
   {
+    "key": "spread",
+    "displayName": "Spread",
+    "file": "brushes/spread.json"
+  },
+  {
     "key": "special",
     "displayName": "Special",
     "file": "brushes/special.json"
