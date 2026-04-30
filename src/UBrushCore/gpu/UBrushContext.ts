@@ -102,8 +102,10 @@ export class UBrushContext {
             gl.bindBuffer(gl.ARRAY_BUFFER, buffers[attribute.name]);
             gl.bufferData(gl.ARRAY_BUFFER, attribute.data, gl.DYNAMIC_DRAW);
 
-            gl.enableVertexAttribArray(program.attributes[attribute.name]);
-            gl.vertexAttribPointer(program.attributes[attribute.name], attribute.size, gl.FLOAT, false, 0, 0);
+            const loc = program.attributes[attribute.name];
+            gl.enableVertexAttribArray(loc);
+            gl.vertexAttribPointer(loc, attribute.size, gl.FLOAT, false, 0, 0);
+            gl.vertexAttribDivisor(loc, attribute.divisor ?? 0);
 
         }
 
@@ -157,11 +159,20 @@ export class UBrushContext {
 
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers["index"]);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, renderObject.indexData, gl.STATIC_DRAW);
-            gl.drawElements(gl.TRIANGLES, renderObject.numberOfPoints, gl.UNSIGNED_SHORT, 0);
-            
+
+            if (renderObject.instanceCount != null) {
+                gl.drawElementsInstanced(gl.TRIANGLES, renderObject.numberOfPoints, gl.UNSIGNED_SHORT, 0, renderObject.instanceCount);
+            } else {
+                gl.drawElements(gl.TRIANGLES, renderObject.numberOfPoints, gl.UNSIGNED_SHORT, 0);
+            }
+
         } else {
 
-            gl.drawArrays(mode, 0, renderObject.numberOfPoints);
+            if (renderObject.instanceCount != null) {
+                gl.drawArraysInstanced(mode, 0, renderObject.numberOfPoints, renderObject.instanceCount);
+            } else {
+                gl.drawArrays(mode, 0, renderObject.numberOfPoints);
+            }
 
         }
 
@@ -175,7 +186,9 @@ export class UBrushContext {
         for (let i = 0; i < renderObject.attributes.length; i++) {
 
             const attribute: Attribute = renderObject.attributes[i];
-            this.gl.disableVertexAttribArray(program.attributes[attribute.name]);
+            const loc = program.attributes[attribute.name];
+            if ((attribute.divisor ?? 0) !== 0) gl.vertexAttribDivisor(loc, 0);
+            this.gl.disableVertexAttribArray(loc);
 
         }
 

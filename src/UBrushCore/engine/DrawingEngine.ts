@@ -798,18 +798,28 @@ export class DrawingEngine {
         const numberOfDots: number = dots.length;
         if (numberOfDots === 0) return null;
 
-        const indexData: number[] = [];
-        const points: number[] = [];
-        const colors: number[] = [];
-        const tipTextureCoordinates: number[] = [];
-        const patternTextureCoordinates: number[] = [];
-        const smudging0TexturePositions: number[] = [];
-        const smudgingTexturePositions: number[] = [];
-        const opacities: number[] = [];
-        const corrosions: number[] = [];
+        const posCenterAxisU = new Float32Array(numberOfDots * 4);
+        const posAxisV       = new Float32Array(numberOfDots * 2);
+        const tipUV          = new Float32Array(numberOfDots * 4);
+        const patternUVa     = new Float32Array(numberOfDots * 4);
+        const patternUVb     = new Float32Array(numberOfDots * 2);
+        const smudging0UVa   = new Float32Array(numberOfDots * 4);
+        const smudging0UVb   = new Float32Array(numberOfDots * 2);
+        const smudgingUVa    = new Float32Array(numberOfDots * 4);
+        const smudgingUVb    = new Float32Array(numberOfDots * 2);
+        const tintColor      = new Float32Array(numberOfDots * 4);
+        const opacity        = new Float32Array(numberOfDots * 4);
+        const corrosion      = new Float32Array(numberOfDots * 4);
+
+        const halfW = this.size.width * 0.5;
+        const halfH = this.size.height * 0.5;
+        const invHalfW = 1.0 / halfW;
+        const invHalfH = 1.0 / halfH;
 
         let rectX1 = Infinity, rectX2 = -Infinity;
         let rectY1 = Infinity, rectY2 = -Infinity;
+
+        const useSmudging = this._useSmudging && this.smudgingDot && this.smudging0Dot;
 
         for (let i = 0; i < numberOfDots; i++) {
             const dot: Dot = dots[i];
@@ -817,136 +827,122 @@ export class DrawingEngine {
             const dhw = dot.width * 0.5;
             const dhh = dot.height * 0.5;
             const sinR = Math.sin(dot.rotation);
-            const conR = Math.cos(dot.rotation);
-            const xsinR = dhw * sinR, ysinR = dhh * sinR;
-            const xcosR = dhw * conR, ycosR = dhh * conR;
+            const cosR = Math.cos(dot.rotation);
 
-            let rp1 = new Point(dot.centerX - xcosR + ysinR, dot.centerY - xsinR - ycosR);
-            let rp2 = new Point(dot.centerX + xcosR + ysinR, dot.centerY + xsinR - ycosR);
-            let rp3 = new Point(dot.centerX - xcosR - ysinR, dot.centerY - xsinR + ycosR);
-            let rp4 = new Point(dot.centerX + xcosR - ysinR, dot.centerY + xsinR + ycosR);
+            // pixel-space U/V axis (∂rp / ∂corner.x, ∂rp / ∂corner.y)
+            const axUx = cosR * dhw,  axUy = sinR * dhw;
+            const axVx = -sinR * dhh, axVy = cosR * dhh;
 
-            let p1 = Common.pointInStage(rp1, this.size);
-            let p2 = Common.pointInStage(rp2, this.size);
-            let p3 = Common.pointInStage(rp3, this.size);
-            let p4 = Common.pointInStage(rp4, this.size);
+            // clip-space center + axes
+            const ccx = dot.centerX * invHalfW - 1.0;
+            const ccy = dot.centerY * invHalfH - 1.0;
+            const aUx = axUx * invHalfW, aUy = axUy * invHalfH;
+            const aVx = axVx * invHalfW, aVy = axVy * invHalfH;
 
-            points[i * 8 + 0] = p1.x; points[i * 8 + 1] = p1.y;
-            points[i * 8 + 2] = p2.x; points[i * 8 + 3] = p2.y;
-            points[i * 8 + 4] = p3.x; points[i * 8 + 5] = p3.y;
-            points[i * 8 + 6] = p4.x; points[i * 8 + 7] = p4.y;
+            const o = i * 4, o2 = i * 2;
+            posCenterAxisU[o + 0] = ccx;
+            posCenterAxisU[o + 1] = ccy;
+            posCenterAxisU[o + 2] = aUx;
+            posCenterAxisU[o + 3] = aUy;
+            posAxisV[o2 + 0] = aVx;
+            posAxisV[o2 + 1] = aVy;
 
-            rectX1 = Math.min(rectX1, Math.min(p1.x, Math.min(p2.x, Math.min(p3.x, p4.x))));
-            rectX2 = Math.max(rectX2, Math.max(p1.x, Math.max(p2.x, Math.max(p3.x, p4.x))));
-            rectY1 = Math.min(rectY1, Math.min(p1.y, Math.min(p2.y, Math.min(p3.y, p4.y))));
-            rectY2 = Math.max(rectY2, Math.max(p1.y, Math.max(p2.y, Math.max(p3.y, p4.y))));
+            // bbox in clip-space (rotated rect AABB)
+            const halfBx = Math.abs(aUx) + Math.abs(aVx);
+            const halfBy = Math.abs(aUy) + Math.abs(aVy);
+            if (ccx - halfBx < rectX1) rectX1 = ccx - halfBx;
+            if (ccx + halfBx > rectX2) rectX2 = ccx + halfBx;
+            if (ccy - halfBy < rectY1) rectY1 = ccy - halfBy;
+            if (ccy + halfBy > rectY2) rectY2 = ccy + halfBy;
 
-            tipTextureCoordinates[i * 8 + 0] = dot.textureL;
-            tipTextureCoordinates[i * 8 + 1] = dot.textureT;
-            tipTextureCoordinates[i * 8 + 2] = dot.textureR;
-            tipTextureCoordinates[i * 8 + 3] = dot.textureT;
-            tipTextureCoordinates[i * 8 + 4] = dot.textureL;
-            tipTextureCoordinates[i * 8 + 5] = dot.textureB;
-            tipTextureCoordinates[i * 8 + 6] = dot.textureR;
-            tipTextureCoordinates[i * 8 + 7] = dot.textureB;
+            // tip UV: bary = corner*0.5+0.5 → tipUV = (L,T) + bary * (Δu, Δv)
+            const tipL = dot.textureL, tipT = dot.textureT;
+            const tipDU = dot.textureR - dot.textureL;
+            const tipDV = dot.textureB - dot.textureT;
+            tipUV[o + 0] = tipL;
+            tipUV[o + 1] = tipT;
+            tipUV[o + 2] = tipDU;
+            tipUV[o + 3] = tipDV;
 
-            const patternSize = new Size(
-                (dot.patternWidth > 0) ? dot.patternWidth : this.size.width,
-                (dot.patternHeight > 0) ? dot.patternHeight : this.size.height
-            );
-            p1 = Common.pointInTexture(rp1, patternSize);
-            p2 = Common.pointInTexture(rp2, patternSize);
-            p3 = Common.pointInTexture(rp3, patternSize);
-            p4 = Common.pointInTexture(rp4, patternSize);
-
+            // pattern UV affine in corner
+            const pw = (dot.patternWidth > 0)  ? dot.patternWidth  : this.size.width;
+            const ph = (dot.patternHeight > 0) ? dot.patternHeight : this.size.height;
             const pox = dot.patternOffsetX, poxc = 1.0 - pox;
             const poy = dot.patternOffsetY, poyc = 1.0 - poy;
-
-            patternTextureCoordinates[i * 8 + 0] = p1.x * pox + tipTextureCoordinates[i * 8 + 0] * poxc;
-            patternTextureCoordinates[i * 8 + 1] = p1.y * poy + tipTextureCoordinates[i * 8 + 1] * poyc;
-            patternTextureCoordinates[i * 8 + 2] = p2.x * pox + tipTextureCoordinates[i * 8 + 2] * poxc;
-            patternTextureCoordinates[i * 8 + 3] = p2.y * poy + tipTextureCoordinates[i * 8 + 3] * poyc;
-            patternTextureCoordinates[i * 8 + 4] = p3.x * pox + tipTextureCoordinates[i * 8 + 4] * poxc;
-            patternTextureCoordinates[i * 8 + 5] = p3.y * poy + tipTextureCoordinates[i * 8 + 5] * poyc;
-            patternTextureCoordinates[i * 8 + 6] = p4.x * pox + tipTextureCoordinates[i * 8 + 6] * poxc;
-            patternTextureCoordinates[i * 8 + 7] = p4.y * poy + tipTextureCoordinates[i * 8 + 7] * poyc;
-
             const jx = dot.textureJitterOffsetX;
             const jy = dot.textureJitterOffsetY;
-            patternTextureCoordinates[i * 8 + 0] += jx; patternTextureCoordinates[i * 8 + 1] += jy;
-            patternTextureCoordinates[i * 8 + 2] += jx; patternTextureCoordinates[i * 8 + 3] += jy;
-            patternTextureCoordinates[i * 8 + 4] += jx; patternTextureCoordinates[i * 8 + 5] += jy;
-            patternTextureCoordinates[i * 8 + 6] += jx; patternTextureCoordinates[i * 8 + 7] += jy;
 
-            if (this._useSmudging && this.smudgingDot && this.smudging0Dot) {
-                const sr = Math.sin(this.smudgingDot.rotation), cr = Math.cos(this.smudgingDot.rotation);
-                const sxs = dhw * sr, sys = dhh * sr, sxc = dhw * cr, syc = dhh * cr;
+            // term1 = (cx*pox/pw, cy*poy/ph) + corner.x*(axUx*pox/pw, axUy*poy/ph) + corner.y*(axVx*pox/pw, axVy*poy/ph)
+            // term2 = (tipL*poxc + 0.5*tipDU*poxc, tipT*poyc + 0.5*tipDV*poyc)
+            //       + corner.x * (0.5*tipDU*poxc, 0)
+            //       + corner.y * (0,              0.5*tipDV*poyc)
+            // term3 = (jx, jy)
+            const pUV0x = dot.centerX * pox / pw + tipL * poxc + 0.5 * tipDU * poxc + jx;
+            const pUV0y = dot.centerY * poy / ph + tipT * poyc + 0.5 * tipDV * poyc + jy;
+            const pDxx  = axUx * pox / pw + 0.5 * tipDU * poxc;
+            const pDxy  = axUy * poy / ph;
+            const pDyx  = axVx * pox / pw;
+            const pDyy  = axVy * poy / ph + 0.5 * tipDV * poyc;
 
-                rp1 = new Point(this.smudgingDot.centerX - sxc + sys, this.smudgingDot.centerY - sxs - syc);
-                rp2 = new Point(this.smudgingDot.centerX + sxc + sys, this.smudgingDot.centerY + sxs - syc);
-                rp3 = new Point(this.smudgingDot.centerX - sxc - sys, this.smudgingDot.centerY - sxs + syc);
-                rp4 = new Point(this.smudgingDot.centerX + sxc - sys, this.smudgingDot.centerY + sxs + syc);
+            patternUVa[o + 0] = pUV0x;
+            patternUVa[o + 1] = pUV0y;
+            patternUVa[o + 2] = pDxx;
+            patternUVa[o + 3] = pDxy;
+            patternUVb[o2 + 0] = pDyx;
+            patternUVb[o2 + 1] = pDyy;
 
-                p1 = Common.pointInTexture(rp1, this.size);
-                p2 = Common.pointInTexture(rp2, this.size);
-                p3 = Common.pointInTexture(rp3, this.size);
-                p4 = Common.pointInTexture(rp4, this.size);
+            // smudging / smudging0 UV (uses smudging dots' centers + smudging rotation, original dhw/dhh)
+            if (useSmudging) {
+                const sR = this.smudgingDot!.rotation;
+                const sCos = Math.cos(sR), sSin = Math.sin(sR);
+                const saUx = sCos * dhw,  saUy = sSin * dhw;
+                const saVx = -sSin * dhh, saVy = sCos * dhh;
+                const invW = 1.0 / this.size.width;
+                const invH = 1.0 / this.size.height;
 
-                smudgingTexturePositions[i * 8 + 0] = p1.x; smudgingTexturePositions[i * 8 + 1] = p1.y;
-                smudgingTexturePositions[i * 8 + 2] = p2.x; smudgingTexturePositions[i * 8 + 3] = p2.y;
-                smudgingTexturePositions[i * 8 + 4] = p3.x; smudgingTexturePositions[i * 8 + 5] = p3.y;
-                smudgingTexturePositions[i * 8 + 6] = p4.x; smudgingTexturePositions[i * 8 + 7] = p4.y;
+                const sDxx = saUx * invW, sDxy = saUy * invH;
+                const sDyx = saVx * invW, sDyy = saVy * invH;
 
-                rp1 = new Point(this.smudging0Dot.centerX - sxc + sys, this.smudging0Dot.centerY - sxs - syc);
-                rp2 = new Point(this.smudging0Dot.centerX + sxc + sys, this.smudging0Dot.centerY + sxs - syc);
-                rp3 = new Point(this.smudging0Dot.centerX - sxc - sys, this.smudging0Dot.centerY - sxs + syc);
-                rp4 = new Point(this.smudging0Dot.centerX + sxc - sys, this.smudging0Dot.centerY + sxs + syc);
+                smudgingUVa[o + 0] = this.smudgingDot!.centerX * invW;
+                smudgingUVa[o + 1] = this.smudgingDot!.centerY * invH;
+                smudgingUVa[o + 2] = sDxx;
+                smudgingUVa[o + 3] = sDxy;
+                smudgingUVb[o2 + 0] = sDyx;
+                smudgingUVb[o2 + 1] = sDyy;
 
-                p1 = Common.pointInTexture(rp1, this.size);
-                p2 = Common.pointInTexture(rp2, this.size);
-                p3 = Common.pointInTexture(rp3, this.size);
-                p4 = Common.pointInTexture(rp4, this.size);
-
-                smudging0TexturePositions[i * 8 + 0] = p1.x; smudging0TexturePositions[i * 8 + 1] = p1.y;
-                smudging0TexturePositions[i * 8 + 2] = p2.x; smudging0TexturePositions[i * 8 + 3] = p2.y;
-                smudging0TexturePositions[i * 8 + 4] = p3.x; smudging0TexturePositions[i * 8 + 5] = p3.y;
-                smudging0TexturePositions[i * 8 + 6] = p4.x; smudging0TexturePositions[i * 8 + 7] = p4.y;
-            } else {
-                for (let k = 0; k < 8; k++) {
-                    smudgingTexturePositions[i * 8 + k] = 0.0;
-                    smudging0TexturePositions[i * 8 + k] = 0.0;
-                }
+                smudging0UVa[o + 0] = this.smudging0Dot!.centerX * invW;
+                smudging0UVa[o + 1] = this.smudging0Dot!.centerY * invH;
+                smudging0UVa[o + 2] = sDxx;
+                smudging0UVa[o + 3] = sDxy;
+                smudging0UVb[o2 + 0] = sDyx;
+                smudging0UVb[o2 + 1] = sDyy;
             }
+            // else: arrays already zero-initialized
 
-            indexData[i * 6 + 0] = i * 4 + 0;
-            indexData[i * 6 + 1] = i * 4 + 1;
-            indexData[i * 6 + 2] = i * 4 + 2;
-            indexData[i * 6 + 3] = i * 4 + 3;
-            indexData[i * 6 + 4] = i * 4 + 2;
-            indexData[i * 6 + 5] = i * 4 + 1;
+            tintColor[o + 0] = dot.tintRed;
+            tintColor[o + 1] = dot.tintGreen;
+            tintColor[o + 2] = dot.tintBlue;
+            tintColor[o + 3] = dot.tinting;
 
-            for (let j = 0; j < 4; j++) {
-                colors[i * 16 + j * 4 + 0] = dot.tintRed;
-                colors[i * 16 + j * 4 + 1] = dot.tintGreen;
-                colors[i * 16 + j * 4 + 2] = dot.tintBlue;
-                colors[i * 16 + j * 4 + 3] = dot.tinting;
+            opacity[o + 0] = dot.opacity;
+            opacity[o + 1] = dot.patternOpacity;
+            opacity[o + 2] = dot.mixingOpacity;
+            opacity[o + 3] = i / numberOfDots;
 
-                opacities[i * 16 + j * 4 + 0] = dot.opacity;
-                opacities[i * 16 + j * 4 + 1] = dot.patternOpacity;
-                opacities[i * 16 + j * 4 + 2] = dot.mixingOpacity;
-                opacities[i * 16 + j * 4 + 3] = i / numberOfDots;
-
-                corrosions[i * 16 + j * 4 + 0] = dot.tipCorrosion;
-                corrosions[i * 16 + j * 4 + 1] = dot.textureCorrosion;
-                corrosions[i * 16 + j * 4 + 2] = dot.tipCorrosionSize;
-                corrosions[i * 16 + j * 4 + 3] = dot.textureCorrosionSize;
-            }
+            corrosion[o + 0] = dot.tipCorrosion;
+            corrosion[o + 1] = dot.textureCorrosion;
+            corrosion[o + 2] = dot.tipCorrosionSize;
+            corrosion[o + 3] = dot.textureCorrosionSize;
         }
 
         this.executeDotProgram({
-            points, indexData, tipTextureCoordinates, patternTextureCoordinates,
-            smudging0TexturePositions, smudgingTexturePositions, colors, opacities, corrosions,
-            numberOfPoints: 6 * numberOfDots, useDualTip
+            posCenterAxisU, posAxisV, tipUV,
+            patternUVa, patternUVb,
+            smudging0UVa, smudging0UVb,
+            smudgingUVa, smudgingUVb,
+            tintColor, opacity, corrosion,
+            instanceCount: numberOfDots,
+            useDualTip,
         }, type);
 
         return new Rect(rectX1, rectY1, rectX2 - rectX1, rectY2 - rectY1);
@@ -955,16 +951,19 @@ export class DrawingEngine {
     // ---- excuteDotProgram ----
 
     protected executeDotProgram(param: {
-        points: number[],
-        indexData: number[],
-        tipTextureCoordinates: number[],
-        patternTextureCoordinates: number[],
-        smudging0TexturePositions: number[],
-        smudgingTexturePositions: number[],
-        colors: number[],
-        opacities: number[],
-        corrosions: number[],
-        numberOfPoints: number,
+        posCenterAxisU: Float32Array,
+        posAxisV: Float32Array,
+        tipUV: Float32Array,
+        patternUVa: Float32Array,
+        patternUVb: Float32Array,
+        smudging0UVa: Float32Array,
+        smudging0UVb: Float32Array,
+        smudgingUVa: Float32Array,
+        smudgingUVb: Float32Array,
+        tintColor: Float32Array,
+        opacity: Float32Array,
+        corrosion: Float32Array,
+        instanceCount: number,
         useDualTip: boolean
     }, type: DrawingTargetType): void {
         if (type === 'plain') {
@@ -980,16 +979,19 @@ export class DrawingEngine {
                     smudgingCopyAlphaTexture: this.smudging1CopyAlphaRenderTarget!.texture,
                     smudgingCopyColorFramebuffer: this.smudging1CopyColorRenderTarget!.texture,
                     dualTipTexture: this.dualTipTexture,
-                    points: param.points,
-                    indexData: param.indexData,
-                    tipTextureCoordinates: param.tipTextureCoordinates,
-                    patternTextureCoordinates: param.patternTextureCoordinates,
-                    smudging0TexturePositions: param.smudging0TexturePositions,
-                    smudgingTexturePositions: param.smudgingTexturePositions,
-                    colors: param.colors,
-                    opacities: param.opacities,
-                    corrosions: param.corrosions,
-                    numberOfPoints: param.numberOfPoints,
+                    posCenterAxisU: param.posCenterAxisU,
+                    posAxisV: param.posAxisV,
+                    tipUV: param.tipUV,
+                    patternUVa: param.patternUVa,
+                    patternUVb: param.patternUVb,
+                    smudging0UVa: param.smudging0UVa,
+                    smudging0UVb: param.smudging0UVb,
+                    smudgingUVa: param.smudgingUVa,
+                    smudgingUVb: param.smudgingUVb,
+                    tintColor: param.tintColor,
+                    opacity: param.opacity,
+                    corrosion: param.corrosion,
+                    instanceCount: param.instanceCount,
                     useDualTip: param.useDualTip
                 }
             );
@@ -1014,16 +1016,19 @@ export class DrawingEngine {
             smudging0Texture,
             smudgingTexture: this.smudging1CopyRenderTarget.texture,
             dualTipTexture: this.dualTipTexture,
-            points: param.points,
-            indexData: param.indexData,
-            tipTextureCoordinates: param.tipTextureCoordinates,
-            patternTextureCoordinates: param.patternTextureCoordinates,
-            smudging0TexturePositions: param.smudging0TexturePositions,
-            smudgingTexturePositions: param.smudgingTexturePositions,
-            colors: param.colors,
-            opacities: param.opacities,
-            corrosions: param.corrosions,
-            numberOfPoints: param.numberOfPoints,
+            posCenterAxisU: param.posCenterAxisU,
+            posAxisV: param.posAxisV,
+            tipUV: param.tipUV,
+            patternUVa: param.patternUVa,
+            patternUVb: param.patternUVb,
+            smudging0UVa: param.smudging0UVa,
+            smudging0UVb: param.smudging0UVb,
+            smudgingUVa: param.smudgingUVa,
+            smudgingUVb: param.smudgingUVb,
+            tintColor: param.tintColor,
+            opacity: param.opacity,
+            corrosion: param.corrosion,
+            instanceCount: param.instanceCount,
             useDualTip: param.useDualTip,
             blend
         });

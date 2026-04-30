@@ -1,19 +1,31 @@
 import { UBrushContext } from "../gpu/UBrushContext";
 import { Program } from "../gpu/Program";
-import { RenderObject, RenderObjectBlend } from "../gpu/RenderObject";
+import { RenderObject, RenderObjectBlend, RenderObjectDrawModes } from "../gpu/RenderObject";
 import { RenderTarget } from "../gpu/RenderTarget";
 import { Texture } from "../gpu/Texture";
+
+const QUAD_CORNERS = new Float32Array([
+    -1.0, -1.0,
+     1.0, -1.0,
+    -1.0,  1.0,
+     1.0,  1.0,
+]);
 
 export class DrawDotProgram {
 
     private vertexShaderSource: string = `
-        attribute vec4 a_tipPosition;
+        attribute vec2 a_corner;
 
+        attribute vec4 a_posCenterAxisU;
+        attribute vec2 a_posAxisV;
+        attribute vec4 a_tipUV;
+        attribute vec4 a_patternUVa;
+        attribute vec2 a_patternUVb;
+        attribute vec4 a_smudging0UVa;
+        attribute vec2 a_smudging0UVb;
+        attribute vec4 a_smudgingUVa;
+        attribute vec2 a_smudgingUVb;
         attribute vec4 a_tintColor;
-        attribute vec2 a_tipTextureCoordinate;
-        attribute vec2 a_patternTextureCoordinate;
-        attribute vec2 a_smudging0TexturePosition;
-        attribute vec2 a_smudgingTexturePosition;
         attribute vec4 a_opacity;
         attribute vec4 a_corrosion;
 
@@ -27,11 +39,19 @@ export class DrawDotProgram {
 
         void main()
         {
-            gl_Position = a_tipPosition;
-            v_tipTextureCoordinate = a_tipTextureCoordinate.xy;//TODO:xy 삭제
-            v_patternTextureCoordinate = a_patternTextureCoordinate.xy;
-            v_smudging0TexturePosition = a_smudging0TexturePosition.xy;
-            v_smudgingTexturePosition = a_smudgingTexturePosition.xy;
+            vec2 clipCenter = a_posCenterAxisU.xy;
+            vec2 axisU = a_posCenterAxisU.zw;
+            vec2 axisV = a_posAxisV;
+            vec2 clipPos = clipCenter + a_corner.x * axisU + a_corner.y * axisV;
+            gl_Position = vec4(clipPos, 0.0, 1.0);
+
+            vec2 bary = a_corner * 0.5 + 0.5;
+            v_tipTextureCoordinate = a_tipUV.xy + bary * a_tipUV.zw;
+
+            v_patternTextureCoordinate = a_patternUVa.xy + a_corner.x * a_patternUVa.zw + a_corner.y * a_patternUVb;
+            v_smudging0TexturePosition = a_smudging0UVa.xy + a_corner.x * a_smudging0UVa.zw + a_corner.y * a_smudging0UVb;
+            v_smudgingTexturePosition  = a_smudgingUVa.xy  + a_corner.x * a_smudgingUVa.zw  + a_corner.y * a_smudgingUVb;
+
             v_tintColor = a_tintColor;
             v_opacity = a_opacity;
             v_corrosion = a_corrosion;
@@ -84,7 +104,7 @@ export class DrawDotProgram {
             gl_FragColor = s_tipColor;
 
         }`;
-    
+
     private program: Program;
 
     private context: UBrushContext;
@@ -92,7 +112,7 @@ export class DrawDotProgram {
     private renderObject: RenderObject;
 
     constructor(context: UBrushContext) {
-        
+
         this.context = context;
 
         this.program = context.createProgram(this.vertexShaderSource, this.fragmentShaderSource);
@@ -100,13 +120,13 @@ export class DrawDotProgram {
         this.renderObject = new RenderObject();
 
     }
-    
+
     public distroy(): void {
 
         this.context.removeObject(this.renderObject);
 
     }
-    
+
     public drawRects(renderTarget: RenderTarget,
         param: {
 
@@ -115,38 +135,46 @@ export class DrawDotProgram {
             smudging0Texture: Texture,
             smudgingTexture: Texture,
             dualTipTexture: Texture,
-            points: number[],
-            indexData: number[],
-            tipTextureCoordinates: number[],
-            patternTextureCoordinates: number[],
-            smudging0TexturePositions: number[],
-            smudgingTexturePositions: number[],
-            colors: number[],
-            opacities: number[],
-            corrosions: number[],
-            numberOfPoints: number,
+            posCenterAxisU: Float32Array,
+            posAxisV: Float32Array,
+            tipUV: Float32Array,
+            patternUVa: Float32Array,
+            patternUVb: Float32Array,
+            smudging0UVa: Float32Array,
+            smudging0UVb: Float32Array,
+            smudgingUVa: Float32Array,
+            smudgingUVb: Float32Array,
+            tintColor: Float32Array,
+            opacity: Float32Array,
+            corrosion: Float32Array,
+            instanceCount: number,
             useDualTip: boolean,
             blend: RenderObjectBlend
 
         }): void {
-        
+
         this.context.activateRenderTarget(renderTarget);
 
         this.renderObject.clear();
 
-        this.renderObject.attributes.push({name: "a_tipPosition", data: new Float32Array(param.points), size: 2});
-        this.renderObject.attributes.push({name: "a_tintColor", data: new Float32Array(param.colors), size: 4});
-        this.renderObject.attributes.push({name: "a_tipTextureCoordinate", data: new Float32Array(param.tipTextureCoordinates), size: 2});
-        this.renderObject.attributes.push({name: "a_patternTextureCoordinate", data: new Float32Array(param.patternTextureCoordinates), size: 2});
-        this.renderObject.attributes.push({name: "a_smudging0TexturePosition", data: new Float32Array(param.smudging0TexturePositions), size: 2});
-        this.renderObject.attributes.push({name: "a_smudgingTexturePosition", data: new Float32Array(param.smudgingTexturePositions), size: 2});
-        this.renderObject.attributes.push({name: "a_opacity", data: new Float32Array(param.opacities), size: 4});
-        this.renderObject.attributes.push({name: "a_corrosion", data: new Float32Array(param.corrosions), size: 4});
+        this.renderObject.attributes.push({name: "a_corner",          data: QUAD_CORNERS,         size: 2});
+        this.renderObject.attributes.push({name: "a_posCenterAxisU",  data: param.posCenterAxisU, size: 4, divisor: 1});
+        this.renderObject.attributes.push({name: "a_posAxisV",        data: param.posAxisV,       size: 2, divisor: 1});
+        this.renderObject.attributes.push({name: "a_tipUV",           data: param.tipUV,          size: 4, divisor: 1});
+        this.renderObject.attributes.push({name: "a_patternUVa",      data: param.patternUVa,     size: 4, divisor: 1});
+        this.renderObject.attributes.push({name: "a_patternUVb",      data: param.patternUVb,     size: 2, divisor: 1});
+        this.renderObject.attributes.push({name: "a_smudging0UVa",    data: param.smudging0UVa,   size: 4, divisor: 1});
+        this.renderObject.attributes.push({name: "a_smudging0UVb",    data: param.smudging0UVb,   size: 2, divisor: 1});
+        this.renderObject.attributes.push({name: "a_smudgingUVa",     data: param.smudgingUVa,    size: 4, divisor: 1});
+        this.renderObject.attributes.push({name: "a_smudgingUVb",     data: param.smudgingUVb,    size: 2, divisor: 1});
+        this.renderObject.attributes.push({name: "a_tintColor",       data: param.tintColor,      size: 4, divisor: 1});
+        this.renderObject.attributes.push({name: "a_opacity",         data: param.opacity,        size: 4, divisor: 1});
+        this.renderObject.attributes.push({name: "a_corrosion",       data: param.corrosion,      size: 4, divisor: 1});
 
         if (param.useDualTip) {
 
             this.renderObject.uniforms.push({name: "u_tipTexture", value: param.dualTipTexture});
-            
+
         } else {
 
             this.renderObject.uniforms.push({name: "u_tipTexture", value: param.tipTexture});
@@ -156,10 +184,11 @@ export class DrawDotProgram {
         this.renderObject.uniforms.push({name: "u_patternTexture", value: param.patternTexture});
         this.renderObject.uniforms.push({name: "u_smudging0RefTexture", value: param.smudging0Texture});
         this.renderObject.uniforms.push({name: "u_smudgingRefTexture", value: param.smudgingTexture});
-        
+
         this.renderObject.blend = param.blend;
-        this.renderObject.indexData = new Uint16Array(param.indexData);
-        this.renderObject.numberOfPoints = param.numberOfPoints;
+        this.renderObject.drawMode = RenderObjectDrawModes.TriangleStrip;
+        this.renderObject.numberOfPoints = 4;
+        this.renderObject.instanceCount = param.instanceCount;
 
         this.context.render(this.renderObject, this.program);
 

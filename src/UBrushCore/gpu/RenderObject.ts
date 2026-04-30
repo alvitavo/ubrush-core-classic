@@ -3,6 +3,7 @@ export interface Attribute {
     name: string;
     data: Float32Array;
     size: number;
+    divisor?: number;
 
 }
 
@@ -41,6 +42,7 @@ export class RenderObject {
 
     public indexData?: Uint16Array;
     public numberOfPoints: number = 0;
+    public instanceCount?: number;
 
     public clear(): void {
 
@@ -50,6 +52,7 @@ export class RenderObject {
         this.drawMode = RenderObjectDrawModes.Triangles;
         this.indexData = undefined;
         this.numberOfPoints = 0;
+        this.instanceCount = undefined;
 
     }
 
