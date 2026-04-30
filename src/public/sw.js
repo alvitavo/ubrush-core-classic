@@ -1,7 +1,7 @@
-const CACHE = 'ubrush-v1';
+const CACHE = 'ubrush-v2';
 const SHELL = [
   './',
-  './bundle.js',
+  './main.bundle.js',
   './brushCategories.json',
   './UBrushEditAttribute.json',
   './manifest.json',
@@ -30,7 +30,10 @@ self.addEventListener('fetch', e => {
   e.respondWith(
     caches.match(e.request).then(cached => {
       const fresh = fetch(e.request).then(r => {
-        if (r.ok) caches.open(CACHE).then(c => c.put(e.request, r.clone()));
+        if (r.ok) {
+          const copy = r.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy));
+        }
         return r;
       }).catch(() => cached);
       return cached || fresh;

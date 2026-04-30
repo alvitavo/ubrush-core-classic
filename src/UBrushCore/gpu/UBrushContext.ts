@@ -97,10 +97,20 @@ export class UBrushContext {
 
             const attribute: Attribute = renderObject.attributes[i];
 
-            if (!buffers[attribute.name]) buffers[attribute.name] = gl.createBuffer();
+            let entry = buffers[attribute.name] as { buf: WebGLBuffer, byteCapacity: number } | undefined;
+            if (!entry) {
+                entry = { buf: gl.createBuffer()!, byteCapacity: 0 };
+                buffers[attribute.name] = entry;
+            }
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, buffers[attribute.name]);
-            gl.bufferData(gl.ARRAY_BUFFER, attribute.data, gl.DYNAMIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, entry.buf);
+            const byteLength = attribute.data.byteLength;
+            if (byteLength <= entry.byteCapacity) {
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, attribute.data);
+            } else {
+                gl.bufferData(gl.ARRAY_BUFFER, attribute.data, gl.DYNAMIC_DRAW);
+                entry.byteCapacity = byteLength;
+            }
 
             const loc = program.attributes[attribute.name];
             gl.enableVertexAttribArray(loc);
@@ -155,10 +165,20 @@ export class UBrushContext {
 
         if (renderObject.indexData) {
 
-            if (!buffers["index"]) buffers["index"] = gl.createBuffer();
+            let indexEntry = buffers["index"] as { buf: WebGLBuffer, byteCapacity: number } | undefined;
+            if (!indexEntry) {
+                indexEntry = { buf: gl.createBuffer()!, byteCapacity: 0 };
+                buffers["index"] = indexEntry;
+            }
 
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers["index"]);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, renderObject.indexData, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexEntry.buf);
+            const idxByteLength = renderObject.indexData.byteLength;
+            if (idxByteLength <= indexEntry.byteCapacity) {
+                gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, 0, renderObject.indexData);
+            } else {
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, renderObject.indexData, gl.STATIC_DRAW);
+                indexEntry.byteCapacity = idxByteLength;
+            }
 
             if (renderObject.instanceCount != null) {
                 gl.drawElementsInstanced(gl.TRIANGLES, renderObject.numberOfPoints, gl.UNSIGNED_SHORT, 0, renderObject.instanceCount);

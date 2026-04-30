@@ -165,12 +165,30 @@ smudgingDy  = (-sinθ_smudge · dhh / W, cosθ_smudge · dhh / H)
 - `Common.pointInStage` / `Common.pointInTexture`가 순수 affine임을 코드로 확인 — 셰이더 측 UV 선형 복원 안전
 - pattern UV 도출식을 4개 코너에서 모두 기존식과 비교 → 일치 확인
 
+## Phase 4 — typed-array 풀링 (완료)
+
+### CPU-side: `DrawingEngine._f32Pool`
+- 12개 attribute(`posCenterAxisU`, `posAxisV`, `tipUV`, `patternUVa/b`, `smudging0UVa/b`, `smudgingUVa/b`, `tintColor`, `opacity`, `corrosion`)에 대응하는 백킹 `Float32Array`를 인스턴스 필드로 보관.
+- `_acquireF32(key, length)`: 요청 길이가 백킹보다 크면 `max(length, ceil(capacity * 1.5))`로 재할당. 작거나 같으면 `subarray(0, length)`만 반환 — ArrayBuffer 신규 할당 없음.
+- 이전 stamp의 zero-init 가정을 유지하기 위해 `useSmudging === false`일 때 4개 smudging UV subarray를 `fill(0)`로 클리어 (4 작은 fill — 종전 4 fresh `Float32Array`보다 저렴).
+
+### GPU-side: `UBrushContext.render` `bufferSubData` 재사용
+- `properties[renderObject][name]`의 값이 `WebGLBuffer` → `{ buf, byteCapacity }` 로 변경.
+- 업로드 분기:
+  - `attribute.data.byteLength <= byteCapacity` → `bufferSubData(target, 0, data)` (재할당 없음)
+  - 초과 → `bufferData(target, data, DYNAMIC_DRAW)` 후 `byteCapacity = byteLength` 갱신 (high-water 추적)
+- `ELEMENT_ARRAY_BUFFER`(인덱스) 경로에도 동일 패턴 적용.
+- 이로써 `numberOfDots` 단조증가 stroke에서 GPU 버퍼는 ~log₁.₅(N)회만 reallocate, 정상 stroke에서는 첫 stamp 이후 재할당 0회.
+
+### 검증
+- TypeScript `tsc --noEmit` 통과 (사전 React/JSX 에러 외 신규 에러 0).
+- 시맨틱 변경 없음 — `attribute.data`는 이전과 같은 길이의 typed-array view, 셰이더는 그대로.
+
 ## 미수행 / 후속 작업
 
 - **브라우저 pixel-diff 검증** — 동일 stroke의 픽셀 동일성 실측 (코드 동치성은 수학적으로 확인됨; 실측은 권장 사항)
 - **벤치마크 측정** — `benchmark/main.ts`에서 `cpuMs` / `flushMs` / `heapDeltaMb` 비교  
-  예상: cpuMs 큰 감소 (4× 복제 + `new Float32Array` 제거), flushMs 작은 감소 (vertex setup), heap delta 큰 감소
-- **Phase 4 — typed-array 풀링**: 매 stamp `new Float32Array(...) × 12` 호출을 캐시된 버퍼 + 1.5× 성장 정책으로 교체. GPU 측은 `bufferSubData` 재사용. 별도 PR 권장.
+  예상: cpuMs 큰 감소 (4× 복제 + `new Float32Array` 제거 + Phase 4의 풀 재사용), flushMs 작은 감소 (vertex setup), heap delta 큰 감소
 - **Phase 5 — `#version 300 es` 승격 (선택)**: `gl_VertexID`로 `a_corner` vertex-rate 버퍼 제거. 추가 ~32 byte/draw 절감 + 1 attribute slot 회수. 본 작업과 직교하므로 별도 진행.
 
 ## 위험 및 검토 포인트
@@ -181,10 +199,17 @@ smudgingDy  = (-sinθ_smudge · dhh / W, cosθ_smudge · dhh / H)
 
 ## 변경 파일
 
+Phase 1–3 (instanced rendering 전환):
 ```
 src/UBrushCore/engine/DrawingEngine.ts           +180 -145
 src/UBrushCore/gpu/RenderObject.ts               +3
 src/UBrushCore/gpu/UBrushContext.ts              +20 -5
 src/UBrushCore/program/DrawDotProgram.ts         +70 -38
 src/UBrushCore/program/SmudgingDrawDotProgram.ts +75 -47
+```
+
+Phase 4 (typed-array 풀링):
+```
+src/UBrushCore/engine/DrawingEngine.ts           +28 -12
+src/UBrushCore/gpu/UBrushContext.ts              +25 -5
 ```

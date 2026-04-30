@@ -68,6 +68,10 @@ export class DrawingEngine {
     public dotBlendmode: DotBlendmode | string = DotBlendmode.NORMAL;
     public maskDotBlendmode: DotBlendmode | string = DotBlendmode.NORMAL;
 
+    // ---- per-stamp typed-array pool (Phase 4) ----
+    // 키별 백킹 Float32Array를 보관, 1.5× 성장으로 재할당 빈도 최소화.
+    private _f32Pool: { [key: string]: Float32Array | undefined } = {};
+
     constructor(context: UBrushContext, size: Size) {
         this.context = context;
         this.size = size;
@@ -798,18 +802,18 @@ export class DrawingEngine {
         const numberOfDots: number = dots.length;
         if (numberOfDots === 0) return null;
 
-        const posCenterAxisU = new Float32Array(numberOfDots * 4);
-        const posAxisV       = new Float32Array(numberOfDots * 2);
-        const tipUV          = new Float32Array(numberOfDots * 4);
-        const patternUVa     = new Float32Array(numberOfDots * 4);
-        const patternUVb     = new Float32Array(numberOfDots * 2);
-        const smudging0UVa   = new Float32Array(numberOfDots * 4);
-        const smudging0UVb   = new Float32Array(numberOfDots * 2);
-        const smudgingUVa    = new Float32Array(numberOfDots * 4);
-        const smudgingUVb    = new Float32Array(numberOfDots * 2);
-        const tintColor      = new Float32Array(numberOfDots * 4);
-        const opacity        = new Float32Array(numberOfDots * 4);
-        const corrosion      = new Float32Array(numberOfDots * 4);
+        const posCenterAxisU = this._acquireF32("posCenterAxisU", numberOfDots * 4);
+        const posAxisV       = this._acquireF32("posAxisV",       numberOfDots * 2);
+        const tipUV          = this._acquireF32("tipUV",          numberOfDots * 4);
+        const patternUVa     = this._acquireF32("patternUVa",     numberOfDots * 4);
+        const patternUVb     = this._acquireF32("patternUVb",     numberOfDots * 2);
+        const smudging0UVa   = this._acquireF32("smudging0UVa",   numberOfDots * 4);
+        const smudging0UVb   = this._acquireF32("smudging0UVb",   numberOfDots * 2);
+        const smudgingUVa    = this._acquireF32("smudgingUVa",    numberOfDots * 4);
+        const smudgingUVb    = this._acquireF32("smudgingUVb",    numberOfDots * 2);
+        const tintColor      = this._acquireF32("tintColor",      numberOfDots * 4);
+        const opacity        = this._acquireF32("opacity",        numberOfDots * 4);
+        const corrosion      = this._acquireF32("corrosion",      numberOfDots * 4);
 
         const halfW = this.size.width * 0.5;
         const halfH = this.size.height * 0.5;
@@ -820,6 +824,15 @@ export class DrawingEngine {
         let rectY1 = Infinity, rectY2 = -Infinity;
 
         const useSmudging = this._useSmudging && this.smudgingDot && this.smudging0Dot;
+
+        // 풀 재사용 시 이전 stamp 의 잔존 값을 0 으로 클리어
+        // (이전 코드는 new Float32Array 의 zero-init 에 의존)
+        if (!useSmudging) {
+            smudging0UVa.fill(0);
+            smudging0UVb.fill(0);
+            smudgingUVa.fill(0);
+            smudgingUVb.fill(0);
+        }
 
         for (let i = 0; i < numberOfDots; i++) {
             const dot: Dot = dots[i];
@@ -1035,6 +1048,20 @@ export class DrawingEngine {
     }
 
     // ---- private helpers ----
+
+    /**
+     * 풀에서 길이 `length` Float32Array 뷰 반환 (백킹 버퍼는 1.5× 성장 정책으로만 확장).
+     * 반환된 뷰는 backing buffer 의 subarray 이며, 호출자는 stamp 동안만 사용해야 함.
+     */
+    private _acquireF32(key: string, length: number): Float32Array {
+        let buf = this._f32Pool[key];
+        if (buf === undefined || buf.length < length) {
+            const grow = Math.max(length, buf ? Math.ceil(buf.length * 1.5) : length);
+            buf = new Float32Array(grow);
+            this._f32Pool[key] = buf;
+        }
+        return buf.subarray(0, length);
+    }
 
     private _dotBlendToRenderObjectBlend(mode: DotBlendmode | string): RenderObjectBlend {
         if (mode === DotBlendmode.ADD) return RenderObjectBlend.Add;
