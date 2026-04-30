@@ -387,13 +387,10 @@ export class DrawingScreen implements CanvasDelegate {
             preserveDrawingBuffer: true,
         };
 
-        const gl = (
-            this.glCanvas.getContext('webgl', contextAttributes) ||
-            this.glCanvas.getContext('experimental-webgl', contextAttributes)
-        ) as WebGLRenderingContext;
+        const gl = this.glCanvas.getContext('webgl2', contextAttributes);
 
         if (!gl) {
-            console.error('WebGL not supported');
+            console.error('WebGL2 not supported');
             return;
         }
 

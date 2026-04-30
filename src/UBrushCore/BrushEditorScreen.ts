@@ -134,11 +134,8 @@ export class BrushEditorScreen {
             alpha: false, depth: false, stencil: false,
             antialias: true, premultipliedAlpha: true, preserveDrawingBuffer: true,
         };
-        const gl = (
-            this.previewGLCanvas.getContext('webgl', contextAttributes) ||
-            this.previewGLCanvas.getContext('experimental-webgl', contextAttributes)
-        ) as WebGLRenderingContext;
-        if (!gl) { console.error('Preview WebGL not supported'); return; }
+        const gl = this.previewGLCanvas.getContext('webgl2', contextAttributes);
+        if (!gl) { console.error('Preview WebGL2 not supported'); return; }
 
         this.previewGLContext = new UBrushContext(gl, new Size(this.previewCanvasW, this.previewCanvasH));
 

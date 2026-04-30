@@ -3,10 +3,10 @@ import UPNG from 'upng-js';
 
 export class Texture {
 
-    private gl: WebGLRenderingContext;
+    private gl: WebGL2RenderingContext;
     private t: WebGLTexture;
     
-    constructor(gl: WebGLRenderingContext) {
+    constructor(gl: WebGL2RenderingContext) {
 
         this.gl = gl;
         

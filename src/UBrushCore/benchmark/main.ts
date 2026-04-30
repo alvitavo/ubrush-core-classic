@@ -26,7 +26,7 @@ const SPACINGS: { label: string; px: number }[] = [
 const MODES: Mode[] = ['throughput', 'frame'];
 
 class BenchmarkApp {
-    private gl!: WebGLRenderingContext;
+    private gl!: WebGL2RenderingContext;
     private context!: UBrushContext;
     private canvas!: Canvas;
     private canvasW = 0;
@@ -77,9 +77,8 @@ class BenchmarkApp {
             alpha: false, depth: false, stencil: false, antialias: true,
             premultipliedAlpha: true, preserveDrawingBuffer: true,
         };
-        const gl = (glCanvas.getContext('webgl', attribs)
-            || glCanvas.getContext('experimental-webgl', attribs)) as WebGLRenderingContext;
-        if (!gl) throw new Error('WebGL not supported');
+        const gl = glCanvas.getContext('webgl2', attribs);
+        if (!gl) throw new Error('WebGL2 not supported');
         this.gl = gl;
 
         this.context = new UBrushContext(gl, new Size(this.canvasW, this.canvasH));

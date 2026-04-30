@@ -10,13 +10,13 @@ import { Uniforms } from "./Uniforms";
 
 export class Program {
 
-    private gl: WebGLRenderingContext;
+    private gl: WebGL2RenderingContext;
     private program: WebGLProgram;
 
     public uniforms: Uniforms;
     public attributes: { [key: string]: number };
 
-    constructor(gl: WebGLRenderingContext, vertexShaderSource: string, fragmentShaderSource: string) {
+    constructor(gl: WebGL2RenderingContext, vertexShaderSource: string, fragmentShaderSource: string) {
 
         this.gl = gl;
 

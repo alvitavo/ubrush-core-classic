@@ -7,9 +7,9 @@ export class RenderTarget {
     public readonly texture: Texture;
     public readonly size: Size;
     
-    private gl: WebGLRenderingContext;
+    private gl: WebGL2RenderingContext;
 
-    constructor(gl: WebGLRenderingContext, size: Size) {
+    constructor(gl: WebGL2RenderingContext, size: Size) {
 
         const width: number = size.width;
         const height: number = size.height;

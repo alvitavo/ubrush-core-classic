@@ -1,7 +1,7 @@
 import React, { ReactNode } from "react";
 
 interface Props {
-    onContextCreate: (gl: WebGLRenderingContext) => void;
+    onContextCreate: (gl: WebGL2RenderingContext) => void;
     style: {width: number, height: number};
 }
 
@@ -27,7 +27,7 @@ export default class UBrushView extends React.Component<Props, State> {
 
     componentDidMount() {
 
-        let gl: WebGLRenderingContext;
+        let gl: WebGL2RenderingContext | null;
 
         try {
 
@@ -45,23 +45,11 @@ export default class UBrushView extends React.Component<Props, State> {
             // canvasElement.addEventListener("webglcontextlost", this.onContextLost.bind(this), false);
             // canvasElement.addEventListener("webglcontextrestored", this.onContextRestore.bind(this), false);
 
-            gl = (this.canvasRef.current?.getContext("webgl", contextAttributes) || this.canvasRef.current?.getContext("experimental-webgl", contextAttributes)) as WebGLRenderingContext;
+            gl = this.canvasRef.current?.getContext("webgl2", contextAttributes) ?? null;
 
             if (gl === null) {
 
-                throw new Error("Error creating WebGL context.");
-
-            }
-
-            // Some experimental-webgl implementations do not have getShaderPrecisionFormat
-
-            if (gl.getShaderPrecisionFormat === undefined) {
-
-                gl.getShaderPrecisionFormat = () => {
-
-                    return { "rangeMin": 1, "rangeMax": 1, "precision": 1 };
-
-                };
+                throw new Error("Error creating WebGL2 context.");
 
             }
 

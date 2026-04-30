@@ -2,12 +2,12 @@ import { Texture } from "./Texture";
 
 export class Textures {
 
-    private gl: WebGLRenderingContext;
+    private gl: WebGL2RenderingContext;
 
     private textureUnits: number = 0;
     private maxTextures: number;
 
-    constructor(gl: WebGLRenderingContext) {
+    constructor(gl: WebGL2RenderingContext) {
 
         this.gl = gl;
         this.maxTextures = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);

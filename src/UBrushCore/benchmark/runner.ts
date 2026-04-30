@@ -49,7 +49,7 @@ function quantile(sorted: number[], q: number): number {
 export async function runThroughput(
     canvas: Canvas,
     ctx: UBrushContext,
-    gl: WebGLRenderingContext,
+    gl: WebGL2RenderingContext,
     points: Point[],
 ): Promise<RunResult> {
     const heapBefore = readHeapMb();
@@ -91,7 +91,7 @@ export async function runThroughput(
 export function runFrame(
     canvas: Canvas,
     ctx: UBrushContext,
-    gl: WebGLRenderingContext,
+    gl: WebGL2RenderingContext,
     points: Point[],
 ): Promise<RunResult> {
     return new Promise((resolve) => {

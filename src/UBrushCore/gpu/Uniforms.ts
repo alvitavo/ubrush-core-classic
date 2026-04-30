@@ -10,7 +10,7 @@ export class SingleUniform {
     id: string;
     addr: WebGLUniformLocation;
     cache: any[];
-    setValue: (gl: WebGLRenderingContext, v: any, t: any) => (void);
+    setValue: (gl: WebGL2RenderingContext, v: any, t: any) => (void);
 
     arrayCacheF32: number[] = [];
 
@@ -24,7 +24,7 @@ export class SingleUniform {
 
     }
 
-    private getSingularSetter(type: GLenum): (gl: WebGLRenderingContext, v: any, t?: Textures) => (void) {
+    private getSingularSetter(type: GLenum): (gl: WebGL2RenderingContext, v: any, t?: Textures) => (void) {
 
         switch (type) {
 
@@ -82,7 +82,7 @@ export class SingleUniform {
 
     // Single scalar
 
-    private setValueV1f(gl: WebGLRenderingContext, v: number) {
+    private setValueV1f(gl: WebGL2RenderingContext, v: number) {
 
         const cache = this.cache;
 
@@ -96,7 +96,7 @@ export class SingleUniform {
 
     // Single float vector (from flat array or THREE.VectorN)
 
-    private setValueV2f(gl: WebGLRenderingContext, v: any) {
+    private setValueV2f(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
 
@@ -134,7 +134,7 @@ export class SingleUniform {
 
     }
 
-    private setValueV3f(gl: WebGLRenderingContext, v: any) {
+    private setValueV3f(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
 
@@ -174,7 +174,7 @@ export class SingleUniform {
 
     }
 
-    private setValueV4f(gl: WebGLRenderingContext, v: any) {
+    private setValueV4f(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
 
@@ -218,7 +218,7 @@ export class SingleUniform {
 
     // Single matrix (from flat array or MatrixN)
 
-    private setValueM2(gl: WebGLRenderingContext, v: any) {
+    private setValueM2(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
         const elements = v.elements;
@@ -245,7 +245,7 @@ export class SingleUniform {
 
     }
 
-    private setValueM3(gl: WebGLRenderingContext, v: any) {
+    private setValueM3(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
         const elements = v.elements;
@@ -272,7 +272,7 @@ export class SingleUniform {
 
     }
 
-    private setValueM4(gl: WebGLRenderingContext, v: any) {
+    private setValueM4(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
         const elements = v.elements;
@@ -301,7 +301,7 @@ export class SingleUniform {
 
     // // Single texture 
 
-    private setValueT1(gl: WebGLRenderingContext, v: Texture, textures?: Textures) {
+    private setValueT1(gl: WebGL2RenderingContext, v: Texture, textures?: Textures) {
 
         if (!textures) return;
 
@@ -321,7 +321,7 @@ export class SingleUniform {
 
     // // Integer / Boolean vectors or arrays thereof (always flat arrays)
 
-    private setValueV1i(gl: WebGLRenderingContext, v: any) {
+    private setValueV1i(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
 
@@ -333,7 +333,7 @@ export class SingleUniform {
 
     }
 
-    private setValueV2i(gl: WebGLRenderingContext, v: any) {
+    private setValueV2i(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
 
@@ -345,7 +345,7 @@ export class SingleUniform {
 
     }
 
-    private setValueV3i(gl: WebGLRenderingContext, v: any) {
+    private setValueV3i(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
 
@@ -357,7 +357,7 @@ export class SingleUniform {
 
     }
 
-    private setValueV4i(gl: WebGLRenderingContext, v: any) {
+    private setValueV4i(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
 
@@ -371,7 +371,7 @@ export class SingleUniform {
 
     // uint
 
-    private setValueV1ui(gl: WebGLRenderingContext, v: any) {
+    private setValueV1ui(gl: WebGL2RenderingContext, v: any) {
 
         const cache = this.cache;
 
@@ -387,11 +387,11 @@ export class SingleUniform {
 
 export class Uniforms {
 
-    gl: WebGLRenderingContext;
+    gl: WebGL2RenderingContext;
     singleUniforms: SingleUniform[] = [];
     map: { [key: string]: SingleUniform } = {};
 
-    constructor(gl: WebGLRenderingContext, program: WebGLProgram) {
+    constructor(gl: WebGL2RenderingContext, program: WebGLProgram) {
 
         this.gl = gl;
 

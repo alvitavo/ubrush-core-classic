@@ -16,9 +16,9 @@ export class UBrushContext {
     private textures: Textures;
     private size: Size;
 
-    public readonly gl: WebGLRenderingContext;
+    public readonly gl: WebGL2RenderingContext;
 
-    constructor(gl: WebGLRenderingContext, size: Size) {
+    constructor(gl: WebGL2RenderingContext, size: Size) {
 
         this.gl = gl;
         this.size = size;
@@ -132,10 +132,7 @@ export class UBrushContext {
 
             gl.enable(gl.BLEND);
             gl.blendFunc(gl.ONE, gl.ONE);
-            const ext = gl.getExtension('EXT_blend_minmax');
-            if (ext) {
-                gl.blendEquation(ext.MAX_EXT);
-            }
+            gl.blendEquation(gl.MAX);
 
         } else {
 
