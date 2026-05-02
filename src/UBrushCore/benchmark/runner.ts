@@ -8,7 +8,8 @@ import { AffineTransform } from '../common/AffineTransform';
 import { RenderObjectBlend } from '../gpu/RenderObject';
 import { Color } from '../common/Color';
 
-export type Mode = 'throughput' | 'frame';
+export type Mode = 'throughput' | 'frame' | 'animate';
+export type AnimationStyle = 'translate' | 'scale' | 'rotate';
 
 export interface RunResult {
     mode: Mode;
@@ -18,6 +19,11 @@ export interface RunResult {
     pointsPerSec: number;       // n / (flushMs / 1000)
     frameMs?: { p50: number; p95: number; p99: number; max: number; count: number };
     heapDeltaMb?: number;
+    // animate-mode only
+    frames?: number;
+    durationMs?: number;
+    avgFps?: number;
+    animationStyle?: AnimationStyle;
 }
 
 const POINTS_PER_FRAME = 4; // realistic batch size for frame mode
@@ -86,6 +92,136 @@ export async function runThroughput(
         pointsPerSec: points.length / (flushMs / 1000),
         heapDeltaMb: heapDelta,
     };
+}
+
+// Translate amplitude as fraction of canvas dimension; scale range [1-S, 1+S];
+// rotate covers a full turn per loop. One loop = 1 second so longer durations
+// just repeat the same motion — keeps per-frame work consistent across durations.
+const ANIM_TRANSLATE_AX = 0.10;
+const ANIM_TRANSLATE_AY = 0.10;
+const ANIM_SCALE_RANGE = 0.5;
+const ANIM_LOOP_SEC = 1.0;
+
+function applyAnimTransform(
+    src: Point[],
+    style: AnimationStyle,
+    t: number,           // phase in [0, 1)
+    cx: number, cy: number,
+    w: number, h: number,
+    out: Point[],
+): void {
+    const TWO_PI = Math.PI * 2;
+    if (style === 'translate') {
+        const dx = ANIM_TRANSLATE_AX * w * Math.sin(TWO_PI * t);
+        const dy = ANIM_TRANSLATE_AY * h * Math.sin(TWO_PI * t * 0.7);
+        for (let i = 0; i < src.length; i++) {
+            out[i].x = src[i].x + dx;
+            out[i].y = src[i].y + dy;
+        }
+    } else if (style === 'scale') {
+        const s = 1.0 + ANIM_SCALE_RANGE * Math.sin(TWO_PI * t);
+        for (let i = 0; i < src.length; i++) {
+            out[i].x = cx + (src[i].x - cx) * s;
+            out[i].y = cy + (src[i].y - cy) * s;
+        }
+    } else { // rotate
+        const theta = TWO_PI * t;
+        const cosT = Math.cos(theta);
+        const sinT = Math.sin(theta);
+        for (let i = 0; i < src.length; i++) {
+            const dx = src[i].x - cx;
+            const dy = src[i].y - cy;
+            out[i].x = cx + dx * cosT - dy * sinT;
+            out[i].y = cy + dx * sinT + dy * cosT;
+        }
+    }
+}
+
+export function runAnimation(
+    canvas: Canvas,
+    ctx: UBrushContext,
+    gl: WebGL2RenderingContext,
+    points: Point[],
+    style: AnimationStyle,
+    durationSec: number,
+    canvasWidth: number,
+    canvasHeight: number,
+): Promise<RunResult> {
+    return new Promise((resolve) => {
+        const heapBefore = readHeapMb();
+        const cw = canvasWidth;
+        const ch = canvasHeight;
+        const cx = cw / 2;
+        const cy = ch / 2;
+
+        // Reusable transformed-point buffer to avoid per-frame allocations.
+        const buf: Point[] = new Array(points.length);
+        for (let i = 0; i < points.length; i++) buf[i] = new Point(0, 0);
+
+        // Warm-up composite so first measured frame is not paying GL init cost.
+        compositeToScreen(canvas, ctx);
+        gl.finish();
+
+        const frameDurations: number[] = [];
+        const startTime = performance.now();
+        let frames = 0;
+
+        const step = () => {
+            const now = performance.now();
+            const elapsed = now - startTime;
+            if (elapsed >= durationSec * 1000) {
+                gl.finish();
+                const t1 = performance.now();
+                const durationMs = t1 - startTime;
+                const heapAfter = readHeapMb();
+                const heapDelta = heapBefore !== undefined && heapAfter !== undefined
+                    ? heapAfter - heapBefore : undefined;
+                const sorted = [...frameDurations].sort((a, b) => a - b);
+                const avgFps = frames / (durationMs / 1000);
+                resolve({
+                    mode: 'animate',
+                    n: points.length,
+                    cpuMs: durationMs,
+                    flushMs: durationMs,
+                    pointsPerSec: (points.length * frames) / (durationMs / 1000),
+                    frameMs: {
+                        p50: quantile(sorted, 0.5),
+                        p95: quantile(sorted, 0.95),
+                        p99: quantile(sorted, 0.99),
+                        max: sorted[sorted.length - 1] ?? 0,
+                        count: sorted.length,
+                    },
+                    heapDeltaMb: heapDelta,
+                    frames,
+                    durationMs,
+                    avgFps,
+                    animationStyle: style,
+                });
+                return;
+            }
+
+            const phase = (elapsed / 1000) / ANIM_LOOP_SEC;
+            const t = phase - Math.floor(phase);
+            applyAnimTransform(points, style, t, cx, cy, cw, ch, buf);
+
+            const frameStart = performance.now();
+            const stylus = new Stylus();
+            canvas.clear();
+            canvas.moveTo(buf[0], stylus);
+            for (let i = 1; i < buf.length - 1; i++) {
+                canvas.lineTo(buf[i], stylus);
+            }
+            canvas.endLine(buf[buf.length - 1], stylus);
+            compositeToScreen(canvas, ctx);
+            const frameEnd = performance.now();
+            frameDurations.push(frameEnd - frameStart);
+            frames++;
+
+            requestAnimationFrame(step);
+        };
+
+        requestAnimationFrame(step);
+    });
 }
 
 export function runFrame(

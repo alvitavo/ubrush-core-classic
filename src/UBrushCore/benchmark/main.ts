@@ -5,7 +5,7 @@ import { Color } from '../common/Color';
 import { IBrush } from '../common/IBrush';
 import { ProgramManager } from '../program/ProgramManager';
 import { CurveKind, sampleUniformSpacing } from './curves';
-import { Mode, RunResult, runThroughput, runFrame } from './runner';
+import { AnimationStyle, Mode, RunResult, runAnimation, runFrame, runThroughput } from './runner';
 
 interface CategoryEntry { key: string; displayName: string; file: string; }
 interface FavoriteEntry { name: string; file: string; }
@@ -17,13 +17,27 @@ interface FavoriteScore {
     avgPointsPerSec: number;
     error?: string;
 }
+interface FavoriteAnimScore {
+    name: string;
+    file: string;
+    perStyleFps: Partial<Record<AnimationStyle, number>>;
+    avgFps: number;
+    error?: string;
+}
 
 const CURVES: CurveKind[] = ['line', 'sine', 'spiral'];
 const SPACINGS: { label: string; px: number }[] = [
     { label: 'dense (2px)', px: 2 },
     { label: 'medium (10px)', px: 10 },
 ];
-const MODES: Mode[] = ['throughput', 'frame'];
+const MODES: Mode[] = ['throughput', 'frame', 'animate'];
+const ANIMATION_STYLES: AnimationStyle[] = ['translate', 'scale', 'rotate'];
+const DURATIONS: { label: string; sec: number }[] = [
+    { label: '1s', sec: 1 },
+    { label: '3s', sec: 3 },
+    { label: '5s', sec: 5 },
+];
+const FAVORITES_ANIM_DURATION_SEC = 3;
 
 class BenchmarkApp {
     private gl!: WebGL2RenderingContext;
@@ -41,9 +55,12 @@ class BenchmarkApp {
     private curveSel!: HTMLSelectElement;
     private spacingSel!: HTMLSelectElement;
     private modeSel!: HTMLSelectElement;
+    private animSel!: HTMLSelectElement;
+    private durSel!: HTMLSelectElement;
     private runBtn!: HTMLButtonElement;
     private runAllBtn!: HTMLButtonElement;
     private runFavBtn!: HTMLButtonElement;
+    private runFavAnimBtn!: HTMLButtonElement;
     private clearBtn!: HTMLButtonElement;
     private copyBtn!: HTMLButtonElement;
     private statusEl!: HTMLElement;
@@ -51,6 +68,7 @@ class BenchmarkApp {
 
     private results: (RunResult & { scenario: string })[] = [];
     private favoriteScores: FavoriteScore[] = [];
+    private favoriteAnimScores: FavoriteAnimScore[] = [];
 
     async init(): Promise<void> {
         this.buildSidebar();
@@ -185,6 +203,28 @@ class BenchmarkApp {
             this.modeSel.appendChild(o);
         }
         sidebar.appendChild(labeled('Mode', this.modeSel));
+        this.modeSel.addEventListener('change', () => this.refreshAnimEnable());
+
+        // Animation style (active only when mode === 'animate')
+        this.animSel = makeSelect();
+        for (const s of ANIMATION_STYLES) {
+            const o = document.createElement('option');
+            o.value = s; o.textContent = s;
+            this.animSel.appendChild(o);
+        }
+        sidebar.appendChild(labeled('Animation', this.animSel));
+
+        // Duration (active only when mode === 'animate')
+        this.durSel = makeSelect();
+        for (const d of DURATIONS) {
+            const o = document.createElement('option');
+            o.value = String(d.sec); o.textContent = d.label;
+            this.durSel.appendChild(o);
+        }
+        this.durSel.value = '3';
+        sidebar.appendChild(labeled('Duration', this.durSel));
+
+        this.refreshAnimEnable();
 
         // Buttons
         this.runBtn = makeButton('Run', false);
@@ -198,6 +238,10 @@ class BenchmarkApp {
         this.runFavBtn = makeButton('Score Favorites', false);
         this.runFavBtn.addEventListener('click', () => this.runFavorites());
         sidebar.appendChild(this.runFavBtn);
+
+        this.runFavAnimBtn = makeButton(`Score Favorites (Animation, ${FAVORITES_ANIM_DURATION_SEC}s)`, false);
+        this.runFavAnimBtn.addEventListener('click', () => this.runFavoritesAnimation());
+        sidebar.appendChild(this.runFavAnimBtn);
 
         this.clearBtn = makeButton('Clear canvas', true);
         this.clearBtn.addEventListener('click', () => { this.canvas?.clear(); });
@@ -223,8 +267,15 @@ class BenchmarkApp {
         this.runBtn.disabled = busy;
         this.runAllBtn.disabled = busy;
         this.runFavBtn.disabled = busy;
+        this.runFavAnimBtn.disabled = busy;
         this.categorySel.disabled = busy;
         this.brushSel.disabled = busy;
+    }
+
+    private refreshAnimEnable(): void {
+        const isAnim = (this.modeSel.value as Mode) === 'animate';
+        this.animSel.disabled = !isAnim;
+        this.durSel.disabled = !isAnim;
     }
 
     private async runOne(): Promise<void> {
@@ -233,7 +284,9 @@ class BenchmarkApp {
             const curve = this.curveSel.value as CurveKind;
             const spacing = parseFloat(this.spacingSel.value);
             const mode = this.modeSel.value as Mode;
-            await this.runScenario(curve, spacing, mode);
+            const style = this.animSel.value as AnimationStyle;
+            const durSec = parseFloat(this.durSel.value);
+            await this.runScenario(curve, spacing, mode, style, durSec);
         } finally {
             this.setBusy(false);
             this.setStatus('');
@@ -247,6 +300,9 @@ class BenchmarkApp {
             for (const curve of CURVES) {
                 for (const s of SPACINGS) {
                     for (const mode of MODES) {
+                        // Skip animate in batch run — favorites button covers it
+                        // and animate scenarios take O(seconds) each.
+                        if (mode === 'animate') continue;
                         await this.runScenario(curve, s.px, mode);
                     }
                 }
@@ -342,8 +398,102 @@ class BenchmarkApp {
         }
     }
 
-    private async runScenario(curve: CurveKind, spacingPx: number, mode: Mode): Promise<void> {
-        const label = `${curve} / ${spacingPx}px / ${mode}`;
+    private async runFavoritesAnimation(): Promise<void> {
+        this.setBusy(true);
+        this.favoriteAnimScores = [];
+        this.renderResultsTable();
+
+        try {
+            const favorites = await this.fetchFavorites();
+            if (favorites.length === 0) {
+                this.setStatus('No favorites found.');
+                return;
+            }
+
+            for (let i = 0; i < favorites.length; i++) {
+                const fav = favorites[i];
+                this.setStatus(`Animating ${i + 1}/${favorites.length}: ${fav.name}…`);
+                const score = await this.scoreFavoriteAnimation(fav, i + 1, favorites.length);
+                this.favoriteAnimScores.push(score);
+                this.renderResultsTable();
+            }
+
+            const valid = this.favoriteAnimScores.filter(s => !s.error);
+            const overall = valid.length === 0
+                ? 0
+                : valid.reduce((s, f) => s + f.avgFps, 0) / valid.length;
+            this.setStatus(`Done. Overall avg FPS = ${overall.toFixed(1)} across ${valid.length} brushes.`);
+        } catch (e) {
+            console.error(e);
+            this.setStatus(`Favorites animation run failed: ${(e as Error).message}`);
+        } finally {
+            this.setBusy(false);
+        }
+    }
+
+    private async scoreFavoriteAnimation(
+        fav: FavoriteEntry, idx: number, total: number,
+    ): Promise<FavoriteAnimScore> {
+        try {
+            await this.loadBrushesForCategory(fav.file);
+            const brushes = this.brushesByFile.get(fav.file) ?? [];
+            const brush = brushes.find(b => b.name === fav.name);
+            if (!brush) {
+                return { name: fav.name, file: fav.file, perStyleFps: {}, avgFps: 0, error: 'not found' };
+            }
+
+            this.currentBrush = JSON.parse(JSON.stringify(brush));
+            await this.canvas.setBrush(this.currentBrush);
+
+            // Fixed scenario: spiral / 2px — peak load that exposes regressions.
+            const points = sampleUniformSpacing(
+                { kind: 'spiral', canvasWidth: this.canvasW, canvasHeight: this.canvasH },
+                2,
+            );
+
+            const perStyleFps: Partial<Record<AnimationStyle, number>> = {};
+            let fpsSum = 0;
+            let stylesRun = 0;
+
+            for (const style of ANIMATION_STYLES) {
+                this.setStatus(`Animating ${idx}/${total}: ${fav.name} — ${style}`);
+                this.canvas.clear();
+                this.gl.finish();
+                await new Promise<void>(r => requestAnimationFrame(() => r()));
+                const result = await runAnimation(
+                    this.canvas, this.context, this.gl, points,
+                    style, FAVORITES_ANIM_DURATION_SEC, this.canvasW, this.canvasH,
+                );
+                const fps = result.avgFps ?? 0;
+                perStyleFps[style] = fps;
+                fpsSum += fps;
+                stylesRun++;
+            }
+
+            return {
+                name: fav.name,
+                file: fav.file,
+                perStyleFps,
+                avgFps: stylesRun === 0 ? 0 : fpsSum / stylesRun,
+            };
+        } catch (e) {
+            return {
+                name: fav.name, file: fav.file, perStyleFps: {}, avgFps: 0,
+                error: (e as Error).message,
+            };
+        }
+    }
+
+    private async runScenario(
+        curve: CurveKind,
+        spacingPx: number,
+        mode: Mode,
+        animStyle: AnimationStyle = 'translate',
+        durSec: number = 3,
+    ): Promise<void> {
+        const label = mode === 'animate'
+            ? `${curve} / ${spacingPx}px / animate-${animStyle}-${durSec}s`
+            : `${curve} / ${spacingPx}px / ${mode}`;
         this.setStatus(`Running ${label}…`);
 
         // Reset canvas state between runs to keep measurements independent.
@@ -360,7 +510,12 @@ class BenchmarkApp {
 
         const result = mode === 'throughput'
             ? await runThroughput(this.canvas, this.context, this.gl, points)
-            : await runFrame(this.canvas, this.context, this.gl, points);
+            : mode === 'frame'
+                ? await runFrame(this.canvas, this.context, this.gl, points)
+                : await runAnimation(
+                    this.canvas, this.context, this.gl, points,
+                    animStyle, durSec, this.canvasW, this.canvasH,
+                );
 
         this.results.push({ ...result, scenario: label });
         this.renderResultsTable();
@@ -368,6 +523,7 @@ class BenchmarkApp {
 
     private renderResultsTable(): void {
         let html = this.renderFavoritesSummary();
+        html += this.renderFavoritesAnimSummary();
         html += this.renderScenarioTable();
         this.resultsEl.innerHTML = html || '<div style="color:#555;text-align:center;padding:12px;">No runs yet.</div>';
     }
@@ -394,15 +550,77 @@ class BenchmarkApp {
         return html;
     }
 
+    private renderFavoritesAnimSummary(): string {
+        if (this.favoriteAnimScores.length === 0) return '';
+        const valid = this.favoriteAnimScores.filter(s => !s.error);
+        const overallAvg = valid.length === 0
+            ? 0
+            : valid.reduce((s, f) => s + f.avgFps, 0) / valid.length;
+
+        // Worst per-style fps across all valid brushes
+        let worstFps = Infinity;
+        let worstBrush = '';
+        let worstStyle: AnimationStyle | '' = '';
+        for (const f of valid) {
+            for (const style of ANIMATION_STYLES) {
+                const fps = f.perStyleFps[style];
+                if (fps !== undefined && fps < worstFps) {
+                    worstFps = fps;
+                    worstBrush = f.name;
+                    worstStyle = style;
+                }
+            }
+        }
+        const worstStr = worstFps === Infinity
+            ? ''
+            : ` (worst ${worstFps.toFixed(1)} on ${escapeHtml(worstBrush)}/${worstStyle})`;
+
+        // Sort: slowest first (regression visibility); errors at the bottom.
+        const sorted = [...this.favoriteAnimScores].sort((a, b) => {
+            if (a.error && !b.error) return 1;
+            if (!a.error && b.error) return -1;
+            return a.avgFps - b.avgFps;
+        });
+
+        let html = '<div style="margin-bottom:10px;">'
+            + `<div style="color:#4a90d9;font-weight:600;margin-bottom:4px;">`
+            + `Favorites animation FPS — overall avg ${overallAvg.toFixed(1)}`
+            + `${worstStr} (spiral / 2px / ${FAVORITES_ANIM_DURATION_SEC}s, ${valid.length} brushes; higher is better)`
+            + `</div>`
+            + '<table><thead><tr>'
+            + '<th>brush</th><th>file</th>'
+            + '<th>translate fps</th><th>scale fps</th><th>rotate fps</th>'
+            + '<th>avg fps</th>'
+            + '</tr></thead><tbody>';
+        for (const f of sorted) {
+            html += `<tr><td>${escapeHtml(f.name)}</td>`
+                + `<td>${escapeHtml(f.file)}</td>`;
+            if (f.error) {
+                html += `<td colspan="4"><span style="color:#c66">${escapeHtml(f.error)}</span></td>`;
+            } else {
+                for (const style of ANIMATION_STYLES) {
+                    const fps = f.perStyleFps[style];
+                    html += `<td>${fps !== undefined ? fps.toFixed(1) : '—'}</td>`;
+                }
+                html += `<td><b>${f.avgFps.toFixed(1)}</b></td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table></div>';
+        return html;
+    }
+
     private renderScenarioTable(): string {
         const rows = this.results;
         if (rows.length === 0) return '';
         const hasFrame = rows.some(r => r.frameMs);
+        const hasFps = rows.some(r => r.avgFps !== undefined);
         const hasHeap = rows.some(r => r.heapDeltaMb !== undefined);
 
         let html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:4px;">Scenario detail</div>'
             + '<table><thead><tr>'
             + '<th>scenario</th><th>n</th><th>cpu (ms)</th><th>flush (ms)</th><th>pts/sec</th>';
+        if (hasFps) html += '<th>fps</th><th>frames</th>';
         if (hasFrame) html += '<th>p50 (ms)</th><th>p95 (ms)</th><th>p99 (ms)</th><th>max (ms)</th>';
         if (hasHeap) html += '<th>Δheap (MB)</th>';
         html += '</tr></thead><tbody>';
@@ -413,6 +631,11 @@ class BenchmarkApp {
                 + `<td>${r.cpuMs.toFixed(2)}</td>`
                 + `<td>${r.flushMs.toFixed(2)}</td>`
                 + `<td>${Math.round(r.pointsPerSec).toLocaleString()}</td>`;
+            if (hasFps) {
+                html += r.avgFps !== undefined
+                    ? `<td>${r.avgFps.toFixed(1)}</td><td>${r.frames ?? 0}</td>`
+                    : '<td>—</td><td>—</td>';
+            }
             if (hasFrame) {
                 if (r.frameMs) {
                     html += `<td>${r.frameMs.p50.toFixed(2)}</td>`
@@ -435,12 +658,18 @@ class BenchmarkApp {
 
     private async copyResults(): Promise<void> {
         const favTotal = this.favoriteScores.reduce((s, f) => s + f.totalFlushMs, 0);
+        const animValid = this.favoriteAnimScores.filter(s => !s.error);
+        const animOverallFps = animValid.length === 0
+            ? null
+            : animValid.reduce((s, f) => s + f.avgFps, 0) / animValid.length;
         const payload = {
             timestamp: new Date().toISOString(),
             canvasSize: { width: this.canvasW, height: this.canvasH },
             brush: this.currentBrush?.name ?? null,
             favoritesTotalMs: this.favoriteScores.length > 0 ? favTotal : null,
             favoriteScores: this.favoriteScores,
+            favoritesAnimOverallFps: animOverallFps,
+            favoriteAnimScores: this.favoriteAnimScores,
             results: this.results,
         };
         try {
