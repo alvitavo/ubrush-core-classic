@@ -86,15 +86,34 @@ export class WGPUContext {
 
     public async readPixels(renderTarget: WGPURenderTarget, pixelBounds: Rect): Promise<Uint8Array> {
 
-        const width = pixelBounds.size.width;
-        const height = pixelBounds.size.height;
+        // Caller-requested region — buffer returned to caller is always sized
+        // for this region. Out-of-bound pixels are zero-filled (WebGL silently
+        // returned 0s for over-bound reads; WebGPU's copyTextureToBuffer is
+        // strict, so we clamp and pad here to preserve caller assumptions).
+        const reqW = pixelBounds.size.width;
+        const reqH = pixelBounds.size.height;
+        const out = new Uint8Array(reqW * reqH * 4);
+
+        if (reqW === 0 || reqH === 0) return out;
+
+        const tw = renderTarget.size.width;
+        const th = renderTarget.size.height;
+
+        const sx = Math.max(0, pixelBounds.origin.x);
+        const sy = Math.max(0, pixelBounds.origin.y);
+        const ex = Math.min(tw, pixelBounds.origin.x + reqW);
+        const ey = Math.min(th, pixelBounds.origin.y + reqH);
+        const cw = Math.max(0, ex - sx);
+        const ch = Math.max(0, ey - sy);
+
+        if (cw === 0 || ch === 0) return out; // entirely outside the texture
 
         // bytesPerRow must be a multiple of 256 for copyTextureToBuffer.
-        const unpaddedBytesPerRow = width * 4;
+        const unpaddedBytesPerRow = cw * 4;
         const paddedBytesPerRow = Math.ceil(unpaddedBytesPerRow / 256) * 256;
 
         const buffer = this.device.createBuffer({
-            size: paddedBytesPerRow * height,
+            size: paddedBytesPerRow * ch,
             usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
         });
 
@@ -102,30 +121,30 @@ export class WGPUContext {
         encoder.copyTextureToBuffer(
             {
                 texture: renderTarget.gpuTexture,
-                origin: { x: pixelBounds.origin.x, y: pixelBounds.origin.y },
+                origin: { x: sx, y: sy },
             },
             {
                 buffer,
                 bytesPerRow: paddedBytesPerRow,
-                rowsPerImage: height,
+                rowsPerImage: ch,
             },
-            { width, height, depthOrArrayLayers: 1 },
+            { width: cw, height: ch, depthOrArrayLayers: 1 },
         );
         this.device.queue.submit([encoder.finish()]);
 
         await buffer.mapAsync(GPUMapMode.READ);
         const mapped = new Uint8Array(buffer.getMappedRange());
 
-        const out = new Uint8Array(width * height * 4);
-        if (paddedBytesPerRow === unpaddedBytesPerRow) {
-            out.set(mapped);
-        } else {
-            for (let row = 0; row < height; row++) {
-                out.set(
-                    mapped.subarray(row * paddedBytesPerRow, row * paddedBytesPerRow + unpaddedBytesPerRow),
-                    row * unpaddedBytesPerRow,
-                );
-            }
+        // Place the clamped region at its correct offset within `out`.
+        const dstX = sx - pixelBounds.origin.x;
+        const dstY = sy - pixelBounds.origin.y;
+
+        for (let row = 0; row < ch; row++) {
+            const dstRowStart = ((dstY + row) * reqW + dstX) * 4;
+            out.set(
+                mapped.subarray(row * paddedBytesPerRow, row * paddedBytesPerRow + unpaddedBytesPerRow),
+                dstRowStart,
+            );
         }
 
         buffer.unmap();

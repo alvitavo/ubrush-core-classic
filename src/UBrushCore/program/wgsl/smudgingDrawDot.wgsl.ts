@@ -11,7 +11,8 @@
 //   binding 2: u_patternTexture      (texture_2d<f32>)
 //   binding 3: u_smudging0RefTexture (texture_2d<f32>)
 //   binding 4: u_smudgingRefTexture  (texture_2d<f32>)
-//   binding 5: u_sampler             (sampler)
+//   binding 5: u_sampler             (sampler — clamp)
+//   binding 6: u_patternSampler      (sampler — repeat, pattern texture only)
 //
 // Vertex buffers: identical to DrawDot (locations 0..12).
 
@@ -56,6 +57,7 @@ struct VsOut {
 @group(0) @binding(3) var u_smudging0RefTexture : texture_2d<f32>;
 @group(0) @binding(4) var u_smudgingRefTexture  : texture_2d<f32>;
 @group(0) @binding(5) var u_sampler             : sampler;
+@group(0) @binding(6) var u_patternSampler      : sampler;
 
 @vertex
 fn vs_main(in : VsIn) -> VsOut {
@@ -95,7 +97,7 @@ fn textureCorrosionFn(v : f32, c : f32, size : f32) -> f32 {
 fn fs_main(in : VsOut) -> @location(0) vec4f {
     if (u.mode == 0) {
         // alpha-only path
-        var s_rawPatternAlpha = textureSample(u_patternTexture, u_sampler, in.vPatternTextureCoordinate).a;
+        var s_rawPatternAlpha = textureSample(u_patternTexture, u_patternSampler, in.vPatternTextureCoordinate).a;
         s_rawPatternAlpha = textureCorrosionFn(s_rawPatternAlpha, in.vCorrosion[1], in.vCorrosion[3]);
         let s_patternMaskAlpha = 1.0 - s_rawPatternAlpha * in.vOpacity[1];
 
@@ -103,8 +105,9 @@ fn fs_main(in : VsOut) -> @location(0) vec4f {
         s_tipAlpha = corrosionFn(s_tipAlpha, in.vCorrosion[0], in.vCorrosion[2]);
         let s_smudgingAlpha = s_tipAlpha;
 
-        let s_smudging0White = textureSample(u_smudging0RefTexture, u_sampler, in.vSmudging0TexturePosition).r * (1.0 - in.vOpacity[3]);
-        let s_smudgingWhite  = textureSample(u_smudgingRefTexture,  u_sampler, in.vSmudgingTexturePosition).r  * in.vOpacity[3];
+        // V flip — smudging refs are render targets (row 0 = top in WebGPU).
+        let s_smudging0White = textureSample(u_smudging0RefTexture, u_sampler, vec2f(in.vSmudging0TexturePosition.x, 1.0 - in.vSmudging0TexturePosition.y)).r * (1.0 - in.vOpacity[3]);
+        let s_smudgingWhite  = textureSample(u_smudgingRefTexture,  u_sampler, vec2f(in.vSmudgingTexturePosition.x,  1.0 - in.vSmudgingTexturePosition.y)).r  * in.vOpacity[3];
 
         let s_white = ((s_tipAlpha * in.vOpacity[0]) + ((s_smudging0White + s_smudgingWhite) * s_tipAlpha * in.vOpacity[2] * (1.0 - in.vOpacity[0]))) * s_patternMaskAlpha;
         let s_alpha = ((s_tipAlpha * in.vOpacity[0]) + (s_smudgingAlpha * in.vOpacity[2] * (1.0 - in.vOpacity[0]))) * s_patternMaskAlpha;
@@ -112,7 +115,7 @@ fn fs_main(in : VsOut) -> @location(0) vec4f {
         return vec4f(vec3f(s_white), s_alpha);
     } else {
         // color path (same as DrawDot fragment)
-        var s_rawPatternAlpha = textureSample(u_patternTexture, u_sampler, in.vPatternTextureCoordinate).a;
+        var s_rawPatternAlpha = textureSample(u_patternTexture, u_patternSampler, in.vPatternTextureCoordinate).a;
         s_rawPatternAlpha = textureCorrosionFn(s_rawPatternAlpha, in.vCorrosion[1], in.vCorrosion[3]);
         let s_patternMaskAlpha = 1.0 - s_rawPatternAlpha * in.vOpacity[1];
 
@@ -123,8 +126,9 @@ fn fs_main(in : VsOut) -> @location(0) vec4f {
         let tinted = tipRgb * (1.0 - in.vTintColor.a) + in.vTintColor.rgb * s_tipColor.a * in.vTintColor.a;
         s_tipColor = vec4f(tinted, s_tipColor.a);
 
-        let s_smudging0Color = textureSample(u_smudging0RefTexture, u_sampler, in.vSmudging0TexturePosition) * (1.0 - in.vOpacity[3]);
-        let s_smudgingColor  = textureSample(u_smudgingRefTexture,  u_sampler, in.vSmudgingTexturePosition)  * in.vOpacity[3];
+        // V flip — smudging refs are render targets (row 0 = top in WebGPU).
+        let s_smudging0Color = textureSample(u_smudging0RefTexture, u_sampler, vec2f(in.vSmudging0TexturePosition.x, 1.0 - in.vSmudging0TexturePosition.y)) * (1.0 - in.vOpacity[3]);
+        let s_smudgingColor  = textureSample(u_smudgingRefTexture,  u_sampler, vec2f(in.vSmudgingTexturePosition.x,  1.0 - in.vSmudgingTexturePosition.y))  * in.vOpacity[3];
 
         var s_out = (s_tipColor * in.vOpacity[0]) + ((s_smudging0Color + s_smudgingColor) * s_tipColor.a * in.vOpacity[2] * (1.0 - in.vOpacity[0]));
         s_out = s_out * s_patternMaskAlpha;

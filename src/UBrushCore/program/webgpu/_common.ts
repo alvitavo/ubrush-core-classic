@@ -103,6 +103,14 @@ export function quadPositions(targetRect: Rect, transform: AffineTransform): Flo
 
 // Build the 4 texture coordinates for a TriangleStrip quad, normalized into
 // the canvas rect's UV space.
+//
+// WebGPU defines UV (0,0) as the top-left of a texture; the WebGL backend
+// this codebase grew up on used (0,0) = bottom-left. Source rects passed in
+// from the engine still follow the WebGL convention (y=0 = bottom of the
+// framebuffer), so we flip V here once and every quad-blit program inherits
+// the correct orientation. Render targets and PNG textures continue to use
+// the same coordinate system inside the engine — only the composite step
+// needs the flip.
 export function quadTexCoords(sourceRect: Rect, canvasRect: Rect): Float32Array {
 
     let sx1 = sourceRect.origin.x;
@@ -116,10 +124,10 @@ export function quadTexCoords(sourceRect: Rect, canvasRect: Rect): Float32Array 
     sy2 = (sy2 - canvasRect.origin.y) / canvasRect.size.height;
 
     return new Float32Array([
-        sx1, sy1,
-        sx2, sy1,
-        sx1, sy2,
-        sx2, sy2,
+        sx1, 1.0 - sy1,
+        sx2, 1.0 - sy1,
+        sx1, 1.0 - sy2,
+        sx2, 1.0 - sy2,
     ]);
 
 }
@@ -131,6 +139,20 @@ export function createLinearClampSampler(device: GPUDevice): GPUSampler {
         minFilter: "linear",
         addressModeU: "clamp-to-edge",
         addressModeV: "clamp-to-edge",
+    });
+
+}
+
+// For pattern textures (brush textures repeated across the stamp). The WebGL
+// path used GL's per-texture WRAP_S/WRAP_T = REPEAT (when texture was POT);
+// in WebGPU the wrap mode lives on the sampler, so we keep a dedicated one.
+export function createLinearRepeatSampler(device: GPUDevice): GPUSampler {
+
+    return device.createSampler({
+        magFilter: "linear",
+        minFilter: "linear",
+        addressModeU: "repeat",
+        addressModeV: "repeat",
     });
 
 }

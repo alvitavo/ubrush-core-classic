@@ -6,19 +6,17 @@ import { smudgingDrawDotWGSL } from "../wgsl/smudgingDrawDot.wgsl";
 import {
     blendStateFor,
     createLinearClampSampler,
+    createLinearRepeatSampler,
     makeVertexBuffer,
     makeUniformBuffer,
 } from "./_common";
+import {
+    QUAD_CORNERS,
+    packInstances,
+    INSTANCE_VERTEX_LAYOUT,
+    CORNER_VERTEX_LAYOUT,
+} from "./WGPUDrawDotProgram";
 
-const QUAD_CORNERS = new Float32Array([
-    -1.0, -1.0,
-     1.0, -1.0,
-    -1.0,  1.0,
-     1.0,  1.0,
-]);
-
-const VEC2 = 8;
-const VEC4 = 16;
 const UNIFORM_BYTES = 16; // i32 mode + 12 bytes pad
 
 // WebGPU port of SmudgingDrawDotProgram. Renders two passes per call (alpha
@@ -33,6 +31,7 @@ export class WGPUSmudgingDrawDotProgram {
     private bindGroupLayout: GPUBindGroupLayout;
     private pipelineLayout: GPUPipelineLayout;
     private sampler: GPUSampler;
+    private patternSampler: GPUSampler;
 
     private cornerBuffer: GPUBuffer;
     private pipeline: GPURenderPipeline | null = null;
@@ -50,7 +49,8 @@ export class WGPUSmudgingDrawDotProgram {
                 { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } }, // pattern
                 { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } }, // smudging0Ref
                 { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } }, // smudgingRef
-                { binding: 5, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+                { binding: 5, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },   // clamp
+                { binding: 6, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },   // repeat (pattern)
             ],
         });
 
@@ -59,6 +59,7 @@ export class WGPUSmudgingDrawDotProgram {
         });
 
         this.sampler = createLinearClampSampler(this.device);
+        this.patternSampler = createLinearRepeatSampler(this.device);
 
         this.cornerBuffer = makeVertexBuffer(this.device, QUAD_CORNERS);
 
@@ -100,20 +101,8 @@ export class WGPUSmudgingDrawDotProgram {
 
         const tip = param.useDualTip ? param.dualTipTexture : param.tipTexture;
 
-        const buffers: GPUBuffer[] = [
-            makeVertexBuffer(this.device, param.posCenterAxisU),
-            makeVertexBuffer(this.device, param.posAxisV),
-            makeVertexBuffer(this.device, param.tipUV),
-            makeVertexBuffer(this.device, param.patternUVa),
-            makeVertexBuffer(this.device, param.patternUVb),
-            makeVertexBuffer(this.device, param.smudging0UVa),
-            makeVertexBuffer(this.device, param.smudging0UVb),
-            makeVertexBuffer(this.device, param.smudgingUVa),
-            makeVertexBuffer(this.device, param.smudgingUVb),
-            makeVertexBuffer(this.device, param.tintColor),
-            makeVertexBuffer(this.device, param.opacity),
-            makeVertexBuffer(this.device, param.corrosion),
-        ];
+        const packed = packInstances(param);
+        const instanceBuffer = makeVertexBuffer(this.device, packed);
 
         const alphaUniform = makeUniformBuffer(this.device, UNIFORM_BYTES);
         const colorUniform = makeUniformBuffer(this.device, UNIFORM_BYTES);
@@ -133,6 +122,7 @@ export class WGPUSmudgingDrawDotProgram {
                 { binding: 3, resource: param.smudging0CopyAlphaTexture.getView() },
                 { binding: 4, resource: param.smudgingCopyAlphaTexture.getView() },
                 { binding: 5, resource: this.sampler },
+                { binding: 6, resource: this.patternSampler },
             ],
         });
 
@@ -145,6 +135,7 @@ export class WGPUSmudgingDrawDotProgram {
                 { binding: 3, resource: param.smudging0CopyColorFramebuffer.getView() },
                 { binding: 4, resource: param.smudgingCopyColorFramebuffer.getView() },
                 { binding: 5, resource: this.sampler },
+                { binding: 6, resource: this.patternSampler },
             ],
         });
 
@@ -163,7 +154,7 @@ export class WGPUSmudgingDrawDotProgram {
             });
             pass.setPipeline(pipeline);
             pass.setVertexBuffer(0, this.cornerBuffer);
-            for (let i = 0; i < buffers.length; i++) pass.setVertexBuffer(i + 1, buffers[i]);
+            pass.setVertexBuffer(1, instanceBuffer);
             pass.setBindGroup(0, alphaBindGroup);
             pass.draw(4, param.instanceCount, 0, 0);
             pass.end();
@@ -180,7 +171,7 @@ export class WGPUSmudgingDrawDotProgram {
             });
             pass.setPipeline(pipeline);
             pass.setVertexBuffer(0, this.cornerBuffer);
-            for (let i = 0; i < buffers.length; i++) pass.setVertexBuffer(i + 1, buffers[i]);
+            pass.setVertexBuffer(1, instanceBuffer);
             pass.setBindGroup(0, colorBindGroup);
             pass.draw(4, param.instanceCount, 0, 0);
             pass.end();
@@ -188,7 +179,7 @@ export class WGPUSmudgingDrawDotProgram {
 
         this.device.queue.submit([encoder.finish()]);
 
-        for (const b of buffers) b.destroy();
+        instanceBuffer.destroy();
         alphaUniform.destroy();
         colorUniform.destroy();
 
@@ -204,21 +195,7 @@ export class WGPUSmudgingDrawDotProgram {
             vertex: {
                 module: this.module,
                 entryPoint: "vs_main",
-                buffers: [
-                    { arrayStride: VEC2, stepMode: "vertex",   attributes: [{ shaderLocation:  0, offset: 0, format: "float32x2" }] },
-                    { arrayStride: VEC4, stepMode: "instance", attributes: [{ shaderLocation:  1, offset: 0, format: "float32x4" }] },
-                    { arrayStride: VEC2, stepMode: "instance", attributes: [{ shaderLocation:  2, offset: 0, format: "float32x2" }] },
-                    { arrayStride: VEC4, stepMode: "instance", attributes: [{ shaderLocation:  3, offset: 0, format: "float32x4" }] },
-                    { arrayStride: VEC4, stepMode: "instance", attributes: [{ shaderLocation:  4, offset: 0, format: "float32x4" }] },
-                    { arrayStride: VEC2, stepMode: "instance", attributes: [{ shaderLocation:  5, offset: 0, format: "float32x2" }] },
-                    { arrayStride: VEC4, stepMode: "instance", attributes: [{ shaderLocation:  6, offset: 0, format: "float32x4" }] },
-                    { arrayStride: VEC2, stepMode: "instance", attributes: [{ shaderLocation:  7, offset: 0, format: "float32x2" }] },
-                    { arrayStride: VEC4, stepMode: "instance", attributes: [{ shaderLocation:  8, offset: 0, format: "float32x4" }] },
-                    { arrayStride: VEC2, stepMode: "instance", attributes: [{ shaderLocation:  9, offset: 0, format: "float32x2" }] },
-                    { arrayStride: VEC4, stepMode: "instance", attributes: [{ shaderLocation: 10, offset: 0, format: "float32x4" }] },
-                    { arrayStride: VEC4, stepMode: "instance", attributes: [{ shaderLocation: 11, offset: 0, format: "float32x4" }] },
-                    { arrayStride: VEC4, stepMode: "instance", attributes: [{ shaderLocation: 12, offset: 0, format: "float32x4" }] },
-                ],
+                buffers: [CORNER_VERTEX_LAYOUT, INSTANCE_VERTEX_LAYOUT],
             },
             fragment: {
                 module: this.module,
