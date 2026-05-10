@@ -297,8 +297,6 @@ export class DrawingScreen implements CanvasDelegate {
         // Undo button
         this.undoBtnEl = actionBtn('Undo', '#4a4a4a', () => this.undo());
         this.undoBtnEl.disabled = true;
-        this.undoBtnEl.hidden = true;
-
         sidebar.appendChild(this.undoBtnEl);
 
         // Divider

@@ -552,28 +552,28 @@ export class DrawingEngine {
             });
         }
 
-        const patchImageUrl = this.context.readPixelsByDataURL(tempRenderTarget, partRectByPixel);
+        const patchPixels = this.context.readPixels(tempRenderTarget, partRectByPixel);
 
-        let patchMaskImageUrl: string | undefined;
+        let patchMaskPixels: Uint8Array | undefined;
         if (withMask && fixerRenderTarget === FixerRenderTarget.Liquid) {
             ProgramManager.getInstance().fillRectProgram.fill(tempRenderTarget, {
                 targetRect: partRectByPixel, source: this.maskLiquidRenderTarget!.texture,
                 sourceRect: partRectByPixel, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
-            patchMaskImageUrl = this.context.readPixelsByDataURL(tempRenderTarget, partRectByPixel);
+            patchMaskPixels = this.context.readPixels(tempRenderTarget, partRectByPixel);
         }
 
-        return new Fixer(partRectByPixel, rect, fixerRenderTarget, patchImageUrl, patchMaskImageUrl);
+        return new Fixer(partRectByPixel, rect, fixerRenderTarget, patchPixels, patchMaskPixels);
     }
 
     // ---- fix ----
 
     public async fix(fixer: Fixer, toLiquidLayer: boolean): Promise<Rect> {
-        if (fixer.patchImageUrl === undefined) return new Rect();
+        if (fixer.patchPixels === undefined) return new Rect();
 
         const canvasRect = new Rect(0, 0, this.size.width, this.size.height);
         const texture = this.context.createTexture();
-        await texture.loadFromBase64(fixer.patchImageUrl);
+        texture.loadFromRGBA(fixer.patchPixels, fixer.patchRect.size.width, fixer.patchRect.size.height);
 
         if (this._alphaSmudgingMode) {
             ProgramManager.getInstance().fillRectProgram.fill(this.liquidRenderTarget, {
@@ -604,9 +604,9 @@ export class DrawingEngine {
                 sourceRect: canvasRect, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
 
-            if (this._useSecondaryMask && fixer.patchMaskImageUrl) {
+            if (this._useSecondaryMask && fixer.patchMaskPixels) {
                 const maskTexture = this.context.createTexture();
-                await maskTexture.loadFromBase64(fixer.patchMaskImageUrl);
+                maskTexture.loadFromRGBA(fixer.patchMaskPixels, fixer.patchRect.size.width, fixer.patchRect.size.height);
                 ProgramManager.getInstance().fillRectProgram.fill(this.maskLiquidRenderTarget!, {
                     targetRect: fixer.patchRect, source: maskTexture,
                     sourceRect: canvasRect, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None

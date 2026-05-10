@@ -217,30 +217,6 @@ export class UBrushContext {
 
     }
     
-    public readPixelsByDataURL(renderTarget: RenderTarget, pixelBounds: Rect): string {
-
-        // const array = this.readPixels(renderTarget, pixelBounds);
-
-        // const w = pixelBounds.size.width;
-        // const h = pixelBounds.size.height;
-        // const canvas = document.createElement("canvas");
-        // canvas.width = w;
-        // canvas.height = h;
-        // const ctx = canvas.getContext("2d");
-
-        // if (ctx) {
-
-        //     const imagedata = new ImageData(new Uint8ClampedArray(array), w, h);
-        //     ctx.putImageData(imagedata, 0, 0);
-
-        // }
-
-        // return canvas.toDataURL();
-
-        return "";
-
-    }
-    
     public readPixels(renderTarget: RenderTarget, pixelBounds: Rect): Uint8Array {
 
         this.activateRenderTarget(renderTarget);
