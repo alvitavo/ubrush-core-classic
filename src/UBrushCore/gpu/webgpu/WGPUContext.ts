@@ -86,10 +86,17 @@ export class WGPUContext {
 
     public async readPixels(renderTarget: WGPURenderTarget, pixelBounds: Rect): Promise<Uint8Array> {
 
-        // Caller-requested region — buffer returned to caller is always sized
-        // for this region. Out-of-bound pixels are zero-filled (WebGL silently
-        // returned 0s for over-bound reads; WebGPU's copyTextureToBuffer is
-        // strict, so we clamp and pad here to preserve caller assumptions).
+        // Engine code throughout the codebase passes pixelBounds with a
+        // framebuffer y-up convention (y=0 = bottom of the framebuffer — the
+        // WebGL convention this codebase grew up on). Convert to texture
+        // coords (y=0 = top of the texture) before issuing copyTextureToBuffer.
+        //
+        // The returned buffer follows the WebGPU texture layout: row 0 =
+        // visual top of the requested region. Combined with the V-flipped
+        // quadTexCoords used by the quad-blit programs, this round-trips
+        // correctly when the caller re-uploads via loadFromRGBA and draws
+        // through fillRectProgram (e.g. fixer apply path).
+
         const reqW = pixelBounds.size.width;
         const reqH = pixelBounds.size.height;
         const out = new Uint8Array(reqW * reqH * 4);
@@ -99,12 +106,24 @@ export class WGPUContext {
         const tw = renderTarget.size.width;
         const th = renderTarget.size.height;
 
-        const sx = Math.max(0, pixelBounds.origin.x);
-        const sy = Math.max(0, pixelBounds.origin.y);
-        const ex = Math.min(tw, pixelBounds.origin.x + reqW);
-        const ey = Math.min(th, pixelBounds.origin.y + reqH);
-        const cw = Math.max(0, ex - sx);
-        const ch = Math.max(0, ey - sy);
+        // Caller's rect in framebuffer (y-up) coords.
+        const callerL = pixelBounds.origin.x;
+        const callerB = pixelBounds.origin.y;
+        const callerR = callerL + reqW;
+        const callerT = callerB + reqH;
+
+        // Translate to texture (y-down) coords. Top edge of caller's rect
+        // (callerT in y-up) maps to the smaller texture y (texTop).
+        const texTop = th - callerT;
+        const texBot = th - callerB;
+
+        // Clamp to texture bounds.
+        const sxL = Math.max(0, callerL);
+        const sxR = Math.min(tw, callerR);
+        const sxT = Math.max(0, texTop);
+        const sxB = Math.min(th, texBot);
+        const cw = Math.max(0, sxR - sxL);
+        const ch = Math.max(0, sxB - sxT);
 
         if (cw === 0 || ch === 0) return out; // entirely outside the texture
 
@@ -121,7 +140,7 @@ export class WGPUContext {
         encoder.copyTextureToBuffer(
             {
                 texture: renderTarget.gpuTexture,
-                origin: { x: sx, y: sy },
+                origin: { x: sxL, y: sxT },
             },
             {
                 buffer,
@@ -135,15 +154,21 @@ export class WGPUContext {
         await buffer.mapAsync(GPUMapMode.READ);
         const mapped = new Uint8Array(buffer.getMappedRange());
 
-        // Place the clamped region at its correct offset within `out`.
-        const dstX = sx - pixelBounds.origin.x;
-        const dstY = sy - pixelBounds.origin.y;
+        // Place clamped region into out. `out` is sized [reqW × reqH] and
+        // laid out with row 0 = top of the requested region (texture y-down
+        // convention). The clamped region's top edge in texture y is sxT,
+        // and the requested region's top edge in texture y is texTop, so the
+        // first row of mapped data lands at out row (sxT - texTop).
+        const dstRow0 = sxT - texTop;
+        const dstX = sxL - callerL;
 
-        for (let row = 0; row < ch; row++) {
-            const dstRowStart = ((dstY + row) * reqW + dstX) * 4;
+        for (let r = 0; r < ch; r++) {
+            const outRow = dstRow0 + r;
+            if (outRow < 0 || outRow >= reqH) continue;
+            const dstStart = (outRow * reqW + dstX) * 4;
             out.set(
-                mapped.subarray(row * paddedBytesPerRow, row * paddedBytesPerRow + unpaddedBytesPerRow),
-                dstRowStart,
+                mapped.subarray(r * paddedBytesPerRow, r * paddedBytesPerRow + unpaddedBytesPerRow),
+                dstStart,
             );
         }
 
