@@ -8,7 +8,7 @@ import { AffineTransform } from '../common/AffineTransform';
 import { RenderObjectBlend } from '../gpu/RenderObject';
 import { Color } from '../common/Color';
 
-export type Mode = 'throughput' | 'frame' | 'animate';
+export type Mode = 'throughput' | 'frame' | 'animate' | 'throughput-batch' | 'animate-batch';
 export type AnimationStyle = 'translate' | 'scale' | 'rotate';
 
 export interface RunResult {
@@ -90,6 +90,7 @@ export async function runThroughput(
     ctx: UBrushContext,
     gl: WebGL2RenderingContext,
     points: Point[],
+    batched: boolean = false,
 ): Promise<RunResult> {
     const heapBefore = readHeapMb();
     const stylus = new Stylus();
@@ -98,36 +99,41 @@ export async function runThroughput(
     compositeToScreen(canvas, ctx);
     gl.finish();
 
-    resetDrawCalls(gl);
-    const t0 = performance.now();
-    canvas.moveTo(points[0], stylus);
-    for (let i = 1; i < points.length - 1; i++) {
-        canvas.lineTo(points[i], stylus);
+    if (batched) canvas.setStrokeBatchingEnabled(true);
+    try {
+        resetDrawCalls(gl);
+        const t0 = performance.now();
+        canvas.moveTo(points[0], stylus);
+        for (let i = 1; i < points.length - 1; i++) {
+            canvas.lineTo(points[i], stylus);
+        }
+        canvas.endLine(points[points.length - 1], stylus);
+        const t1 = performance.now();
+
+        gl.finish();
+        const t2 = performance.now();
+        const drawCalls = readDrawCalls(gl);
+
+        compositeToScreen(canvas, ctx);
+        gl.finish();
+
+        const heapAfter = readHeapMb();
+        const heapDelta = heapBefore !== undefined && heapAfter !== undefined
+            ? heapAfter - heapBefore : undefined;
+
+        const flushMs = t2 - t0;
+        return {
+            mode: batched ? 'throughput-batch' : 'throughput',
+            n: points.length,
+            cpuMs: t1 - t0,
+            flushMs,
+            pointsPerSec: points.length / (flushMs / 1000),
+            heapDeltaMb: heapDelta,
+            drawCalls,
+        };
+    } finally {
+        if (batched) canvas.setStrokeBatchingEnabled(false);
     }
-    canvas.endLine(points[points.length - 1], stylus);
-    const t1 = performance.now();
-
-    gl.finish();
-    const t2 = performance.now();
-    const drawCalls = readDrawCalls(gl);
-
-    compositeToScreen(canvas, ctx);
-    gl.finish();
-
-    const heapAfter = readHeapMb();
-    const heapDelta = heapBefore !== undefined && heapAfter !== undefined
-        ? heapAfter - heapBefore : undefined;
-
-    const flushMs = t2 - t0;
-    return {
-        mode: 'throughput',
-        n: points.length,
-        cpuMs: t1 - t0,
-        flushMs,
-        pointsPerSec: points.length / (flushMs / 1000),
-        heapDeltaMb: heapDelta,
-        drawCalls,
-    };
 }
 
 // Translate amplitude as fraction of canvas dimension; scale range [1-S, 1+S];
@@ -182,6 +188,7 @@ export function runAnimation(
     durationSec: number,
     canvasWidth: number,
     canvasHeight: number,
+    batched: boolean = false,
 ): Promise<RunResult> {
     return new Promise((resolve) => {
         const heapBefore = readHeapMb();
@@ -216,8 +223,9 @@ export function runAnimation(
                     ? heapAfter - heapBefore : undefined;
                 const sorted = [...frameDurations].sort((a, b) => a - b);
                 const avgFps = frames / (durationMs / 1000);
+                if (batched) canvas.setStrokeBatchingEnabled(false);
                 resolve({
-                    mode: 'animate',
+                    mode: batched ? 'animate-batch' : 'animate',
                     n: points.length,
                     cpuMs: durationMs,
                     flushMs: durationMs,
@@ -246,11 +254,13 @@ export function runAnimation(
             const frameStart = performance.now();
             const stylus = new Stylus();
             canvas.clear();
+            if (batched) canvas.setStrokeBatchingEnabled(true);
             canvas.moveTo(buf[0], stylus);
             for (let i = 1; i < buf.length - 1; i++) {
                 canvas.lineTo(buf[i], stylus);
             }
             canvas.endLine(buf[buf.length - 1], stylus);
+            if (batched) canvas.setStrokeBatchingEnabled(false);
             compositeToScreen(canvas, ctx);
             const frameEnd = performance.now();
             frameDurations.push(frameEnd - frameStart);

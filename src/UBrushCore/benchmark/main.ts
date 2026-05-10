@@ -33,7 +33,7 @@ const SPACINGS: { label: string; px: number }[] = [
     { label: 'dense (2px)', px: 2 },
     { label: 'medium (10px)', px: 10 },
 ];
-const MODES: Mode[] = ['throughput', 'frame', 'animate'];
+const MODES: Mode[] = ['throughput', 'frame', 'animate', 'throughput-batch', 'animate-batch'];
 const ANIMATION_STYLES: AnimationStyle[] = ['translate', 'scale', 'rotate'];
 const DURATIONS: { label: string; sec: number }[] = [
     { label: '1s', sec: 1 },
@@ -277,7 +277,8 @@ class BenchmarkApp {
     }
 
     private refreshAnimEnable(): void {
-        const isAnim = (this.modeSel.value as Mode) === 'animate';
+        const m = this.modeSel.value as Mode;
+        const isAnim = m === 'animate' || m === 'animate-batch';
         this.animSel.disabled = !isAnim;
         this.durSel.disabled = !isAnim;
     }
@@ -304,9 +305,9 @@ class BenchmarkApp {
             for (const curve of CURVES) {
                 for (const s of SPACINGS) {
                     for (const mode of MODES) {
-                        // Skip animate in batch run — favorites button covers it
+                        // Skip animate variants in batch run — favorites button covers it
                         // and animate scenarios take O(seconds) each.
-                        if (mode === 'animate') continue;
+                        if (mode === 'animate' || mode === 'animate-batch') continue;
                         await this.runScenario(curve, s.px, mode);
                     }
                 }
@@ -512,8 +513,9 @@ class BenchmarkApp {
         animStyle: AnimationStyle = 'translate',
         durSec: number = 3,
     ): Promise<void> {
-        const label = mode === 'animate'
-            ? `${curve} / ${spacingPx}px / animate-${animStyle}-${durSec}s`
+        const isAnim = mode === 'animate' || mode === 'animate-batch';
+        const label = isAnim
+            ? `${curve} / ${spacingPx}px / ${mode}-${animStyle}-${durSec}s`
             : `${curve} / ${spacingPx}px / ${mode}`;
         this.setStatus(`Running ${label}…`);
 
@@ -529,14 +531,30 @@ class BenchmarkApp {
         // Yield once so the UI status update paints before we block.
         await new Promise<void>(r => requestAnimationFrame(() => r()));
 
-        const result = mode === 'throughput'
-            ? await runThroughput(this.canvas, this.context, this.gl, points)
-            : mode === 'frame'
-                ? await runFrame(this.canvas, this.context, this.gl, points)
-                : await runAnimation(
+        let result: RunResult;
+        switch (mode) {
+            case 'throughput':
+                result = await runThroughput(this.canvas, this.context, this.gl, points, false);
+                break;
+            case 'throughput-batch':
+                result = await runThroughput(this.canvas, this.context, this.gl, points, true);
+                break;
+            case 'frame':
+                result = await runFrame(this.canvas, this.context, this.gl, points);
+                break;
+            case 'animate':
+                result = await runAnimation(
                     this.canvas, this.context, this.gl, points,
-                    animStyle, durSec, this.canvasW, this.canvasH,
+                    animStyle, durSec, this.canvasW, this.canvasH, false,
                 );
+                break;
+            case 'animate-batch':
+                result = await runAnimation(
+                    this.canvas, this.context, this.gl, points,
+                    animStyle, durSec, this.canvasW, this.canvasH, true,
+                );
+                break;
+        }
 
         this.results.push({ ...result, scenario: label });
         this.renderResultsTable();

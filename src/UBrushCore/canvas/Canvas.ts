@@ -40,6 +40,7 @@ export class Canvas implements LineDriverDelegate {
     private autoDry: boolean = false;
     private drawingEngine: DrawingEngine;
     private dots: Dot[] = [];
+    private strokeBatchingEnabled: boolean = false;
     private lineRect: Rect | null = null;
     private size: Size;
     private context: UBrushContext;
@@ -237,15 +238,23 @@ export class Canvas implements LineDriverDelegate {
 
         this.lineDriver.lineTo(pt, stylus);
 
+        // Batch mode: defer flushDots/updateCanvasInRect until endLine.
+        // Caller asserts the active brush is non-smudging (smudging is order-sensitive).
+        if (this.strokeBatchingEnabled) return;
+
         const changeRect: Rect | null = this.flushDots();
-        
+
         if (changeRect) {
-            
+
             this.updateCanvasInRect(changeRect);
             this.lineRect = Rect.union(this.lineRect ?? changeRect, changeRect);
-            
+
         }
 
+    }
+
+    public setStrokeBatchingEnabled(value: boolean): void {
+        this.strokeBatchingEnabled = value;
     }
 
     public endLine(pt: Point, stylus: Stylus): void {
