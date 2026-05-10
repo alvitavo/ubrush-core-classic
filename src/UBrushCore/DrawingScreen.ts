@@ -293,7 +293,7 @@ export class DrawingScreen implements CanvasDelegate {
         sidebar.appendChild(divider());
 
         // Clear button
-        sidebar.appendChild(actionBtn('Clear', '#4a4a4a', () => this.canvas?.clear()));
+        sidebar.appendChild(actionBtn('Clear', '#4a4a4a', () => this.clearWithHistory()));
 
         // Dry button
         sidebar.appendChild(actionBtn('Dry', '#4a4a4a', () => this.canvas?.dry()));
@@ -525,6 +525,24 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     // ---- Undo / Redo ----
+
+    private clearWithHistory(): void {
+        if (!this.canvas) return;
+
+        const group = new FixerGroup();
+        group.undoFixer = this.canvas.fixer() || undefined;
+
+        this.canvas.clear();
+
+        group.redoFixer = this.canvas.fixer() || undefined;
+
+        if (!group.undoFixer) return;
+
+        this.undoStack.push(group);
+        this.redoStack = [];
+        this.undoBtnEl.disabled = false;
+        this.redoBtnEl.disabled = true;
+    }
 
     private undo(): void {
         if (this.undoStack.length === 0) return;
