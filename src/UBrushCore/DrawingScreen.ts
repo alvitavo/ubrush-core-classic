@@ -30,6 +30,7 @@ export class DrawingScreen implements CanvasDelegate {
     private lastStylus: Stylus = new Stylus();
     private stylusEventCount: number = 0;
     private undoStack: FixerGroup[] = [];
+    private redoStack: FixerGroup[] = [];
     private loopPaused = false;
 
     private categories: BrushCategory[] = [];
@@ -47,6 +48,7 @@ export class DrawingScreen implements CanvasDelegate {
     private brushSelectEl!: HTMLSelectElement;
     private favStarBtn!: HTMLButtonElement;
     private undoBtnEl!: HTMLButtonElement;
+    private redoBtnEl!: HTMLButtonElement;
     private colorInputEl!: HTMLInputElement;
     private selectedSwatch: HTMLButtonElement | null = null;
 
@@ -155,7 +157,9 @@ export class DrawingScreen implements CanvasDelegate {
 
     didReleaseDrawingWithFixerGroup(_canvas: Canvas, fixerGroup: FixerGroup): void {
         this.undoStack.push(fixerGroup);
+        this.redoStack = [];
         this.undoBtnEl.disabled = false;
+        this.redoBtnEl.disabled = true;
     }
 
     didDryCanvas(_canvas: Canvas): void {}
@@ -298,6 +302,11 @@ export class DrawingScreen implements CanvasDelegate {
         this.undoBtnEl = actionBtn('Undo', '#4a4a4a', () => this.undo());
         this.undoBtnEl.disabled = true;
         sidebar.appendChild(this.undoBtnEl);
+
+        // Redo button
+        this.redoBtnEl = actionBtn('Redo', '#4a4a4a', () => this.redo());
+        this.redoBtnEl.disabled = true;
+        sidebar.appendChild(this.redoBtnEl);
 
         // Divider
         sidebar.appendChild(divider());
@@ -515,7 +524,7 @@ export class DrawingScreen implements CanvasDelegate {
         return new Stylus();
     }
 
-    // ---- Undo ----
+    // ---- Undo / Redo ----
 
     private undo(): void {
         if (this.undoStack.length === 0) return;
@@ -527,7 +536,24 @@ export class DrawingScreen implements CanvasDelegate {
             this.canvas?.fix(group.undoFixer, false);
         }
 
+        this.redoStack.push(group);
         this.undoBtnEl.disabled = this.undoStack.length === 0;
+        this.redoBtnEl.disabled = false;
+    }
+
+    private redo(): void {
+        if (this.redoStack.length === 0) return;
+        const group = this.redoStack.pop()!;
+
+        if (group.redoFixerLiquid) {
+            this.canvas?.fix(group.redoFixerLiquid, true);
+        } else if (group.redoFixer) {
+            this.canvas?.fix(group.redoFixer, false);
+        }
+
+        this.undoStack.push(group);
+        this.redoBtnEl.disabled = this.redoStack.length === 0;
+        this.undoBtnEl.disabled = false;
     }
 
     // ---- Color ----

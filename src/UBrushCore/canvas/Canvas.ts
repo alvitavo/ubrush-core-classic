@@ -279,12 +279,15 @@ export class Canvas implements LineDriverDelegate {
                 fixerGroup.undoFixer = this.fixer(this.lineRect || undefined) || undefined;
                 this.drawingEngine.releaseDrawing();
                 this.engineDry();
+                fixerGroup.redoFixer = this.fixer(this.lineRect || undefined) || undefined;
 
             } else {
 
                 fixerGroup.undoFixerLiquid = this.liquidFixer(this.lineRect || undefined) || undefined;
                 fixerGroup.undoFixer = this.fixer(this.lineRect || undefined) || undefined;
                 this.drawingEngine.releaseDrawing();
+                fixerGroup.redoFixerLiquid = this.liquidFixer(this.lineRect || undefined) || undefined;
+                fixerGroup.redoFixer = this.fixer(this.lineRect || undefined) || undefined;
 
             }
 
