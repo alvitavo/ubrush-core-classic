@@ -19,11 +19,44 @@ export interface RunResult {
     pointsPerSec: number;       // n / (flushMs / 1000)
     frameMs?: { p50: number; p95: number; p99: number; max: number; count: number };
     heapDeltaMb?: number;
+    drawCalls?: number;         // total WebGL draw calls during measured window
     // animate-mode only
     frames?: number;
     durationMs?: number;
     avgFps?: number;
     animationStyle?: AnimationStyle;
+}
+
+interface DrawCallCounter { count: number; }
+
+// Wraps gl.draw* once so runs can read deltas. Idempotent: safe to call repeatedly.
+export function installDrawCallCounter(gl: WebGL2RenderingContext): void {
+    if ((gl as any).__drawCallCounter) return;
+    const counter: DrawCallCounter = { count: 0 };
+    (gl as any).__drawCallCounter = counter;
+
+    const da = gl.drawArrays.bind(gl);
+    const de = gl.drawElements.bind(gl);
+    const dai = gl.drawArraysInstanced.bind(gl);
+    const dei = gl.drawElementsInstanced.bind(gl);
+    gl.drawArrays = function (mode, first, count) { counter.count++; return da(mode, first, count); };
+    gl.drawElements = function (mode, count, type, offset) { counter.count++; return de(mode, count, type, offset); };
+    gl.drawArraysInstanced = function (mode, first, count, instanceCount) {
+        counter.count++; return dai(mode, first, count, instanceCount);
+    };
+    gl.drawElementsInstanced = function (mode, count, type, offset, instanceCount) {
+        counter.count++; return dei(mode, count, type, offset, instanceCount);
+    };
+}
+
+function resetDrawCalls(gl: WebGL2RenderingContext): void {
+    const c = (gl as any).__drawCallCounter as DrawCallCounter | undefined;
+    if (c) c.count = 0;
+}
+
+function readDrawCalls(gl: WebGL2RenderingContext): number | undefined {
+    const c = (gl as any).__drawCallCounter as DrawCallCounter | undefined;
+    return c?.count;
 }
 
 const POINTS_PER_FRAME = 4; // realistic batch size for frame mode
@@ -65,6 +98,7 @@ export async function runThroughput(
     compositeToScreen(canvas, ctx);
     gl.finish();
 
+    resetDrawCalls(gl);
     const t0 = performance.now();
     canvas.moveTo(points[0], stylus);
     for (let i = 1; i < points.length - 1; i++) {
@@ -75,6 +109,7 @@ export async function runThroughput(
 
     gl.finish();
     const t2 = performance.now();
+    const drawCalls = readDrawCalls(gl);
 
     compositeToScreen(canvas, ctx);
     gl.finish();
@@ -91,6 +126,7 @@ export async function runThroughput(
         flushMs,
         pointsPerSec: points.length / (flushMs / 1000),
         heapDeltaMb: heapDelta,
+        drawCalls,
     };
 }
 
@@ -162,6 +198,7 @@ export function runAnimation(
         compositeToScreen(canvas, ctx);
         gl.finish();
 
+        resetDrawCalls(gl);
         const frameDurations: number[] = [];
         const startTime = performance.now();
         let frames = 0;
@@ -172,6 +209,7 @@ export function runAnimation(
             if (elapsed >= durationSec * 1000) {
                 gl.finish();
                 const t1 = performance.now();
+                const drawCalls = readDrawCalls(gl);
                 const durationMs = t1 - startTime;
                 const heapAfter = readHeapMb();
                 const heapDelta = heapBefore !== undefined && heapAfter !== undefined
@@ -192,6 +230,7 @@ export function runAnimation(
                         count: sorted.length,
                     },
                     heapDeltaMb: heapDelta,
+                    drawCalls,
                     frames,
                     durationMs,
                     avgFps,
@@ -238,6 +277,7 @@ export function runFrame(
         compositeToScreen(canvas, ctx);
         gl.finish();
 
+        resetDrawCalls(gl);
         canvas.moveTo(points[0], stylus);
         let i = 1;
         const t0 = performance.now();
@@ -259,6 +299,7 @@ export function runFrame(
             if (isLast) {
                 gl.finish();
                 const t1 = performance.now();
+                const drawCalls = readDrawCalls(gl);
                 const heapAfter = readHeapMb();
                 const heapDelta = heapBefore !== undefined && heapAfter !== undefined
                     ? heapAfter - heapBefore : undefined;
@@ -278,6 +319,7 @@ export function runFrame(
                         count: sorted.length,
                     },
                     heapDeltaMb: heapDelta,
+                    drawCalls,
                 });
             } else {
                 requestAnimationFrame(step);

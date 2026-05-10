@@ -5,7 +5,7 @@ import { Color } from '../common/Color';
 import { IBrush } from '../common/IBrush';
 import { ProgramManager } from '../program/ProgramManager';
 import { CurveKind, sampleUniformSpacing } from './curves';
-import { AnimationStyle, Mode, RunResult, runAnimation, runFrame, runThroughput } from './runner';
+import { AnimationStyle, Mode, RunResult, installDrawCallCounter, runAnimation, runFrame, runThroughput } from './runner';
 
 interface CategoryEntry { key: string; displayName: string; file: string; }
 interface FavoriteEntry { name: string; file: string; }
@@ -15,6 +15,8 @@ interface FavoriteScore {
     scenarios: number;     // count of throughput scenarios that contributed
     totalFlushMs: number;  // sum of flushMs across throughput scenarios — lower is better
     avgPointsPerSec: number;
+    totalDrawCalls?: number;
+    avgDrawCallsPerStroke?: number;
     error?: string;
 }
 interface FavoriteAnimScore {
@@ -22,6 +24,7 @@ interface FavoriteAnimScore {
     file: string;
     perStyleFps: Partial<Record<AnimationStyle, number>>;
     avgFps: number;
+    avgDrawCallsPerFrame?: number;
     error?: string;
 }
 
@@ -98,6 +101,7 @@ class BenchmarkApp {
         const gl = glCanvas.getContext('webgl2', attribs);
         if (!gl) throw new Error('WebGL2 not supported');
         this.gl = gl;
+        installDrawCallCounter(gl);
 
         this.context = new UBrushContext(gl, new Size(this.canvasW, this.canvasH));
         this.canvas = new Canvas(this.context, new Size(this.canvasW, this.canvasH));
@@ -365,6 +369,8 @@ class BenchmarkApp {
             let totalFlushMs = 0;
             let scenariosRun = 0;
             let ptsSecSum = 0;
+            let totalDrawCalls = 0;
+            let drawCallsScenarios = 0;
 
             for (const curve of CURVES) {
                 for (const s of SPACINGS) {
@@ -379,6 +385,10 @@ class BenchmarkApp {
                     const result = await runThroughput(this.canvas, this.context, this.gl, points);
                     totalFlushMs += result.flushMs;
                     ptsSecSum += result.pointsPerSec;
+                    if (result.drawCalls !== undefined) {
+                        totalDrawCalls += result.drawCalls;
+                        drawCallsScenarios++;
+                    }
                     scenariosRun++;
                 }
             }
@@ -389,6 +399,9 @@ class BenchmarkApp {
                 scenarios: scenariosRun,
                 totalFlushMs,
                 avgPointsPerSec: ptsSecSum / Math.max(1, scenariosRun),
+                totalDrawCalls: drawCallsScenarios > 0 ? totalDrawCalls : undefined,
+                avgDrawCallsPerStroke: drawCallsScenarios > 0
+                    ? totalDrawCalls / drawCallsScenarios : undefined,
             };
         } catch (e) {
             return {
@@ -454,6 +467,8 @@ class BenchmarkApp {
             const perStyleFps: Partial<Record<AnimationStyle, number>> = {};
             let fpsSum = 0;
             let stylesRun = 0;
+            let drawPerFrameSum = 0;
+            let drawPerFrameStyles = 0;
 
             for (const style of ANIMATION_STYLES) {
                 this.setStatus(`Animating ${idx}/${total}: ${fav.name} — ${style}`);
@@ -468,6 +483,10 @@ class BenchmarkApp {
                 perStyleFps[style] = fps;
                 fpsSum += fps;
                 stylesRun++;
+                if (result.drawCalls !== undefined && result.frames && result.frames > 0) {
+                    drawPerFrameSum += result.drawCalls / result.frames;
+                    drawPerFrameStyles++;
+                }
             }
 
             return {
@@ -475,6 +494,8 @@ class BenchmarkApp {
                 file: fav.file,
                 perStyleFps,
                 avgFps: stylesRun === 0 ? 0 : fpsSum / stylesRun,
+                avgDrawCallsPerFrame: drawPerFrameStyles > 0
+                    ? drawPerFrameSum / drawPerFrameStyles : undefined,
             };
         } catch (e) {
             return {
@@ -537,13 +558,16 @@ class BenchmarkApp {
             + `<div style="color:#4a90d9;font-weight:600;margin-bottom:4px;">Favorites score — total ${(total / 1000).toFixed(2)}s `
             + `(sum of throughput flushMs across ${this.favoriteScores.length} brushes; lower is better)</div>`
             + '<table><thead><tr>'
-            + '<th>brush</th><th>file</th><th>score (ms)</th><th>avg pts/sec</th><th>scenarios</th>'
+            + '<th>brush</th><th>file</th><th>score (ms)</th><th>avg pts/sec</th>'
+            + '<th>draws/stroke</th><th>total draws</th><th>scenarios</th>'
             + '</tr></thead><tbody>';
         for (const f of sorted) {
             html += `<tr><td>${escapeHtml(f.name)}</td>`
                 + `<td>${escapeHtml(f.file)}</td>`
                 + `<td>${f.error ? `<span style="color:#c66">${escapeHtml(f.error)}</span>` : f.totalFlushMs.toFixed(1)}</td>`
                 + `<td>${f.error ? '—' : Math.round(f.avgPointsPerSec).toLocaleString()}</td>`
+                + `<td>${f.avgDrawCallsPerStroke !== undefined ? Math.round(f.avgDrawCallsPerStroke).toLocaleString() : '—'}</td>`
+                + `<td>${f.totalDrawCalls !== undefined ? f.totalDrawCalls.toLocaleString() : '—'}</td>`
                 + `<td>${f.scenarios}</td></tr>`;
         }
         html += '</tbody></table></div>';
@@ -590,19 +614,20 @@ class BenchmarkApp {
             + '<table><thead><tr>'
             + '<th>brush</th><th>file</th>'
             + '<th>translate fps</th><th>scale fps</th><th>rotate fps</th>'
-            + '<th>avg fps</th>'
+            + '<th>avg fps</th><th>draws/frame</th>'
             + '</tr></thead><tbody>';
         for (const f of sorted) {
             html += `<tr><td>${escapeHtml(f.name)}</td>`
                 + `<td>${escapeHtml(f.file)}</td>`;
             if (f.error) {
-                html += `<td colspan="4"><span style="color:#c66">${escapeHtml(f.error)}</span></td>`;
+                html += `<td colspan="5"><span style="color:#c66">${escapeHtml(f.error)}</span></td>`;
             } else {
                 for (const style of ANIMATION_STYLES) {
                     const fps = f.perStyleFps[style];
                     html += `<td>${fps !== undefined ? fps.toFixed(1) : '—'}</td>`;
                 }
                 html += `<td><b>${f.avgFps.toFixed(1)}</b></td>`;
+                html += `<td>${f.avgDrawCallsPerFrame !== undefined ? f.avgDrawCallsPerFrame.toFixed(1) : '—'}</td>`;
             }
             html += '</tr>';
         }
@@ -616,10 +641,12 @@ class BenchmarkApp {
         const hasFrame = rows.some(r => r.frameMs);
         const hasFps = rows.some(r => r.avgFps !== undefined);
         const hasHeap = rows.some(r => r.heapDeltaMb !== undefined);
+        const hasDraws = rows.some(r => r.drawCalls !== undefined);
 
         let html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:4px;">Scenario detail</div>'
             + '<table><thead><tr>'
             + '<th>scenario</th><th>n</th><th>cpu (ms)</th><th>flush (ms)</th><th>pts/sec</th>';
+        if (hasDraws) html += '<th>draws</th><th>draws/frame</th>';
         if (hasFps) html += '<th>fps</th><th>frames</th>';
         if (hasFrame) html += '<th>p50 (ms)</th><th>p95 (ms)</th><th>p99 (ms)</th><th>max (ms)</th>';
         if (hasHeap) html += '<th>Δheap (MB)</th>';
@@ -631,6 +658,16 @@ class BenchmarkApp {
                 + `<td>${r.cpuMs.toFixed(2)}</td>`
                 + `<td>${r.flushMs.toFixed(2)}</td>`
                 + `<td>${Math.round(r.pointsPerSec).toLocaleString()}</td>`;
+            if (hasDraws) {
+                if (r.drawCalls !== undefined) {
+                    const perFrame = r.frames && r.frames > 0
+                        ? (r.drawCalls / r.frames).toFixed(1)
+                        : '—';
+                    html += `<td>${r.drawCalls.toLocaleString()}</td><td>${perFrame}</td>`;
+                } else {
+                    html += '<td>—</td><td>—</td>';
+                }
+            }
             if (hasFps) {
                 html += r.avgFps !== undefined
                     ? `<td>${r.avgFps.toFixed(1)}</td><td>${r.frames ?? 0}</td>`
