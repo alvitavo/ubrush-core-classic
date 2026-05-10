@@ -11,6 +11,7 @@ export class WGPUTexture {
     private device: GPUDevice;
     private texture: GPUTexture;
     private view: GPUTextureView;
+    private owned: boolean;
 
     public width: number = 1;
     public height: number = 1;
@@ -20,7 +21,24 @@ export class WGPUTexture {
         this.device = device;
         this.texture = this.createBacking(1, 1);
         this.view = this.texture.createView();
+        this.owned = true;
         this.uploadPixels(new Uint8Array([0, 0, 255, 255]), 1, 1);
+
+    }
+
+    // Wrap an existing GPUTexture without taking ownership — used by
+    // WGPURenderTarget so its color attachment can be sampled by other
+    // programs through the same WGPUTexture API.
+    public static wrapping(device: GPUDevice, texture: GPUTexture, width: number, height: number): WGPUTexture {
+
+        const t = Object.create(WGPUTexture.prototype) as WGPUTexture;
+        (t as any).device = device;
+        (t as any).texture = texture;
+        (t as any).view = texture.createView();
+        (t as any).owned = false;
+        (t as any).width = width;
+        (t as any).height = height;
+        return t;
 
     }
 
@@ -69,7 +87,7 @@ export class WGPUTexture {
 
     public destroy(): void {
 
-        this.texture.destroy();
+        if (this.owned) this.texture.destroy();
 
     }
 
@@ -85,9 +103,10 @@ export class WGPUTexture {
 
     private recreate(width: number, height: number): void {
 
-        this.texture.destroy();
+        if (this.owned) this.texture.destroy();
         this.texture = this.createBacking(width, height);
         this.view = this.texture.createView();
+        this.owned = true;
         this.width = width;
         this.height = height;
 

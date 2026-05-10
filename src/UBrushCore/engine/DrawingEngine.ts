@@ -1,12 +1,12 @@
 import { Dot } from "../common/Dot";
 import { Rect } from "../common/Rect";
-import { RenderTarget } from "../gpu/RenderTarget";
+import { WGPURenderTarget } from "../gpu/webgpu/WGPURenderTarget";
 import { Point } from "../common/Point";
 import { Size } from "../common/Size";
 import { Common } from "../common/Common";
-import { UBrushContext } from "../gpu/UBrushContext";
-import { Texture } from "../gpu/Texture";
-import { ProgramManager } from "../program/ProgramManager";
+import { WGPUContext } from "../gpu/webgpu/WGPUContext";
+import { WGPUTexture } from "../gpu/webgpu/WGPUTexture";
+import { WGPUProgramManager } from "../program/webgpu/WGPUProgramManager";
 import { RenderObjectBlend } from "../gpu/RenderObject";
 import { AffineTransform } from "../common/AffineTransform";
 import { Fixer, FixerRenderTarget } from "../common/Fixer";
@@ -19,11 +19,11 @@ export type DrawingTargetType = 'plain' | 'effect' | 'mask';
 
 export class DrawingEngine {
 
-    protected context: UBrushContext;
+    protected context: WGPUContext;
 
-    protected tipTexture: Texture;
-    protected patternTexture: Texture;
-    protected dualTipTexture: Texture;
+    protected tipTexture: WGPUTexture;
+    protected patternTexture: WGPUTexture;
+    protected dualTipTexture: WGPUTexture;
 
     protected smudging0Dot?: Dot;
     protected smudgingDot?: Dot;
@@ -41,22 +41,22 @@ export class DrawingEngine {
     private _useSecondaryMask: boolean = false;
 
     // ---- core render targets (always allocated) ----
-    public drawingRenderTarget: RenderTarget;
-    public smudging1CopyRenderTarget: RenderTarget;
-    public smudging0CopyRenderTarget: RenderTarget;
-    public liquidRenderTarget: RenderTarget;
-    public dryRenderTarget: RenderTarget;
+    public drawingRenderTarget: WGPURenderTarget;
+    public smudging1CopyRenderTarget: WGPURenderTarget;
+    public smudging0CopyRenderTarget: WGPURenderTarget;
+    public liquidRenderTarget: WGPURenderTarget;
+    public dryRenderTarget: WGPURenderTarget;
 
     // ---- smudging render targets (lazily allocated on first use) ----
-    private drawingAlphaRenderTarget?: RenderTarget;
-    private smudging1CopyAlphaRenderTarget?: RenderTarget;
-    private smudging1CopyColorRenderTarget?: RenderTarget;
-    private smudging0CopyAlphaRenderTarget?: RenderTarget;
-    private smudging0CopyColorRenderTarget?: RenderTarget;
+    private drawingAlphaRenderTarget?: WGPURenderTarget;
+    private smudging1CopyAlphaRenderTarget?: WGPURenderTarget;
+    private smudging1CopyColorRenderTarget?: WGPURenderTarget;
+    private smudging0CopyAlphaRenderTarget?: WGPURenderTarget;
+    private smudging0CopyColorRenderTarget?: WGPURenderTarget;
 
     // ---- water render targets (lazily allocated on first use) ----
-    private maskDrawingRenderTarget?: RenderTarget;
-    private maskLiquidRenderTarget?: RenderTarget;
+    private maskDrawingRenderTarget?: WGPURenderTarget;
+    private maskLiquidRenderTarget?: WGPURenderTarget;
 
     // ---- layer effects ----
     public layerOpacity: number = 1;
@@ -72,7 +72,7 @@ export class DrawingEngine {
     // 키별 백킹 Float32Array를 보관, 1.5× 성장으로 재할당 빈도 최소화.
     private _f32Pool: { [key: string]: Float32Array | undefined } = {};
 
-    constructor(context: UBrushContext, size: Size) {
+    constructor(context: WGPUContext, size: Size) {
         this.context = context;
         this.size = size;
 
@@ -114,7 +114,7 @@ export class DrawingEngine {
         return this._useSecondaryMask;
     }
 
-    public get debuggingRenderTarget(): RenderTarget | undefined {
+    public get debuggingRenderTarget(): WGPURenderTarget | undefined {
         return this._alphaSmudgingMode ? this.drawingAlphaRenderTarget : undefined;
     }
 
@@ -126,15 +126,15 @@ export class DrawingEngine {
         const s = Common.stageRect();
         if (this._alphaSmudgingMode) {
             // liquidRenderTarget 을 source 로 alpha/color 분리 세팅
-            ProgramManager.getInstance().separateLayersProgram.separate(
+            WGPUProgramManager.getInstance().separateLayersProgram.separate(
                 this.drawingAlphaRenderTarget!, this.drawingRenderTarget,
                 { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
             );
-            ProgramManager.getInstance().separateLayersProgram.separate(
+            WGPUProgramManager.getInstance().separateLayersProgram.separate(
                 this.smudging1CopyAlphaRenderTarget!, this.smudging1CopyColorRenderTarget!,
                 { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
             );
-            ProgramManager.getInstance().separateLayersProgram.separate(
+            WGPUProgramManager.getInstance().separateLayersProgram.separate(
                 this.smudging0CopyAlphaRenderTarget!, this.smudging0CopyColorRenderTarget!,
                 { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
             );
@@ -173,12 +173,12 @@ export class DrawingEngine {
 
         if (this._alphaSmudgingMode && value) {
             const s = Common.stageRect();
-            ProgramManager.getInstance().separateLayersProgram.separate(
+            WGPUProgramManager.getInstance().separateLayersProgram.separate(
                 this.smudging1CopyAlphaRenderTarget!,
                 this.smudging1CopyColorRenderTarget!,
                 { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
             );
-            ProgramManager.getInstance().separateLayersProgram.separate(
+            WGPUProgramManager.getInstance().separateLayersProgram.separate(
                 this.smudging0CopyAlphaRenderTarget!,
                 this.smudging0CopyColorRenderTarget!,
                 { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
@@ -240,20 +240,20 @@ export class DrawingEngine {
 
     // ---- setupWithRenderTarget ----
 
-    public setupWithRenderTarget(renderTarget: RenderTarget): void {
+    public setupWithRenderTarget(renderTarget: WGPURenderTarget): void {
         const s = Common.stageRect();
 
         if (this._alphaSmudgingMode) {
             this._fill(this.liquidRenderTarget, renderTarget.texture);
-            ProgramManager.getInstance().separateLayersProgram.separate(
+            WGPUProgramManager.getInstance().separateLayersProgram.separate(
                 this.drawingAlphaRenderTarget!, this.drawingRenderTarget,
                 { targetRect: s, source: renderTarget.texture, sourceRect: s, canvasRect: s }
             );
-            ProgramManager.getInstance().separateLayersProgram.separate(
+            WGPUProgramManager.getInstance().separateLayersProgram.separate(
                 this.smudging1CopyAlphaRenderTarget!, this.smudging1CopyColorRenderTarget!,
                 { targetRect: s, source: renderTarget.texture, sourceRect: s, canvasRect: s }
             );
-            ProgramManager.getInstance().separateLayersProgram.separate(
+            WGPUProgramManager.getInstance().separateLayersProgram.separate(
                 this.smudging0CopyAlphaRenderTarget!, this.smudging0CopyColorRenderTarget!,
                 { targetRect: s, source: renderTarget.texture, sourceRect: s, canvasRect: s }
             );
@@ -293,9 +293,9 @@ export class DrawingEngine {
 
     // ---- printToRenderTarget ----
 
-    public printToRenderTarget(renderTarget: RenderTarget, rect: Rect, transform: AffineTransform): void {
+    public printToRenderTarget(renderTarget: WGPURenderTarget, rect: Rect, transform: AffineTransform): void {
         if (this._alphaSmudgingMode) {
-            ProgramManager.getInstance().mergeLayersProgram.merge(renderTarget, {
+            WGPUProgramManager.getInstance().mergeLayersProgram.merge(renderTarget, {
                 targetRect: rect,
                 alphaSource: this.drawingAlphaRenderTarget!.texture,
                 colorSource: this.drawingRenderTarget.texture,
@@ -304,7 +304,7 @@ export class DrawingEngine {
                 transform: new AffineTransform()
             });
         } else if (this._useSecondaryMask) {
-            ProgramManager.getInstance().maskAndCutProgram.fill(renderTarget, {
+            WGPUProgramManager.getInstance().maskAndCutProgram.fill(renderTarget, {
                 targetRect: rect,
                 drySource: this.dryRenderTarget.texture,
                 liquidSource: this.drawingRenderTarget.texture,
@@ -320,7 +320,7 @@ export class DrawingEngine {
                 maskEdgeStyle: this.dualTipEdgeStyle
             });
         } else {
-            ProgramManager.getInstance().highLowCutProgram.fill(renderTarget, {
+            WGPUProgramManager.getInstance().highLowCutProgram.fill(renderTarget, {
                 targetRect: rect,
                 drySource: this.dryRenderTarget.texture,
                 liquidSource: this.drawingRenderTarget.texture,
@@ -346,7 +346,7 @@ export class DrawingEngine {
         const s = Common.stageRect();
 
         if (this._alphaSmudgingMode) {
-            ProgramManager.getInstance().mergeLayersProgram.merge(this.liquidRenderTarget, {
+            WGPUProgramManager.getInstance().mergeLayersProgram.merge(this.liquidRenderTarget, {
                 targetRect: s,
                 alphaSource: this.drawingAlphaRenderTarget!.texture,
                 colorSource: this.drawingRenderTarget.texture,
@@ -369,16 +369,16 @@ export class DrawingEngine {
         const s = Common.stageRect();
 
         if (this._alphaSmudgingMode) {
-            ProgramManager.getInstance().separateLayersProgram.separate(
+            WGPUProgramManager.getInstance().separateLayersProgram.separate(
                 this.drawingAlphaRenderTarget!, this.drawingRenderTarget,
                 { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
             );
             if (this._useSmudging) {
-                ProgramManager.getInstance().separateLayersProgram.separate(
+                WGPUProgramManager.getInstance().separateLayersProgram.separate(
                     this.smudging1CopyAlphaRenderTarget!, this.smudging1CopyColorRenderTarget!,
                     { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
                 );
-                ProgramManager.getInstance().separateLayersProgram.separate(
+                WGPUProgramManager.getInstance().separateLayersProgram.separate(
                     this.smudging0CopyAlphaRenderTarget!, this.smudging0CopyColorRenderTarget!,
                     { targetRect: s, source: this.liquidRenderTarget.texture, sourceRect: s, canvasRect: s }
                 );
@@ -401,7 +401,7 @@ export class DrawingEngine {
         const tempRenderTarget = this.context.createRenderTarget(this.size);
 
         if (this._useSecondaryMask) {
-            ProgramManager.getInstance().maskAndCutProgram.fill(tempRenderTarget, {
+            WGPUProgramManager.getInstance().maskAndCutProgram.fill(tempRenderTarget, {
                 targetRect: s,
                 drySource: this.dryRenderTarget.texture,
                 liquidSource: this.liquidRenderTarget.texture,
@@ -417,7 +417,7 @@ export class DrawingEngine {
                 maskEdgeStyle: this.dualTipEdgeStyle
             });
         } else {
-            ProgramManager.getInstance().highLowCutProgram.fill(tempRenderTarget, {
+            WGPUProgramManager.getInstance().highLowCutProgram.fill(tempRenderTarget, {
                 targetRect: s,
                 drySource: this.dryRenderTarget.texture,
                 liquidSource: this.liquidRenderTarget.texture,
@@ -484,7 +484,7 @@ export class DrawingEngine {
 
     // ---- fixer ----
 
-    public fixer(fixerRenderTarget: FixerRenderTarget, rect: Rect): Fixer | null {
+    public async fixer(fixerRenderTarget: FixerRenderTarget, rect: Rect): Promise<Fixer | null> {
         if (this._alphaSmudgingMode) {
             if (fixerRenderTarget === FixerRenderTarget.Liquid) return null;
             return this._buildFixer(FixerRenderTarget.Liquid, rect, false);
@@ -492,7 +492,7 @@ export class DrawingEngine {
         return this._buildFixer(fixerRenderTarget, rect, this._useSecondaryMask);
     }
 
-    private _buildFixer(fixerRenderTarget: FixerRenderTarget, rect: Rect, withMask: boolean): Fixer | null {
+    private async _buildFixer(fixerRenderTarget: FixerRenderTarget, rect: Rect, withMask: boolean): Promise<Fixer | null> {
         const p1 = rect.origin.clone();
         const p2 = new Point(p1.x + rect.size.width, p1.y + rect.size.height);
 
@@ -509,17 +509,17 @@ export class DrawingEngine {
         const tempRenderTarget = this.context.createRenderTarget(this.size);
 
         if (fixerRenderTarget === FixerRenderTarget.Liquid) {
-            ProgramManager.getInstance().fillRectProgram.fill(tempRenderTarget, {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(tempRenderTarget, {
                 targetRect: partRectByPixel, source: this.liquidRenderTarget.texture,
                 sourceRect: partRectByPixel, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
         } else if (fixerRenderTarget === FixerRenderTarget.Dry) {
-            ProgramManager.getInstance().fillRectProgram.fill(tempRenderTarget, {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(tempRenderTarget, {
                 targetRect: partRectByPixel, source: this.dryRenderTarget.texture,
                 sourceRect: partRectByPixel, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
         } else if (withMask) {
-            ProgramManager.getInstance().maskAndCutProgram.fill(tempRenderTarget, {
+            WGPUProgramManager.getInstance().maskAndCutProgram.fill(tempRenderTarget, {
                 targetRect: partRectByPixel,
                 drySource: this.dryRenderTarget.texture,
                 liquidSource: this.liquidRenderTarget.texture,
@@ -535,7 +535,7 @@ export class DrawingEngine {
                 maskEdgeStyle: this.dualTipEdgeStyle
             });
         } else {
-            ProgramManager.getInstance().highLowCutProgram.fill(tempRenderTarget, {
+            WGPUProgramManager.getInstance().highLowCutProgram.fill(tempRenderTarget, {
                 targetRect: partRectByPixel,
                 drySource: this.dryRenderTarget.texture,
                 liquidSource: this.liquidRenderTarget.texture,
@@ -552,15 +552,15 @@ export class DrawingEngine {
             });
         }
 
-        const patchPixels = this.context.readPixels(tempRenderTarget, partRectByPixel);
+        const patchPixels = await this.context.readPixels(tempRenderTarget, partRectByPixel);
 
         let patchMaskPixels: Uint8Array | undefined;
         if (withMask && fixerRenderTarget === FixerRenderTarget.Liquid) {
-            ProgramManager.getInstance().fillRectProgram.fill(tempRenderTarget, {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(tempRenderTarget, {
                 targetRect: partRectByPixel, source: this.maskLiquidRenderTarget!.texture,
                 sourceRect: partRectByPixel, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
-            patchMaskPixels = this.context.readPixels(tempRenderTarget, partRectByPixel);
+            patchMaskPixels = await this.context.readPixels(tempRenderTarget, partRectByPixel);
         }
 
         return new Fixer(partRectByPixel, rect, fixerRenderTarget, patchPixels, patchMaskPixels);
@@ -576,30 +576,30 @@ export class DrawingEngine {
         texture.loadFromRGBA(fixer.patchPixels, fixer.patchRect.size.width, fixer.patchRect.size.height);
 
         if (this._alphaSmudgingMode) {
-            ProgramManager.getInstance().fillRectProgram.fill(this.liquidRenderTarget, {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(this.liquidRenderTarget, {
                 targetRect: fixer.patchRect, source: texture,
                 sourceRect: canvasRect, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
-            ProgramManager.getInstance().separateLayersProgram.separate(
+            WGPUProgramManager.getInstance().separateLayersProgram.separate(
                 this.drawingAlphaRenderTarget!, this.drawingRenderTarget,
                 { targetRect: fixer.patchRect, source: texture, sourceRect: canvasRect, canvasRect }
             );
             if (this._useSmudging) {
-                ProgramManager.getInstance().separateLayersProgram.separate(
+                WGPUProgramManager.getInstance().separateLayersProgram.separate(
                     this.smudging1CopyAlphaRenderTarget!, this.smudging1CopyColorRenderTarget!,
                     { targetRect: fixer.patchRect, source: texture, sourceRect: canvasRect, canvasRect }
                 );
-                ProgramManager.getInstance().separateLayersProgram.separate(
+                WGPUProgramManager.getInstance().separateLayersProgram.separate(
                     this.smudging0CopyAlphaRenderTarget!, this.smudging0CopyColorRenderTarget!,
                     { targetRect: fixer.patchRect, source: texture, sourceRect: canvasRect, canvasRect }
                 );
             }
         } else if (toLiquidLayer) {
-            ProgramManager.getInstance().fillRectProgram.fill(this.liquidRenderTarget, {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(this.liquidRenderTarget, {
                 targetRect: fixer.patchRect, source: texture,
                 sourceRect: canvasRect, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
-            ProgramManager.getInstance().fillRectProgram.fill(this.drawingRenderTarget, {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(this.drawingRenderTarget, {
                 targetRect: fixer.patchRect, source: texture,
                 sourceRect: canvasRect, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
@@ -607,17 +607,17 @@ export class DrawingEngine {
             if (this._useSecondaryMask && fixer.patchMaskPixels) {
                 const maskTexture = this.context.createTexture();
                 maskTexture.loadFromRGBA(fixer.patchMaskPixels, fixer.patchRect.size.width, fixer.patchRect.size.height);
-                ProgramManager.getInstance().fillRectProgram.fill(this.maskLiquidRenderTarget!, {
+                WGPUProgramManager.getInstance().fillRectProgram.fill(this.maskLiquidRenderTarget!, {
                     targetRect: fixer.patchRect, source: maskTexture,
                     sourceRect: canvasRect, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
                 });
-                ProgramManager.getInstance().fillRectProgram.fill(this.maskDrawingRenderTarget!, {
+                WGPUProgramManager.getInstance().fillRectProgram.fill(this.maskDrawingRenderTarget!, {
                     targetRect: fixer.patchRect, source: maskTexture,
                     sourceRect: canvasRect, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
                 });
             }
         } else {
-            ProgramManager.getInstance().fillRectProgram.fill(this.dryRenderTarget, {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(this.dryRenderTarget, {
                 targetRect: fixer.patchRect, source: texture,
                 sourceRect: canvasRect, canvasRect, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
@@ -625,15 +625,15 @@ export class DrawingEngine {
 
         if (this._useSmudging && !this._alphaSmudgingMode) {
             const s = new Rect(0, 0, this.size.width, this.size.height);
-            ProgramManager.getInstance().fillRectProgram.fill(this.smudging1CopyRenderTarget, {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(this.smudging1CopyRenderTarget, {
                 targetRect: s, source: this.dryRenderTarget.texture,
                 sourceRect: s, canvasRect: s, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
-            ProgramManager.getInstance().fillRectProgram.fill(this.smudging1CopyRenderTarget, {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(this.smudging1CopyRenderTarget, {
                 targetRect: s, source: this.drawingRenderTarget.texture,
                 sourceRect: s, canvasRect: s, transform: new AffineTransform(), blend: RenderObjectBlend.Normal
             });
-            ProgramManager.getInstance().fillRectProgram.fill(this.smudging0CopyRenderTarget, {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(this.smudging0CopyRenderTarget, {
                 targetRect: s, source: this.smudging1CopyRenderTarget.texture,
                 sourceRect: s, canvasRect: s, transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
@@ -744,11 +744,11 @@ export class DrawingEngine {
     }
 
     private _rotateSmudgingBuffersBasic(rect: Rect): void {
-        ProgramManager.getInstance().fillRectProgram.fill(this.smudging0CopyRenderTarget, {
+        WGPUProgramManager.getInstance().fillRectProgram.fill(this.smudging0CopyRenderTarget, {
             targetRect: rect, source: this.smudging1CopyRenderTarget.texture,
             sourceRect: rect, canvasRect: Common.stageRect(), transform: new AffineTransform(), blend: RenderObjectBlend.None
         });
-        ProgramManager.getInstance().highLowCutProgram.fill(this.smudging1CopyRenderTarget, {
+        WGPUProgramManager.getInstance().highLowCutProgram.fill(this.smudging1CopyRenderTarget, {
             targetRect: rect,
             drySource: this.dryRenderTarget.texture,
             liquidSource: this.drawingRenderTarget.texture,
@@ -766,8 +766,8 @@ export class DrawingEngine {
     }
 
     private _rotateSmudgingBuffersAlphaSmudging(rect: Rect): void {
-        const fill = (dst: RenderTarget, src: Texture): void => {
-            ProgramManager.getInstance().fillRectProgram.fill(dst, {
+        const fill = (dst: WGPURenderTarget, src: WGPUTexture): void => {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(dst, {
                 targetRect: rect, source: src,
                 sourceRect: rect, canvasRect: Common.stageRect(), transform: new AffineTransform(), blend: RenderObjectBlend.None
             });
@@ -779,7 +779,7 @@ export class DrawingEngine {
     }
 
     private _rotateSmudgingBuffersWater(rect: Rect): void {
-        ProgramManager.getInstance().maskAndCutProgram.fill(this.smudging1CopyRenderTarget, {
+        WGPUProgramManager.getInstance().maskAndCutProgram.fill(this.smudging1CopyRenderTarget, {
             targetRect: rect,
             drySource: this.dryRenderTarget.texture,
             liquidSource: this.drawingRenderTarget.texture,
@@ -981,7 +981,7 @@ export class DrawingEngine {
     }, type: DrawingTargetType): void {
         if (type === 'plain') {
             // alphaSmudging 경로: alpha + color 두 RT 동시 그리기
-            ProgramManager.getInstance().smudgingDotProgram.drawRects(
+            WGPUProgramManager.getInstance().smudgingDotProgram.drawRects(
                 this.drawingAlphaRenderTarget!,
                 this.drawingRenderTarget,
                 {
@@ -1023,7 +1023,7 @@ export class DrawingEngine {
             ? this.smudging1CopyRenderTarget.texture
             : this.smudging0CopyRenderTarget.texture;
 
-        ProgramManager.getInstance().drawDotProgram.drawRects(renderTarget, {
+        WGPUProgramManager.getInstance().drawDotProgram.drawRects(renderTarget, {
             tipTexture: this.tipTexture,
             patternTexture: this.patternTexture,
             smudging0Texture,
@@ -1070,8 +1070,8 @@ export class DrawingEngine {
         return RenderObjectBlend.Normal;
     }
 
-    private _fill(dst: RenderTarget, src: Texture): void {
-        ProgramManager.getInstance().fillRectProgram.fill(dst, {
+    private _fill(dst: WGPURenderTarget, src: WGPUTexture): void {
+        WGPUProgramManager.getInstance().fillRectProgram.fill(dst, {
             targetRect: Common.stageRect(),
             source: src,
             sourceRect: Common.stageRect(),

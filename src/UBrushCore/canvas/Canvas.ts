@@ -3,15 +3,15 @@ import { Point } from "../common/Point";
 import { Stylus } from "../common/Stylus";
 import { LineDriver, LineDriverDelegate } from "../driver/LineDriver";
 import { Dot } from "../common/Dot";
-import { UBrushContext } from "../gpu/UBrushContext";
-import { RenderTarget } from "../gpu/RenderTarget";
+import { WGPUContext } from "../gpu/webgpu/WGPUContext";
+import { WGPURenderTarget } from "../gpu/webgpu/WGPURenderTarget";
 import { DrawingEngine } from "../engine/DrawingEngine";
 import { Rect } from "../common/Rect";
 import { IBrush, DryType, DotBlendmode, EdgeStyle } from "../common/IBrush";
 import { Common } from "../common/Common";
 import { AffineTransform } from "../common/AffineTransform";
 import { Color } from "../common/Color";
-import { ProgramManager } from "../program/ProgramManager";
+import { WGPUProgramManager } from "../program/webgpu/WGPUProgramManager";
 import { RenderObjectBlend } from "../gpu/RenderObject";
 import { Fixer, FixerRenderTarget } from "../common/Fixer";
 import { FixerGroup } from "../common/FixerGroup";
@@ -26,7 +26,7 @@ export interface CanvasDelegate {
 
 export class Canvas implements LineDriverDelegate {
 
-    public outputRenderTarget: RenderTarget;
+    public outputRenderTarget: WGPURenderTarget;
     public useFixer: boolean = true;
     public age: number = 0;
     public brush?: IBrush;
@@ -43,12 +43,12 @@ export class Canvas implements LineDriverDelegate {
     private strokeBatchingEnabled: boolean = false;
     private lineRect: Rect | null = null;
     private size: Size;
-    private context: UBrushContext;
+    private context: WGPUContext;
     private alphaLock: boolean = false;
-    private alphaMaskRenderTarget?: RenderTarget;
+    private alphaMaskRenderTarget?: WGPURenderTarget;
     private transform: AffineTransform = new AffineTransform();
-    
-    constructor(context: UBrushContext, size: Size) {
+
+    constructor(context: WGPUContext, size: Size) {
 
         this.lineDriver.setDelegate(this);
         this.outputRenderTarget = context.createRenderTarget(size);
@@ -58,7 +58,7 @@ export class Canvas implements LineDriverDelegate {
 
     }
 
-    public getDebuggingTarget(): RenderTarget | undefined {
+    public getDebuggingTarget(): WGPURenderTarget | undefined {
 
         return this.drawingEngine.debuggingRenderTarget;
 
@@ -163,7 +163,7 @@ export class Canvas implements LineDriverDelegate {
 
             this.alphaMaskRenderTarget = this.context.createRenderTarget(this.size);
             
-            ProgramManager.getInstance().fillRectProgram.fill(
+            WGPUProgramManager.getInstance().fillRectProgram.fill(
                 this.alphaMaskRenderTarget,
                 {
                     targetRect: Common.stageRect(),
@@ -257,37 +257,37 @@ export class Canvas implements LineDriverDelegate {
         this.strokeBatchingEnabled = value;
     }
 
-    public endLine(pt: Point, stylus: Stylus): void {
+    public async endLine(pt: Point, stylus: Stylus): Promise<void> {
 
         this.lineDriver.endLine(pt, stylus);
 
         const changeRect = this.flushDots();
 
         if (changeRect) {
-            
+
             this.updateCanvasInRect(changeRect);
             this.lineRect = Rect.union(this.lineRect ?? changeRect, changeRect);
 
         }
-        
+
         if (this.useFixer && this.delegate?.didReleaseDrawingWithFixerGroup) {
 
             const fixerGroup = new FixerGroup();
-            
+
             if (this.autoDry) {
 
-                fixerGroup.undoFixer = this.fixer(this.lineRect || undefined) || undefined;
+                fixerGroup.undoFixer = (await this.fixer(this.lineRect || undefined)) || undefined;
                 this.drawingEngine.releaseDrawing();
                 this.engineDry();
-                fixerGroup.redoFixer = this.fixer(this.lineRect || undefined) || undefined;
+                fixerGroup.redoFixer = (await this.fixer(this.lineRect || undefined)) || undefined;
 
             } else {
 
-                fixerGroup.undoFixerLiquid = this.liquidFixer(this.lineRect || undefined) || undefined;
-                fixerGroup.undoFixer = this.fixer(this.lineRect || undefined) || undefined;
+                fixerGroup.undoFixerLiquid = (await this.liquidFixer(this.lineRect || undefined)) || undefined;
+                fixerGroup.undoFixer = (await this.fixer(this.lineRect || undefined)) || undefined;
                 this.drawingEngine.releaseDrawing();
-                fixerGroup.redoFixerLiquid = this.liquidFixer(this.lineRect || undefined) || undefined;
-                fixerGroup.redoFixer = this.fixer(this.lineRect || undefined) || undefined;
+                fixerGroup.redoFixerLiquid = (await this.liquidFixer(this.lineRect || undefined)) || undefined;
+                fixerGroup.redoFixer = (await this.fixer(this.lineRect || undefined)) || undefined;
 
             }
 
@@ -357,13 +357,13 @@ export class Canvas implements LineDriverDelegate {
 
     }
 
-    public fixer(rect: Rect = Common.stageRect()): Fixer | null {
+    public async fixer(rect: Rect = Common.stageRect()): Promise<Fixer | null> {
 
         return this.drawingEngine.fixer(FixerRenderTarget.Merged, rect);
 
     }
 
-    public liquidFixer(rect: Rect = Common.stageRect()): Fixer | null {
+    public async liquidFixer(rect: Rect = Common.stageRect()): Promise<Fixer | null> {
 
         if (this.autoDry) return null;
 
@@ -373,23 +373,23 @@ export class Canvas implements LineDriverDelegate {
 
     // function
 
-    public pixelBoundsForStageRect(): Rect {
+    public async pixelBoundsForStageRect(): Promise<Rect> {
 
-        const resultRect: Rect = this.pixelBounds();
-    
+        const resultRect: Rect = await this.pixelBounds();
+
         resultRect.origin.x    = (resultRect.origin.x / this.size.width) * 2.0 - 1.0;
         resultRect.origin.y    = (resultRect.origin.y / this.size.height) * 2.0 - 1.0;
         resultRect.size.width  = (resultRect.size.width / this.size.width) * 2.0;
         resultRect.size.height = (resultRect.size.height / this.size.height) * 2.0;
-        
+
         return resultRect;
 
     }
 
-    public pixelBounds(): Rect {
+    public async pixelBounds(): Promise<Rect> {
 
         return this.context.pixelBound(this.outputRenderTarget);
-        
+
     }
 
     public setColor(color: Color): void {
@@ -444,7 +444,7 @@ export class Canvas implements LineDriverDelegate {
 
             this.drawingEngine.printToRenderTarget(tempRenderTarget, rect, new AffineTransform());
 
-            ProgramManager.getInstance().maskProgram.fill(
+            WGPUProgramManager.getInstance().maskProgram.fill(
                 this.outputRenderTarget,
                 {
 
@@ -471,7 +471,7 @@ export class Canvas implements LineDriverDelegate {
 
     // -----------------------------
 
-    private engineSetupWithRenderTarget(renderTarget: RenderTarget): void {
+    private engineSetupWithRenderTarget(renderTarget: WGPURenderTarget): void {
 
         this.drawingEngine.setupWithRenderTarget(renderTarget);
 

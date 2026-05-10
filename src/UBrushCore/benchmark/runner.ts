@@ -1,8 +1,8 @@
 import { Canvas } from '../canvas/Canvas';
-import { UBrushContext } from '../gpu/UBrushContext';
+import { WGPUContext } from '../gpu/webgpu/WGPUContext';
 import { Point } from '../common/Point';
 import { Stylus } from '../common/Stylus';
-import { ProgramManager } from '../program/ProgramManager';
+import { WGPUProgramManager } from '../program/webgpu/WGPUProgramManager';
 import { Common } from '../common/Common';
 import { AffineTransform } from '../common/AffineTransform';
 import { RenderObjectBlend } from '../gpu/RenderObject';
@@ -15,11 +15,11 @@ export interface RunResult {
     mode: Mode;
     n: number;                  // number of input points
     cpuMs: number;              // wall-clock around moveTo..endLine (no GPU flush)
-    flushMs: number;            // wall-clock including gl.finish() at end
+    flushMs: number;            // wall-clock including queue flush at end
     pointsPerSec: number;       // n / (flushMs / 1000)
     frameMs?: { p50: number; p95: number; p99: number; max: number; count: number };
     heapDeltaMb?: number;
-    drawCalls?: number;         // total WebGL draw calls during measured window
+    drawCalls?: number;         // total GPU draw calls during measured window
     // animate-mode only
     frames?: number;
     durationMs?: number;
@@ -29,41 +29,49 @@ export interface RunResult {
 
 interface DrawCallCounter { count: number; }
 
-// Wraps gl.draw* once so runs can read deltas. Idempotent: safe to call repeatedly.
-export function installDrawCallCounter(gl: WebGL2RenderingContext): void {
-    if ((gl as any).__drawCallCounter) return;
-    const counter: DrawCallCounter = { count: 0 };
-    (gl as any).__drawCallCounter = counter;
+let drawCallCounter: DrawCallCounter | null = null;
+let prototypePatched = false;
 
-    const da = gl.drawArrays.bind(gl);
-    const de = gl.drawElements.bind(gl);
-    const dai = gl.drawArraysInstanced.bind(gl);
-    const dei = gl.drawElementsInstanced.bind(gl);
-    gl.drawArrays = function (mode, first, count) { counter.count++; return da(mode, first, count); };
-    gl.drawElements = function (mode, count, type, offset) { counter.count++; return de(mode, count, type, offset); };
-    gl.drawArraysInstanced = function (mode, first, count, instanceCount) {
-        counter.count++; return dai(mode, first, count, instanceCount);
-    };
-    gl.drawElementsInstanced = function (mode, count, type, offset, instanceCount) {
-        counter.count++; return dei(mode, count, type, offset, instanceCount);
-    };
+// Patch GPURenderPassEncoder.prototype.draw* once so any pass created later
+// increments the same counter. WebGPU has no global "draw call" probe like
+// WebGL had, so this prototype hook is the simplest way to keep the same
+// metric available across the codebase.
+export function installDrawCallCounter(): void {
+    if (prototypePatched) return;
+    prototypePatched = true;
+
+    drawCallCounter = { count: 0 };
+    const counter = drawCallCounter;
+
+    const proto = (globalThis as any).GPURenderPassEncoder?.prototype;
+    if (!proto) {
+        console.warn('GPURenderPassEncoder prototype unavailable — drawCalls will be undefined');
+        return;
+    }
+
+    for (const method of ['draw', 'drawIndexed', 'drawIndirect', 'drawIndexedIndirect']) {
+        const orig = proto[method];
+        if (typeof orig !== 'function') continue;
+        proto[method] = function (...args: any[]) {
+            counter.count++;
+            return orig.apply(this, args);
+        };
+    }
 }
 
-function resetDrawCalls(gl: WebGL2RenderingContext): void {
-    const c = (gl as any).__drawCallCounter as DrawCallCounter | undefined;
-    if (c) c.count = 0;
+function resetDrawCalls(): void {
+    if (drawCallCounter) drawCallCounter.count = 0;
 }
 
-function readDrawCalls(gl: WebGL2RenderingContext): number | undefined {
-    const c = (gl as any).__drawCallCounter as DrawCallCounter | undefined;
-    return c?.count;
+function readDrawCalls(): number | undefined {
+    return drawCallCounter?.count;
 }
 
 const POINTS_PER_FRAME = 4; // realistic batch size for frame mode
 
-function compositeToScreen(canvas: Canvas, ctx: UBrushContext): void {
+function compositeToScreen(canvas: Canvas, ctx: WGPUContext): void {
     ctx.clearRenderTarget(null, Color.white());
-    ProgramManager.getInstance().fillRectProgram.fill(null, {
+    WGPUProgramManager.getInstance().fillRectProgram.fill(null, {
         targetRect: Common.stageRect(),
         source: canvas.outputRenderTarget.texture,
         sourceRect: Common.stageRect(),
@@ -71,6 +79,12 @@ function compositeToScreen(canvas: Canvas, ctx: UBrushContext): void {
         transform: new AffineTransform(),
         blend: RenderObjectBlend.Normal,
     });
+}
+
+// WebGPU equivalent of gl.finish() — wait until all already-submitted work
+// has finished on the GPU queue.
+async function waitForGPU(ctx: WGPUContext): Promise<void> {
+    await ctx.device.queue.onSubmittedWorkDone();
 }
 
 function readHeapMb(): number | undefined {
@@ -87,35 +101,34 @@ function quantile(sorted: number[], q: number): number {
 
 export async function runThroughput(
     canvas: Canvas,
-    ctx: UBrushContext,
-    gl: WebGL2RenderingContext,
+    ctx: WGPUContext,
     points: Point[],
     batched: boolean = false,
 ): Promise<RunResult> {
     const heapBefore = readHeapMb();
     const stylus = new Stylus();
 
-    // Warm up: composite once so any first-time GL state is settled.
+    // Warm up: composite once so any first-time pipeline creation is settled.
     compositeToScreen(canvas, ctx);
-    gl.finish();
+    await waitForGPU(ctx);
 
     if (batched) canvas.setStrokeBatchingEnabled(true);
     try {
-        resetDrawCalls(gl);
+        resetDrawCalls();
         const t0 = performance.now();
         canvas.moveTo(points[0], stylus);
         for (let i = 1; i < points.length - 1; i++) {
             canvas.lineTo(points[i], stylus);
         }
-        canvas.endLine(points[points.length - 1], stylus);
+        await canvas.endLine(points[points.length - 1], stylus);
         const t1 = performance.now();
 
-        gl.finish();
+        await waitForGPU(ctx);
         const t2 = performance.now();
-        const drawCalls = readDrawCalls(gl);
+        const drawCalls = readDrawCalls();
 
         compositeToScreen(canvas, ctx);
-        gl.finish();
+        await waitForGPU(ctx);
 
         const heapAfter = readHeapMb();
         const heapDelta = heapBefore !== undefined && heapAfter !== undefined
@@ -181,8 +194,7 @@ function applyAnimTransform(
 
 export function runAnimation(
     canvas: Canvas,
-    ctx: UBrushContext,
-    gl: WebGL2RenderingContext,
+    ctx: WGPUContext,
     points: Point[],
     style: AnimationStyle,
     durationSec: number,
@@ -197,86 +209,84 @@ export function runAnimation(
         const cx = cw / 2;
         const cy = ch / 2;
 
-        // Reusable transformed-point buffer to avoid per-frame allocations.
         const buf: Point[] = new Array(points.length);
         for (let i = 0; i < points.length; i++) buf[i] = new Point(0, 0);
 
-        // Warm-up composite so first measured frame is not paying GL init cost.
         compositeToScreen(canvas, ctx);
-        gl.finish();
 
-        resetDrawCalls(gl);
-        const frameDurations: number[] = [];
-        const startTime = performance.now();
-        let frames = 0;
+        void waitForGPU(ctx).then(() => {
+            resetDrawCalls();
+            const frameDurations: number[] = [];
+            const startTime = performance.now();
+            let frames = 0;
 
-        const step = () => {
-            const now = performance.now();
-            const elapsed = now - startTime;
-            if (elapsed >= durationSec * 1000) {
-                gl.finish();
-                const t1 = performance.now();
-                const drawCalls = readDrawCalls(gl);
-                const durationMs = t1 - startTime;
-                const heapAfter = readHeapMb();
-                const heapDelta = heapBefore !== undefined && heapAfter !== undefined
-                    ? heapAfter - heapBefore : undefined;
-                const sorted = [...frameDurations].sort((a, b) => a - b);
-                const avgFps = frames / (durationMs / 1000);
+            const step = async () => {
+                const now = performance.now();
+                const elapsed = now - startTime;
+                if (elapsed >= durationSec * 1000) {
+                    await waitForGPU(ctx);
+                    const t1 = performance.now();
+                    const drawCalls = readDrawCalls();
+                    const durationMs = t1 - startTime;
+                    const heapAfter = readHeapMb();
+                    const heapDelta = heapBefore !== undefined && heapAfter !== undefined
+                        ? heapAfter - heapBefore : undefined;
+                    const sorted = [...frameDurations].sort((a, b) => a - b);
+                    const avgFps = frames / (durationMs / 1000);
+                    if (batched) canvas.setStrokeBatchingEnabled(false);
+                    resolve({
+                        mode: batched ? 'animate-batch' : 'animate',
+                        n: points.length,
+                        cpuMs: durationMs,
+                        flushMs: durationMs,
+                        pointsPerSec: (points.length * frames) / (durationMs / 1000),
+                        frameMs: {
+                            p50: quantile(sorted, 0.5),
+                            p95: quantile(sorted, 0.95),
+                            p99: quantile(sorted, 0.99),
+                            max: sorted[sorted.length - 1] ?? 0,
+                            count: sorted.length,
+                        },
+                        heapDeltaMb: heapDelta,
+                        drawCalls,
+                        frames,
+                        durationMs,
+                        avgFps,
+                        animationStyle: style,
+                    });
+                    return;
+                }
+
+                const phase = (elapsed / 1000) / ANIM_LOOP_SEC;
+                const t = phase - Math.floor(phase);
+                applyAnimTransform(points, style, t, cx, cy, cw, ch, buf);
+
+                const frameStart = performance.now();
+                const stylus = new Stylus();
+                canvas.clear();
+                if (batched) canvas.setStrokeBatchingEnabled(true);
+                canvas.moveTo(buf[0], stylus);
+                for (let i = 1; i < buf.length - 1; i++) {
+                    canvas.lineTo(buf[i], stylus);
+                }
+                await canvas.endLine(buf[buf.length - 1], stylus);
                 if (batched) canvas.setStrokeBatchingEnabled(false);
-                resolve({
-                    mode: batched ? 'animate-batch' : 'animate',
-                    n: points.length,
-                    cpuMs: durationMs,
-                    flushMs: durationMs,
-                    pointsPerSec: (points.length * frames) / (durationMs / 1000),
-                    frameMs: {
-                        p50: quantile(sorted, 0.5),
-                        p95: quantile(sorted, 0.95),
-                        p99: quantile(sorted, 0.99),
-                        max: sorted[sorted.length - 1] ?? 0,
-                        count: sorted.length,
-                    },
-                    heapDeltaMb: heapDelta,
-                    drawCalls,
-                    frames,
-                    durationMs,
-                    avgFps,
-                    animationStyle: style,
-                });
-                return;
-            }
+                compositeToScreen(canvas, ctx);
+                const frameEnd = performance.now();
+                frameDurations.push(frameEnd - frameStart);
+                frames++;
 
-            const phase = (elapsed / 1000) / ANIM_LOOP_SEC;
-            const t = phase - Math.floor(phase);
-            applyAnimTransform(points, style, t, cx, cy, cw, ch, buf);
+                requestAnimationFrame(() => { void step(); });
+            };
 
-            const frameStart = performance.now();
-            const stylus = new Stylus();
-            canvas.clear();
-            if (batched) canvas.setStrokeBatchingEnabled(true);
-            canvas.moveTo(buf[0], stylus);
-            for (let i = 1; i < buf.length - 1; i++) {
-                canvas.lineTo(buf[i], stylus);
-            }
-            canvas.endLine(buf[buf.length - 1], stylus);
-            if (batched) canvas.setStrokeBatchingEnabled(false);
-            compositeToScreen(canvas, ctx);
-            const frameEnd = performance.now();
-            frameDurations.push(frameEnd - frameStart);
-            frames++;
-
-            requestAnimationFrame(step);
-        };
-
-        requestAnimationFrame(step);
+            requestAnimationFrame(() => { void step(); });
+        });
     });
 }
 
 export function runFrame(
     canvas: Canvas,
-    ctx: UBrushContext,
-    gl: WebGL2RenderingContext,
+    ctx: WGPUContext,
     points: Point[],
 ): Promise<RunResult> {
     return new Promise((resolve) => {
@@ -285,57 +295,58 @@ export function runFrame(
         const frameDurations: number[] = [];
 
         compositeToScreen(canvas, ctx);
-        gl.finish();
 
-        resetDrawCalls(gl);
-        canvas.moveTo(points[0], stylus);
-        let i = 1;
-        const t0 = performance.now();
+        void waitForGPU(ctx).then(() => {
+            resetDrawCalls();
+            canvas.moveTo(points[0], stylus);
+            let i = 1;
+            const t0 = performance.now();
 
-        const step = () => {
-            const frameStart = performance.now();
-            const end = Math.min(points.length - 1, i + POINTS_PER_FRAME);
-            for (; i < end; i++) {
-                canvas.lineTo(points[i], stylus);
-            }
-            const isLast = i >= points.length - 1;
-            if (isLast) {
-                canvas.endLine(points[points.length - 1], stylus);
-            }
-            compositeToScreen(canvas, ctx);
-            const frameEnd = performance.now();
-            frameDurations.push(frameEnd - frameStart);
+            const step = async () => {
+                const frameStart = performance.now();
+                const end = Math.min(points.length - 1, i + POINTS_PER_FRAME);
+                for (; i < end; i++) {
+                    canvas.lineTo(points[i], stylus);
+                }
+                const isLast = i >= points.length - 1;
+                if (isLast) {
+                    await canvas.endLine(points[points.length - 1], stylus);
+                }
+                compositeToScreen(canvas, ctx);
+                const frameEnd = performance.now();
+                frameDurations.push(frameEnd - frameStart);
 
-            if (isLast) {
-                gl.finish();
-                const t1 = performance.now();
-                const drawCalls = readDrawCalls(gl);
-                const heapAfter = readHeapMb();
-                const heapDelta = heapBefore !== undefined && heapAfter !== undefined
-                    ? heapAfter - heapBefore : undefined;
+                if (isLast) {
+                    await waitForGPU(ctx);
+                    const t1 = performance.now();
+                    const drawCalls = readDrawCalls();
+                    const heapAfter = readHeapMb();
+                    const heapDelta = heapBefore !== undefined && heapAfter !== undefined
+                        ? heapAfter - heapBefore : undefined;
 
-                const sorted = [...frameDurations].sort((a, b) => a - b);
-                resolve({
-                    mode: 'frame',
-                    n: points.length,
-                    cpuMs: t1 - t0,
-                    flushMs: t1 - t0,
-                    pointsPerSec: points.length / ((t1 - t0) / 1000),
-                    frameMs: {
-                        p50: quantile(sorted, 0.5),
-                        p95: quantile(sorted, 0.95),
-                        p99: quantile(sorted, 0.99),
-                        max: sorted[sorted.length - 1] ?? 0,
-                        count: sorted.length,
-                    },
-                    heapDeltaMb: heapDelta,
-                    drawCalls,
-                });
-            } else {
-                requestAnimationFrame(step);
-            }
-        };
+                    const sorted = [...frameDurations].sort((a, b) => a - b);
+                    resolve({
+                        mode: 'frame',
+                        n: points.length,
+                        cpuMs: t1 - t0,
+                        flushMs: t1 - t0,
+                        pointsPerSec: points.length / ((t1 - t0) / 1000),
+                        frameMs: {
+                            p50: quantile(sorted, 0.5),
+                            p95: quantile(sorted, 0.95),
+                            p99: quantile(sorted, 0.99),
+                            max: sorted[sorted.length - 1] ?? 0,
+                            count: sorted.length,
+                        },
+                        heapDeltaMb: heapDelta,
+                        drawCalls,
+                    });
+                } else {
+                    requestAnimationFrame(() => { void step(); });
+                }
+            };
 
-        requestAnimationFrame(step);
+            requestAnimationFrame(() => { void step(); });
+        });
     });
 }

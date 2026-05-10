@@ -1,8 +1,9 @@
 import { IBrush } from '../UBrushCore/common/IBrush';
 import { BrushAttributeRenderer, AttributeGroup } from './BrushAttributeRenderer';
-import { UBrushContext } from '../UBrushCore/gpu/UBrushContext';
+import { WGPUContext } from '../UBrushCore/gpu/webgpu/WGPUContext';
+import { bootstrapWebGPU } from '../UBrushCore/gpu/webgpu/bootstrap';
 import { Canvas, CanvasDelegate } from '../UBrushCore/canvas/Canvas';
-import { ProgramManager } from '../UBrushCore/program/ProgramManager';
+import { WGPUProgramManager } from '../UBrushCore/program/webgpu/WGPUProgramManager';
 import { Size } from '../UBrushCore/common/Size';
 import { Color } from '../UBrushCore/common/Color';
 import { Point } from '../UBrushCore/common/Point';
@@ -41,10 +42,10 @@ export class BrushEditorScreen {
 
     // ---- preview state ----
     private previewGLCanvas!: HTMLCanvasElement;
-    private previewGLContext?: UBrushContext;
+    private previewGLContext?: WGPUContext;
     private previewDrawingCanvas?: Canvas;
-    private previewPMInstance?: any;   // preview ProgramManager instance
-    private mainPMInstance?: any;      // saved main ProgramManager instance
+    private previewPMInstance?: any;   // preview WGPUProgramManager instance
+    private mainPMInstance?: any;      // saved main WGPUProgramManager instance
     private previewColor = new Color(0, 0, 0, 1);
     private previewLastPos = new Point();
     private previewLastStylus = new Stylus();
@@ -81,8 +82,7 @@ export class BrushEditorScreen {
         this.element.style.display = 'flex';
         if (!this.previewGLContext) {
             requestAnimationFrame(() => {
-                this.initPreviewGL();
-                this.startPreview();
+                void this.initPreviewGPU().then(() => this.startPreview());
             });
         } else {
             this.startPreview();
@@ -108,19 +108,19 @@ export class BrushEditorScreen {
 
     private activatePreviewPM(): void {
         if (!this.previewPMInstance) return;
-        this.mainPMInstance = (ProgramManager as any).instance;
-        (ProgramManager as any).instance = this.previewPMInstance;
+        this.mainPMInstance = WGPUProgramManager.instance;
+        WGPUProgramManager.instance = this.previewPMInstance;
     }
 
     private restoreMainPM(): void {
         if (this.mainPMInstance !== undefined) {
-            (ProgramManager as any).instance = this.mainPMInstance;
+            WGPUProgramManager.instance = this.mainPMInstance;
         }
     }
 
-    // ---- preview GL init ----
+    // ---- preview GPU init ----
 
-    private initPreviewGL(): void {
+    private async initPreviewGPU(): Promise<void> {
         const rect = this.previewGLCanvas.getBoundingClientRect();
         const displayW = rect.width > 0 ? rect.width : PREVIEW_W;
         const displayH = rect.height > 0 ? rect.height : Math.max(400, window.innerHeight - 195);
@@ -130,20 +130,22 @@ export class BrushEditorScreen {
         this.previewGLCanvas.width = this.previewCanvasW;
         this.previewGLCanvas.height = this.previewCanvasH;
 
-        const contextAttributes: WebGLContextAttributes = {
-            alpha: false, depth: false, stencil: false,
-            antialias: true, premultipliedAlpha: true, preserveDrawingBuffer: true,
-        };
-        const gl = this.previewGLCanvas.getContext('webgl2', contextAttributes);
-        if (!gl) { console.error('Preview WebGL2 not supported'); return; }
+        let bootstrap;
+        try {
+            bootstrap = await bootstrapWebGPU(this.previewGLCanvas);
+        } catch (e) {
+            console.error('Preview WebGPU init failed', e);
+            return;
+        }
 
-        this.previewGLContext = new UBrushContext(gl, new Size(this.previewCanvasW, this.previewCanvasH));
+        const size = new Size(this.previewCanvasW, this.previewCanvasH);
+        this.previewGLContext = new WGPUContext(bootstrap.device, bootstrap.presentationContext, bootstrap.presentationFormat, size);
 
         // Save main PM, init preview PM, then restore main PM
-        const savedPM = (ProgramManager as any).instance;
-        ProgramManager.init(this.previewGLContext);
-        this.previewPMInstance = (ProgramManager as any).instance;
-        (ProgramManager as any).instance = savedPM;
+        const savedPM = WGPUProgramManager.instance;
+        WGPUProgramManager.init(this.previewGLContext);
+        this.previewPMInstance = WGPUProgramManager.instance;
+        WGPUProgramManager.instance = savedPM;
 
         // Create preview Canvas (no undo → useFixer = false)
         const previewCanvas = new Canvas(this.previewGLContext, new Size(this.previewCanvasW, this.previewCanvasH));
@@ -177,7 +179,7 @@ export class BrushEditorScreen {
     private renderPreview(): void {
         if (!this.previewDrawingCanvas || !this.previewGLContext) return;
         this.previewGLContext.clearRenderTarget(null, Color.white());
-        ProgramManager.getInstance().fillRectProgram.fill(
+        WGPUProgramManager.getInstance().fillRectProgram.fill(
             null,
             {
                 targetRect: Common.stageRect(),

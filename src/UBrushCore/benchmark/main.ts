@@ -1,9 +1,10 @@
-import { UBrushContext } from '../gpu/UBrushContext';
+import { WGPUContext } from '../gpu/webgpu/WGPUContext';
+import { bootstrapWebGPU } from '../gpu/webgpu/bootstrap';
 import { Canvas } from '../canvas/Canvas';
 import { Size } from '../common/Size';
 import { Color } from '../common/Color';
 import { IBrush } from '../common/IBrush';
-import { ProgramManager } from '../program/ProgramManager';
+import { WGPUProgramManager } from '../program/webgpu/WGPUProgramManager';
 import { CurveKind, sampleUniformSpacing } from './curves';
 import { AnimationStyle, Mode, RunResult, installDrawCallCounter, runAnimation, runFrame, runThroughput } from './runner';
 
@@ -43,8 +44,7 @@ const DURATIONS: { label: string; sec: number }[] = [
 const FAVORITES_ANIM_DURATION_SEC = 3;
 
 class BenchmarkApp {
-    private gl!: WebGL2RenderingContext;
-    private context!: UBrushContext;
+    private context!: WGPUContext;
     private canvas!: Canvas;
     private canvasW = 0;
     private canvasH = 0;
@@ -79,12 +79,12 @@ class BenchmarkApp {
         this.resultsEl = document.getElementById('results')!;
         this.renderResultsTable();
 
-        this.initWebGL();
+        await this.initWebGPU();
         await this.loadCategories();
         await this.applyCurrentBrush();
     }
 
-    private initWebGL(): void {
+    private async initWebGPU(): Promise<void> {
         const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
         const wrap = glCanvas.parentElement!;
         const cssW = wrap.clientWidth;
@@ -94,18 +94,15 @@ class BenchmarkApp {
         glCanvas.width = this.canvasW;
         glCanvas.height = this.canvasH;
 
-        const attribs: WebGLContextAttributes = {
-            alpha: false, depth: false, stencil: false, antialias: true,
-            premultipliedAlpha: true, preserveDrawingBuffer: true,
-        };
-        const gl = glCanvas.getContext('webgl2', attribs);
-        if (!gl) throw new Error('WebGL2 not supported');
-        this.gl = gl;
-        installDrawCallCounter(gl);
+        // Patch GPURenderPassEncoder.prototype.draw* before any RenderPipeline
+        // is created so the counter sees every draw call from the start.
+        installDrawCallCounter();
 
-        this.context = new UBrushContext(gl, new Size(this.canvasW, this.canvasH));
-        this.canvas = new Canvas(this.context, new Size(this.canvasW, this.canvasH));
-        ProgramManager.init(this.context);
+        const bootstrap = await bootstrapWebGPU(glCanvas);
+        const size = new Size(this.canvasW, this.canvasH);
+        this.context = new WGPUContext(bootstrap.device, bootstrap.presentationContext, bootstrap.presentationFormat, size);
+        this.canvas = new Canvas(this.context, size);
+        WGPUProgramManager.init(this.context);
 
         this.canvas.setColor(new Color(0, 0, 0, 1));
         this.canvas.lineDriver.setBrushSize(0.1);
@@ -377,13 +374,13 @@ class BenchmarkApp {
                 for (const s of SPACINGS) {
                     this.setStatus(`Scoring ${idx}/${total}: ${fav.name} — ${curve}/${s.label}`);
                     this.canvas.clear();
-                    this.gl.finish();
+                    await this.context.device.queue.onSubmittedWorkDone();
                     const points = sampleUniformSpacing(
                         { kind: curve, canvasWidth: this.canvasW, canvasHeight: this.canvasH },
                         s.px,
                     );
                     await new Promise<void>(r => requestAnimationFrame(() => r()));
-                    const result = await runThroughput(this.canvas, this.context, this.gl, points);
+                    const result = await runThroughput(this.canvas, this.context, points);
                     totalFlushMs += result.flushMs;
                     ptsSecSum += result.pointsPerSec;
                     if (result.drawCalls !== undefined) {
@@ -474,10 +471,10 @@ class BenchmarkApp {
             for (const style of ANIMATION_STYLES) {
                 this.setStatus(`Animating ${idx}/${total}: ${fav.name} — ${style}`);
                 this.canvas.clear();
-                this.gl.finish();
+                await this.context.device.queue.onSubmittedWorkDone();
                 await new Promise<void>(r => requestAnimationFrame(() => r()));
                 const result = await runAnimation(
-                    this.canvas, this.context, this.gl, points,
+                    this.canvas, this.context, points,
                     style, FAVORITES_ANIM_DURATION_SEC, this.canvasW, this.canvasH,
                 );
                 const fps = result.avgFps ?? 0;
@@ -521,7 +518,7 @@ class BenchmarkApp {
 
         // Reset canvas state between runs to keep measurements independent.
         this.canvas.clear();
-        this.gl.finish();
+        await this.context.device.queue.onSubmittedWorkDone();
 
         const points = sampleUniformSpacing(
             { kind: curve, canvasWidth: this.canvasW, canvasHeight: this.canvasH },
@@ -534,23 +531,23 @@ class BenchmarkApp {
         let result: RunResult;
         switch (mode) {
             case 'throughput':
-                result = await runThroughput(this.canvas, this.context, this.gl, points, false);
+                result = await runThroughput(this.canvas, this.context, points, false);
                 break;
             case 'throughput-batch':
-                result = await runThroughput(this.canvas, this.context, this.gl, points, true);
+                result = await runThroughput(this.canvas, this.context, points, true);
                 break;
             case 'frame':
-                result = await runFrame(this.canvas, this.context, this.gl, points);
+                result = await runFrame(this.canvas, this.context, points);
                 break;
             case 'animate':
                 result = await runAnimation(
-                    this.canvas, this.context, this.gl, points,
+                    this.canvas, this.context, points,
                     animStyle, durSec, this.canvasW, this.canvasH, false,
                 );
                 break;
             case 'animate-batch':
                 result = await runAnimation(
-                    this.canvas, this.context, this.gl, points,
+                    this.canvas, this.context, points,
                     animStyle, durSec, this.canvasW, this.canvasH, true,
                 );
                 break;

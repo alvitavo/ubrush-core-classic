@@ -1,11 +1,12 @@
 import { getFavoritesSync, isFavorite, setFavorite } from './favorites/FavoritesManager';
-import { UBrushContext } from '../UBrushCore/gpu/UBrushContext';
+import { WGPUContext } from '../UBrushCore/gpu/webgpu/WGPUContext';
+import { bootstrapWebGPU } from '../UBrushCore/gpu/webgpu/bootstrap';
 import { Canvas, CanvasDelegate } from '../UBrushCore/canvas/Canvas';
 import { IBrush } from '../UBrushCore/common/IBrush';
 import { Size } from '../UBrushCore/common/Size';
 import { Point } from '../UBrushCore/common/Point';
 import { Stylus } from '../UBrushCore/common/Stylus';
-import { ProgramManager } from '../UBrushCore/program/ProgramManager';
+import { WGPUProgramManager } from '../UBrushCore/program/webgpu/WGPUProgramManager';
 import { Color } from '../UBrushCore/common/Color';
 import { AffineTransform } from '../UBrushCore/common/AffineTransform';
 import { RenderObjectBlend } from '../UBrushCore/gpu/RenderObject';
@@ -22,7 +23,7 @@ export class DrawingScreen implements CanvasDelegate {
     private glCanvas!: HTMLCanvasElement;
     private canvasContainer!: HTMLElement;
     private canvas?: Canvas;
-    private glContext?: UBrushContext;
+    private glContext?: WGPUContext;
     private canvasWidth = 0;
     private canvasHeight = 0;
 
@@ -59,7 +60,9 @@ export class DrawingScreen implements CanvasDelegate {
         this.onEditBrush = onEditBrush;
         this.loadPersistedState();
         this.element = this.buildLayout();
-        this.initWebGL();
+        // initWebGL is async (WebGPU device init) — fire-and-forget; render
+        // loop checks for `glContext` before drawing.
+        void this.initWebGPU();
     }
 
     private loadPersistedState(): void {
@@ -374,9 +377,9 @@ export class DrawingScreen implements CanvasDelegate {
         }
     }
 
-    // ---- WebGL initialization ----
+    // ---- WebGPU initialization ----
 
-    private initWebGL(): void {
+    private async initWebGPU(): Promise<void> {
         const w = window.innerWidth - SIDEBAR_W;
         const h = window.innerHeight;
         this.canvasWidth = w * 2;
@@ -385,30 +388,23 @@ export class DrawingScreen implements CanvasDelegate {
         this.glCanvas.width = w * 2;
         this.glCanvas.height = h * 2;
 
-        const contextAttributes: WebGLContextAttributes = {
-            alpha: false,
-            depth: false,
-            stencil: false,
-            antialias: true,
-            premultipliedAlpha: true,
-            preserveDrawingBuffer: true,
-        };
-
-        const gl = this.glCanvas.getContext('webgl2', contextAttributes);
-
-        if (!gl) {
-            console.error('WebGL2 not supported');
+        let bootstrap;
+        try {
+            bootstrap = await bootstrapWebGPU(this.glCanvas);
+        } catch (e) {
+            console.error('WebGPU init failed', e);
             return;
         }
 
-        const context = new UBrushContext(gl, new Size(w * 2, h * 2));
+        const size = new Size(w * 2, h * 2);
+        const context = new WGPUContext(bootstrap.device, bootstrap.presentationContext, bootstrap.presentationFormat, size);
         this.glContext = context;
 
-        const canvas = new Canvas(context, new Size(w * 2, h * 2));
+        const canvas = new Canvas(context, size);
         canvas.delegate = this;
         this.canvas = canvas;
 
-        ProgramManager.init(context);
+        WGPUProgramManager.init(context);
 
         // Apply saved brush or fall back to first available brush across all categories
         const firstAvailable = this.categories.reduce<IBrush | undefined>(
@@ -440,7 +436,7 @@ export class DrawingScreen implements CanvasDelegate {
 
         this.glContext.clearRenderTarget(null, Color.white());
 
-        ProgramManager.getInstance().fillRectProgram.fill(
+        WGPUProgramManager.getInstance().fillRectProgram.fill(
             null,
             {
                 targetRect: Common.stageRect(),
@@ -526,15 +522,15 @@ export class DrawingScreen implements CanvasDelegate {
 
     // ---- Undo / Redo ----
 
-    private clearWithHistory(): void {
+    private async clearWithHistory(): Promise<void> {
         if (!this.canvas) return;
 
         const group = new FixerGroup();
-        group.undoFixer = this.canvas.fixer() || undefined;
+        group.undoFixer = (await this.canvas.fixer()) || undefined;
 
         this.canvas.clear();
 
-        group.redoFixer = this.canvas.fixer() || undefined;
+        group.redoFixer = (await this.canvas.fixer()) || undefined;
 
         if (!group.undoFixer) return;
 

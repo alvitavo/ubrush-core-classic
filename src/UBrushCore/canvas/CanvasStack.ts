@@ -1,6 +1,6 @@
 import { Size } from "../common/Size";
-import { RenderTarget } from "../gpu/RenderTarget";
-import { UBrushContext } from "../gpu/UBrushContext";
+import { WGPURenderTarget } from "../gpu/webgpu/WGPURenderTarget";
+import { WGPUContext } from "../gpu/webgpu/WGPUContext";
 import { IBrush } from "../common/IBrush";
 import { Canvas, CanvasDelegate } from "./Canvas";
 import { Color } from "../common/Color";
@@ -21,14 +21,14 @@ export interface CanvasStackDelegate {
 export class CanvasStack implements CanvasDelegate{
 
     public delegate?: CanvasStackDelegate;
-    public outputRenderTarget: RenderTarget;
+    public outputRenderTarget: WGPURenderTarget;
     public brush?: IBrush;
     public selectedCanvas?: Canvas;
 
     public updatelock: boolean = false;
 
     private size: Size;
-    private context: UBrushContext;
+    private context: WGPUContext;
     private canvasArray: Canvas[];
     private backgroundColor: Color = Color.white();
 
@@ -78,7 +78,7 @@ export class CanvasStack implements CanvasDelegate{
         
     }
 
-    constructor(context: UBrushContext, size: Size) {
+    constructor(context: WGPUContext, size: Size) {
 
         this.outputRenderTarget = context.createRenderTarget(size);
         this.size = size;

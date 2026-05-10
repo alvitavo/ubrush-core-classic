@@ -101,7 +101,7 @@ export class WGPUContext {
         const encoder = this.device.createCommandEncoder();
         encoder.copyTextureToBuffer(
             {
-                texture: renderTarget.texture,
+                texture: renderTarget.gpuTexture,
                 origin: { x: pixelBounds.origin.x, y: pixelBounds.origin.y },
             },
             {
@@ -174,8 +174,8 @@ export class WGPUContext {
 
         const encoder = this.device.createCommandEncoder();
         encoder.copyTextureToTexture(
-            { texture: source.texture },
-            { texture: target.texture },
+            { texture: source.gpuTexture },
+            { texture: target.gpuTexture },
             { width: source.size.width, height: source.size.height, depthOrArrayLayers: 1 },
         );
         this.device.queue.submit([encoder.finish()]);
