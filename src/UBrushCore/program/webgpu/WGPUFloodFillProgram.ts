@@ -5,6 +5,8 @@ import { Color } from "../../common/Color";
 import { Rect } from "../../common/Rect";
 import { floodFillApplyWGSL, floodFillIndirectWGSL, floodFillSeedWGSL, floodFillStepWGSL } from "../wgsl/floodFill.wgsl";
 
+export type FloodFillTuningMode = 'auto' | 'lowLatency' | 'throughput';
+
 interface FloodFillParams {
     source: WGPURenderTarget;
     target: WGPURenderTarget;
@@ -12,6 +14,7 @@ interface FloodFillParams {
     color: Color;
     tolerance: number;
     edgeThreshold: number;
+    tuningMode?: FloodFillTuningMode;
     maxIterations?: number;
 }
 
@@ -23,6 +26,7 @@ export interface FloodFillResult {
     substeps: number;
     tileSize: number;
     batchSize: number;
+    tuningMode: FloodFillTuningMode;
 }
 
 const TILE_SIZE = 16;
@@ -110,6 +114,7 @@ export class WGPUFloodFillProgram {
                 substeps: DEFAULT_TILE_SUBSTEPS,
                 tileSize: TILE_SIZE,
                 batchSize: ITERATION_BATCH_SIZE,
+                tuningMode: 'auto',
             };
         }
 
@@ -122,7 +127,9 @@ export class WGPUFloodFillProgram {
             param.maxIterations ?? Math.ceil(Math.sqrt(width * width + height * height)),
             width + height,
         ));
-        const substeps = this.chooseTileSubsteps(width, height);
+        const tuning = this.chooseTuning(width, height, param.tuningMode ?? 'auto');
+        const substeps = tuning.substeps;
+        const batchSize = tuning.batchSize;
         const maxDispatchIterations = Math.ceil(maxPixelIterations / substeps);
 
         const maskBuffer = this.createStorageBuffer(width * height * 4);
@@ -176,7 +183,7 @@ export class WGPUFloodFillProgram {
         let completedIterations = 0;
 
         while (activeCount > 0 && completedIterations < maxDispatchIterations) {
-            const batchCount = Math.min(ITERATION_BATCH_SIZE, maxDispatchIterations - completedIterations);
+            const batchCount = Math.min(batchSize, maxDispatchIterations - completedIterations);
             const batchEncoder = this.device.createCommandEncoder();
 
             for (let i = 0; i < batchCount; i++) {
@@ -268,7 +275,8 @@ export class WGPUFloodFillProgram {
             elapsedMs: performance.now() - start,
             substeps,
             tileSize: TILE_SIZE,
-            batchSize: ITERATION_BATCH_SIZE,
+            batchSize,
+            tuningMode: tuning.mode,
         };
     }
 
@@ -378,8 +386,14 @@ export class WGPUFloodFillProgram {
         });
     }
 
-    private chooseTileSubsteps(_width: number, _height: number): number {
-        return DEFAULT_TILE_SUBSTEPS;
+    private chooseTuning(width: number, height: number, mode: FloodFillTuningMode): { substeps: number; batchSize: number; mode: FloodFillTuningMode } {
+        if (mode === 'lowLatency') return { substeps: 4, batchSize: 16, mode };
+        if (mode === 'throughput') return { substeps: 16, batchSize: 128, mode };
+
+        const pixels = width * height;
+        if (pixels <= 1_000_000) return { substeps: 4, batchSize: 32, mode };
+        if (pixels <= 4_000_000) return { substeps: DEFAULT_TILE_SUBSTEPS, batchSize: ITERATION_BATCH_SIZE, mode };
+        return { substeps: 16, batchSize: 128, mode };
     }
 
     private makeFloodUniform(width: number, height: number, seedX: number, seedY: number, tileCols: number, tileRows: number, substeps: number, tolerance: number, edgeThreshold: number): GPUBuffer {

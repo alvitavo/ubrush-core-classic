@@ -14,6 +14,7 @@ import { Common } from '../UBrushCore/common/Common';
 import { Rect } from '../UBrushCore/common/Rect';
 import { FixerGroup } from '../UBrushCore/common/FixerGroup';
 import { BrushCategory } from './App';
+import { FloodFillTuningMode } from '../UBrushCore/program/webgpu/WGPUFloodFillProgram';
 
 const SIDEBAR_W = 220;
 
@@ -43,6 +44,7 @@ export class DrawingScreen implements CanvasDelegate {
     private currentTool: 'brush' | 'fill' = 'brush';
     private fillTolerance = 24;
     private fillEdgeSensitivity = 72;
+    private fillTuningMode: FloodFillTuningMode = 'auto';
     private fillInProgress = false;
 
     private savedBrush: IBrush | null = null;
@@ -57,6 +59,7 @@ export class DrawingScreen implements CanvasDelegate {
     private colorInputEl!: HTMLInputElement;
     private brushToolBtn!: HTMLButtonElement;
     private fillToolBtn!: HTMLButtonElement;
+    private fillTuningSelectEl!: HTMLSelectElement;
     private fillStatsEl!: HTMLElement;
     private selectedSwatch: HTMLButtonElement | null = null;
 
@@ -308,6 +311,8 @@ export class DrawingScreen implements CanvasDelegate {
         sidebar.appendChild(sliderRow('Edge Sensitivity', 0, 100, 1, this.fillEdgeSensitivity, (v) => {
             this.fillEdgeSensitivity = v;
         }, 0));
+
+        sidebar.appendChild(row('Fill Tuning', () => this.buildFillTuningSelect()));
 
         sidebar.appendChild(this.buildFillStatsSection());
 
@@ -675,16 +680,37 @@ export class DrawingScreen implements CanvasDelegate {
         if (this.glCanvas) this.glCanvas.style.cursor = this.currentTool === 'fill' ? 'cell' : 'crosshair';
     }
 
+    private buildFillTuningSelect(): HTMLSelectElement {
+        this.fillTuningSelectEl = document.createElement('select');
+        this.fillTuningSelectEl.style.cssText = inputCSS;
+        const options: Array<{ value: FloodFillTuningMode; label: string }> = [
+            { value: 'auto', label: 'Auto' },
+            { value: 'lowLatency', label: 'Low Latency' },
+            { value: 'throughput', label: 'Throughput' },
+        ];
+        for (const option of options) {
+            const opt = document.createElement('option');
+            opt.value = option.value;
+            opt.textContent = option.label;
+            this.fillTuningSelectEl.appendChild(opt);
+        }
+        this.fillTuningSelectEl.value = this.fillTuningMode;
+        this.fillTuningSelectEl.addEventListener('change', () => {
+            this.fillTuningMode = this.fillTuningSelectEl.value as FloodFillTuningMode;
+        });
+        return this.fillTuningSelectEl;
+    }
+
     private async applyFloodFill(seed: Point): Promise<void> {
         if (!this.canvas || this.fillInProgress) return;
         this.fillInProgress = true;
         try {
             const tolerance = (this.fillTolerance / 255) * 2;
             const edgeThreshold = Math.max(0.02, (101 - this.fillEdgeSensitivity) / 100 * 1.5);
-            const result = await this.canvas.floodFill(seed, this.currentColor.clone(), tolerance, edgeThreshold);
+            const result = await this.canvas.floodFill(seed, this.currentColor.clone(), tolerance, edgeThreshold, this.fillTuningMode);
             if (!result) return;
             console.debug(
-                `[FloodFill] ${result.metrics.mode} total=${result.metrics.totalMs.toFixed(1)}ms gpu=${result.metrics.gpuMs.toFixed(1)}ms iterations=${result.metrics.iterations} dispatch=${result.metrics.dispatchIterations} substeps=${result.metrics.substeps} tile=${result.metrics.tileSize} batch=${result.metrics.batchSize} bounds=${result.metrics.bounds.toString()}`
+                `[FloodFill] ${result.metrics.mode} tuning=${result.metrics.tuningMode} total=${result.metrics.totalMs.toFixed(1)}ms gpu=${result.metrics.gpuMs.toFixed(1)}ms iterations=${result.metrics.iterations} dispatch=${result.metrics.dispatchIterations} substeps=${result.metrics.substeps} tile=${result.metrics.tileSize} batch=${result.metrics.batchSize} bounds=${result.metrics.bounds.toString()}`
             );
             this.updateFillStats(result.metrics);
             const fixerGroup = result.fixerGroup;
@@ -728,6 +754,7 @@ export class DrawingScreen implements CanvasDelegate {
         substeps: number;
         tileSize: number;
         batchSize: number;
+        tuningMode: FloodFillTuningMode;
         gpuMs: number;
         totalMs: number;
         bounds: Rect;
@@ -736,6 +763,7 @@ export class DrawingScreen implements CanvasDelegate {
         const bounds = `${metrics.bounds.size.width}x${metrics.bounds.size.height}`;
         this.fillStatsEl.textContent =
             `mode       ${metrics.mode}\n` +
+            `tuning     ${metrics.tuningMode}\n` +
             `total      ${metrics.totalMs.toFixed(1)} ms\n` +
             `gpu        ${metrics.gpuMs.toFixed(1)} ms\n` +
             `iter       ${metrics.iterations} (${metrics.dispatchIterations} dispatch)\n` +

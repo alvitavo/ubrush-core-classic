@@ -12,6 +12,7 @@ import { AffineTransform } from "../common/AffineTransform";
 import { Fixer, FixerRenderTarget } from "../common/Fixer";
 import { LayerBlendmode, DotBlendmode, EdgeStyle } from "../common/IBrush";
 import { Color } from "../common/Color";
+import { FloodFillTuningMode } from "../program/webgpu/WGPUFloodFillProgram";
 
 const maxSmudgingLength = 1000;
 
@@ -29,6 +30,7 @@ export interface DrawingFloodFillResult {
         substeps: number;
         tileSize: number;
         batchSize: number;
+        tuningMode: FloodFillTuningMode;
         gpuMs: number;
     };
 }
@@ -500,7 +502,7 @@ export class DrawingEngine {
 
     // ---- floodFill ----
 
-    public async floodFillDry(seed: Point, color: Color, tolerance: number, edgeThreshold: number, emptyFastPath: boolean = false): Promise<DrawingFloodFillResult> {
+    public async floodFillDry(seed: Point, color: Color, tolerance: number, edgeThreshold: number, emptyFastPath: boolean = false, tuningMode: FloodFillTuningMode = 'auto'): Promise<DrawingFloodFillResult> {
         const fullPixelRect = new Rect(0, 0, this.size.width, this.size.height);
         if (this._alphaSmudgingMode) {
             return {
@@ -508,7 +510,7 @@ export class DrawingEngine {
                 pixelBounds: fullPixelRect,
                 undoFixer: undefined,
                 redoFixer: undefined,
-                metrics: { mode: 'flood', iterations: 0, dispatchIterations: 0, substeps: 0, tileSize: 0, batchSize: 0, gpuMs: 0 }
+                metrics: { mode: 'flood', iterations: 0, dispatchIterations: 0, substeps: 0, tileSize: 0, batchSize: 0, tuningMode, gpuMs: 0 }
             };
         }
 
@@ -533,7 +535,7 @@ export class DrawingEngine {
                 pixelBounds: fullPixelRect,
                 undoFixer: new Fixer(fullPixelRect, Common.stageRect(), FixerRenderTarget.Dry, undoPixels),
                 redoFixer: new Fixer(fullPixelRect, Common.stageRect(), FixerRenderTarget.Dry, redoPixels),
-                metrics: { mode: 'fast-empty', iterations: 0, dispatchIterations: 0, substeps: 0, tileSize: this.size.width, batchSize: 0, gpuMs: performance.now() - start }
+                metrics: { mode: 'fast-empty', iterations: 0, dispatchIterations: 0, substeps: 0, tileSize: 0, batchSize: 0, tuningMode, gpuMs: performance.now() - start }
             };
         }
 
@@ -555,6 +557,7 @@ export class DrawingEngine {
             color,
             tolerance,
             edgeThreshold,
+            tuningMode,
             maxIterations: this.size.width + this.size.height
         });
 
@@ -585,6 +588,7 @@ export class DrawingEngine {
                     substeps: fillResult.substeps,
                     tileSize: fillResult.tileSize,
                     batchSize: fillResult.batchSize,
+                    tuningMode: fillResult.tuningMode,
                     gpuMs: fillResult.elapsedMs
                 }
             };
@@ -613,6 +617,7 @@ export class DrawingEngine {
                 substeps: fillResult.substeps,
                 tileSize: fillResult.tileSize,
                 batchSize: fillResult.batchSize,
+                tuningMode: fillResult.tuningMode,
                 gpuMs: fillResult.elapsedMs
             }
         };

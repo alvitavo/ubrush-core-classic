@@ -15,6 +15,7 @@ import { WGPUProgramManager } from "../program/webgpu/WGPUProgramManager";
 import { RenderObjectBlend } from "../gpu/RenderObject";
 import { Fixer, FixerRenderTarget } from "../common/Fixer";
 import { FixerGroup } from "../common/FixerGroup";
+import { FloodFillTuningMode } from "../program/webgpu/WGPUFloodFillProgram";
 
 export interface CanvasDelegate {
     
@@ -33,6 +34,7 @@ export interface CanvasFloodFillResult {
         substeps: number;
         tileSize: number;
         batchSize: number;
+        tuningMode: FloodFillTuningMode;
         gpuMs: number;
         totalMs: number;
         bounds: Rect;
@@ -348,13 +350,13 @@ export class Canvas implements LineDriverDelegate {
 
     }
 
-    public async floodFill(seed: Point, color: Color, tolerance: number, edgeThreshold: number): Promise<CanvasFloodFillResult | null> {
+    public async floodFill(seed: Point, color: Color, tolerance: number, edgeThreshold: number, tuningMode: FloodFillTuningMode = 'auto'): Promise<CanvasFloodFillResult | null> {
         if (this.drawingEngine.alphaSmudgingMode) return null;
 
         const start = performance.now();
         this.engineDry();
 
-        const result = await this.drawingEngine.floodFillDry(seed, color, tolerance, edgeThreshold, !this.hasContent);
+        const result = await this.drawingEngine.floodFillDry(seed, color, tolerance, edgeThreshold, !this.hasContent, tuningMode);
         this.updateCanvasInRect(result.rect);
 
         const fixerGroup = new FixerGroup();
