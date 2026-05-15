@@ -184,20 +184,19 @@ fn main(
     let tile = vec2u(tileIndex % params.tileGrid.x, tileIndex / params.tileGrid.x);
 
     let p = tile * vec2u(${TILE_SIZE}u, ${TILE_SIZE}u) + localId.xy;
-    if (p.x >= params.size.x || p.y >= params.size.y) {
-        return;
-    }
-
+    let inBounds = p.x < params.size.x && p.y < params.size.y;
     let seedColor = textureLoad(sourceTex, vec2i(params.seed), 0);
 
     for (var substep = 0u; substep < params.substeps; substep = substep + 1u) {
-        if (!maskAt(p) && eligible(p, seedColor) && neighborFilled(p)) {
-            atomicStore(&mask[pixelIndex(p)], 1u);
-            if (atomicExchange(&filledTiles[tileIndex], 1u) == 0u) {
-                let filledListIndex = atomicAdd(&filledCount, 1u);
-                filledList[filledListIndex] = tileIndex;
+        if (inBounds) {
+            if (!maskAt(p) && eligible(p, seedColor) && neighborFilled(p)) {
+                atomicStore(&mask[pixelIndex(p)], 1u);
+                if (atomicExchange(&filledTiles[tileIndex], 1u) == 0u) {
+                    let filledListIndex = atomicAdd(&filledCount, 1u);
+                    filledList[filledListIndex] = tileIndex;
+                }
+                wakeNeighbors(tile, localId.xy);
             }
-            wakeNeighbors(tile, localId.xy);
         }
 
         storageBarrier();
