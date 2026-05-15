@@ -14,7 +14,9 @@ struct Params {
 @group(0) @binding(2) var<storage, read_write> activeList : array<u32>;
 @group(0) @binding(3) var<storage, read_write> filledTiles : array<atomic<u32>>;
 @group(0) @binding(4) var<storage, read_write> activeCount : atomic<u32>;
-@group(0) @binding(5) var<uniform> params : Params;
+@group(0) @binding(5) var<storage, read_write> filledList : array<u32>;
+@group(0) @binding(6) var<storage, read_write> filledCount : atomic<u32>;
+@group(0) @binding(7) var<uniform> params : Params;
 
 fn colorDistance(a : vec4f, b : vec4f) -> f32 {
     let d = a - b;
@@ -49,6 +51,8 @@ fn main() {
     atomicStore(&mask[pixelIndex], 1u);
     let listIndex = atomicAdd(&activeCount, 1u);
     activeList[listIndex] = tileIndex;
+    let filledListIndex = atomicAdd(&filledCount, 1u);
+    filledList[filledListIndex] = tileIndex;
     atomicStore(&filledTiles[tileIndex], 1u);
 }
 `;
@@ -80,8 +84,10 @@ struct Params {
 @group(0) @binding(3) var<storage, read_write> nextActiveFlags : array<atomic<u32>>;
 @group(0) @binding(4) var<storage, read_write> nextActiveCount : atomic<u32>;
 @group(0) @binding(5) var<storage, read_write> filledTiles : array<atomic<u32>>;
-@group(0) @binding(6) var<storage, read_write> mask : array<atomic<u32>>;
-@group(0) @binding(7) var<uniform> params : Params;
+@group(0) @binding(6) var<storage, read_write> filledList : array<u32>;
+@group(0) @binding(7) var<storage, read_write> filledCount : atomic<u32>;
+@group(0) @binding(8) var<storage, read_write> mask : array<atomic<u32>>;
+@group(0) @binding(9) var<uniform> params : Params;
 
 fn pixelIndex(p : vec2u) -> u32 {
     return p.y * params.size.x + p.x;
@@ -185,7 +191,10 @@ fn main(
     let seedColor = textureLoad(sourceTex, vec2i(params.seed), 0);
     if (eligible(p, seedColor) && neighborFilled(p)) {
         atomicStore(&mask[pixelIndex(p)], 1u);
-        atomicStore(&filledTiles[tileIndex], 1u);
+        if (atomicExchange(&filledTiles[tileIndex], 1u) == 0u) {
+            let filledListIndex = atomicAdd(&filledCount, 1u);
+            filledList[filledListIndex] = tileIndex;
+        }
         wakeNeighbors(tile, localId.xy);
     }
 }
@@ -211,7 +220,7 @@ struct Bounds {
 
 @group(0) @binding(0) var sourceTex : texture_2d<f32>;
 @group(0) @binding(1) var<storage, read> mask : array<u32>;
-@group(0) @binding(2) var<storage, read> filledTiles : array<u32>;
+@group(0) @binding(2) var<storage, read> filledList : array<u32>;
 @group(0) @binding(3) var targetTex : texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(4) var<uniform> params : Params;
 @group(0) @binding(5) var<storage, read_write> bounds : Bounds;
@@ -243,14 +252,11 @@ fn edgeWeight(p : vec2u) -> f32 {
 
 @compute @workgroup_size(${TILE_SIZE}, ${TILE_SIZE})
 fn main(
-    @builtin(workgroup_id) tileId : vec3u,
+    @builtin(workgroup_id) workgroupId : vec3u,
     @builtin(local_invocation_id) localId : vec3u
 ) {
-    let tile = tileId.xy;
-    let tileIndex = tile.y * params.tileGrid.x + tile.x;
-    if (filledTiles[tileIndex] == 0u) {
-        return;
-    }
+    let tileIndex = filledList[workgroupId.x];
+    let tile = vec2u(tileIndex % params.tileGrid.x, tileIndex / params.tileGrid.x);
 
     let p = tile * vec2u(${TILE_SIZE}u, ${TILE_SIZE}u) + localId.xy;
     if (p.x >= params.size.x || p.y >= params.size.y) {
