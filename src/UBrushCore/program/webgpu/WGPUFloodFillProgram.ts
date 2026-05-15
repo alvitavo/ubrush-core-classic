@@ -2,6 +2,7 @@ import { WGPUContext } from "../../gpu/webgpu/WGPUContext";
 import { WGPURenderTarget } from "../../gpu/webgpu/WGPURenderTarget";
 import { Point } from "../../common/Point";
 import { Color } from "../../common/Color";
+import { Rect } from "../../common/Rect";
 import { floodFillApplyWGSL, floodFillSeedWGSL, floodFillStepWGSL } from "../wgsl/floodFill.wgsl";
 
 interface FloodFillParams {
@@ -12,6 +13,12 @@ interface FloodFillParams {
     tolerance: number;
     edgeThreshold: number;
     maxIterations?: number;
+}
+
+export interface FloodFillResult {
+    pixelBounds: Rect | null;
+    iterations: number;
+    elapsedMs: number;
 }
 
 export class WGPUFloodFillProgram {
@@ -42,6 +49,7 @@ export class WGPUFloodFillProgram {
                 { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } },
                 { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } },
                 { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
             ],
         });
         this.applyLayout = this.device.createBindGroupLayout({
@@ -60,10 +68,11 @@ export class WGPUFloodFillProgram {
 
     public distroy(): void {}
 
-    public fill(param: FloodFillParams): void {
+    public async fill(param: FloodFillParams): Promise<FloodFillResult> {
+        const start = performance.now();
         const width = param.source.size.width;
         const height = param.source.size.height;
-        if (width <= 0 || height <= 0) return;
+        if (width <= 0 || height <= 0) return { pixelBounds: null, iterations: 0, elapsedMs: 0 };
 
         const seedX = Math.max(0, Math.min(width - 1, Math.floor(param.seed.x)));
         const seedY = Math.max(0, Math.min(height - 1, height - 1 - Math.floor(param.seed.y)));
@@ -76,6 +85,11 @@ export class WGPUFloodFillProgram {
         const maskB = this.createMaskTexture(width, height);
         const floodUniform = this.makeFloodUniform(width, height, seedX, seedY, param.tolerance, param.edgeThreshold);
         const applyUniform = this.makeApplyUniform(width, height, seedX, seedY, param.tolerance, param.edgeThreshold, param.color);
+        const boundsBuffer = this.makeBoundsBuffer(width, height);
+        const boundsReadBuffer = this.device.createBuffer({
+            size: 20,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
 
         const groupsX = Math.ceil(width / 8);
         const groupsY = Math.ceil(height / 8);
@@ -129,6 +143,7 @@ export class WGPUFloodFillProgram {
                     { binding: 1, resource: readMask.createView() },
                     { binding: 2, resource: param.target.view },
                     { binding: 3, resource: { buffer: applyUniform } },
+                    { binding: 4, resource: { buffer: boundsBuffer } },
                 ],
             });
             const pass = encoder.beginComputePass();
@@ -138,11 +153,23 @@ export class WGPUFloodFillProgram {
             pass.end();
         }
 
+        encoder.copyBufferToBuffer(boundsBuffer, 0, boundsReadBuffer, 0, 20);
         this.device.queue.submit([encoder.finish()]);
+
+        await boundsReadBuffer.mapAsync(GPUMapMode.READ);
+        const rawBounds = new Uint32Array(boundsReadBuffer.getMappedRange().slice(0));
+        boundsReadBuffer.unmap();
+
+        const pixelBounds = this.boundsFromRaw(rawBounds, width, height);
+
         maskA.destroy();
         maskB.destroy();
         floodUniform.destroy();
         applyUniform.destroy();
+        boundsBuffer.destroy();
+        boundsReadBuffer.destroy();
+
+        return { pixelBounds, iterations, elapsedMs: performance.now() - start };
     }
 
     private createPipeline(wgsl: string, layout: GPUBindGroupLayout): GPUComputePipeline {
@@ -191,6 +218,29 @@ export class WGPUFloodFillProgram {
         f32[10] = color.b;
         f32[11] = color.a;
         return this.makeUniformBuffer(data);
+    }
+
+    private makeBoundsBuffer(width: number, height: number): GPUBuffer {
+        const data = new Uint32Array([width, height, 0, 0, 0]);
+        const buffer = this.device.createBuffer({
+            size: data.byteLength,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+        });
+        this.device.queue.writeBuffer(buffer, 0, data as BufferSource);
+        return buffer;
+    }
+
+    private boundsFromRaw(raw: Uint32Array, width: number, height: number): Rect | null {
+        const count = raw[4];
+        if (count === 0) return null;
+
+        const minX = raw[0];
+        const minYTop = raw[1];
+        const maxX = raw[2];
+        const maxYTop = raw[3];
+
+        const yUp = height - maxYTop - 1;
+        return new Rect(minX, yUp, maxX - minX + 1, maxYTop - minYTop + 1);
     }
 
     private makeUniformBuffer(data: ArrayBuffer): GPUBuffer {

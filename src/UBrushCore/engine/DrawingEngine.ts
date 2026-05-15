@@ -17,6 +17,18 @@ const maxSmudgingLength = 1000;
 
 export type DrawingTargetType = 'plain' | 'effect' | 'mask';
 
+export interface DrawingFloodFillResult {
+    rect: Rect;
+    pixelBounds: Rect;
+    undoFixer?: Fixer;
+    redoFixer?: Fixer;
+    metrics: {
+        mode: 'fast-empty' | 'flood';
+        iterations: number;
+        gpuMs: number;
+    };
+}
+
 export class DrawingEngine {
 
     protected context: WGPUContext;
@@ -484,10 +496,43 @@ export class DrawingEngine {
 
     // ---- floodFill ----
 
-    public floodFillDry(seed: Point, color: Color, tolerance: number, edgeThreshold: number): Rect {
-        if (this._alphaSmudgingMode) return Common.stageRect();
+    public async floodFillDry(seed: Point, color: Color, tolerance: number, edgeThreshold: number, emptyFastPath: boolean = false): Promise<DrawingFloodFillResult> {
+        const fullPixelRect = new Rect(0, 0, this.size.width, this.size.height);
+        if (this._alphaSmudgingMode) {
+            return {
+                rect: Common.stageRect(),
+                pixelBounds: fullPixelRect,
+                undoFixer: undefined,
+                redoFixer: undefined,
+                metrics: { mode: 'flood', iterations: 0, gpuMs: 0 }
+            };
+        }
 
         const canvasRect = new Rect(0, 0, this.size.width, this.size.height);
+        if (emptyFastPath) {
+            const start = performance.now();
+            this.context.clearRenderTarget(this.dryRenderTarget, color);
+            this.context.clearRenderTarget(this.liquidRenderTarget, Color.clear());
+            this.context.clearRenderTarget(this.drawingRenderTarget, Color.clear());
+            if (this._useSecondaryMask) {
+                this.context.clearRenderTarget(this.maskLiquidRenderTarget!, Color.clear());
+                this.context.clearRenderTarget(this.maskDrawingRenderTarget!, Color.clear());
+            }
+            if (this._useSmudging) {
+                this._fill(this.smudging0CopyRenderTarget, this.dryRenderTarget.texture);
+                this._fill(this.smudging1CopyRenderTarget, this.dryRenderTarget.texture);
+            }
+            const undoPixels = new Uint8Array(this.size.width * this.size.height * 4);
+            const redoPixels = this.buildSolidPixels(this.size.width, this.size.height, color);
+            return {
+                rect: Common.stageRect(),
+                pixelBounds: fullPixelRect,
+                undoFixer: new Fixer(fullPixelRect, Common.stageRect(), FixerRenderTarget.Dry, undoPixels),
+                redoFixer: new Fixer(fullPixelRect, Common.stageRect(), FixerRenderTarget.Dry, redoPixels),
+                metrics: { mode: 'fast-empty', iterations: 0, gpuMs: performance.now() - start }
+            };
+        }
+
         const sourceRenderTarget = this.context.createRenderTarget(this.size);
 
         WGPUProgramManager.getInstance().fillRectProgram.fill(sourceRenderTarget, {
@@ -499,7 +544,7 @@ export class DrawingEngine {
             blend: RenderObjectBlend.None
         });
 
-        WGPUProgramManager.getInstance().floodFillProgram.fill({
+        const fillResult = await WGPUProgramManager.getInstance().floodFillProgram.fill({
             source: sourceRenderTarget,
             target: this.dryRenderTarget,
             seed,
@@ -509,7 +554,6 @@ export class DrawingEngine {
             maxIterations: this.size.width + this.size.height
         });
 
-        this.context.deleteRenderTarget(sourceRenderTarget);
         this.context.clearRenderTarget(this.liquidRenderTarget, Color.clear());
         this.context.clearRenderTarget(this.drawingRenderTarget, Color.clear());
 
@@ -523,7 +567,80 @@ export class DrawingEngine {
             this._fill(this.smudging1CopyRenderTarget, this.dryRenderTarget.texture);
         }
 
-        return Common.stageRect();
+        if (!fillResult.pixelBounds) {
+            this.context.deleteRenderTarget(sourceRenderTarget);
+            return {
+                rect: new Rect(),
+                pixelBounds: new Rect(),
+                undoFixer: undefined,
+                redoFixer: undefined,
+                metrics: {
+                    mode: 'flood',
+                    iterations: fillResult.iterations,
+                    gpuMs: fillResult.elapsedMs
+                }
+            };
+        }
+
+        const pixelBounds = fillResult.pixelBounds;
+        const stageRect = this.pixelRectToStageRect(pixelBounds, 2);
+        const paddedPixelBounds = this.padPixelRect(pixelBounds, 2);
+        const paddedStageRect = this.pixelRectToStageRect(paddedPixelBounds, 0);
+        const undoPixels = await this.context.readPixels(sourceRenderTarget, paddedPixelBounds);
+        const redoPixels = await this.context.readPixels(this.dryRenderTarget, paddedPixelBounds);
+        const undoFixer = new Fixer(paddedPixelBounds, paddedStageRect, FixerRenderTarget.Dry, undoPixels);
+        const redoFixer = new Fixer(paddedPixelBounds, paddedStageRect, FixerRenderTarget.Dry, redoPixels);
+
+        this.context.deleteRenderTarget(sourceRenderTarget);
+
+        return {
+            rect: stageRect,
+            pixelBounds,
+            undoFixer,
+            redoFixer,
+            metrics: {
+                mode: 'flood',
+                iterations: fillResult.iterations,
+                gpuMs: fillResult.elapsedMs
+            }
+        };
+    }
+
+    private buildSolidPixels(width: number, height: number, color: Color): Uint8Array {
+        const r = Math.round(Common.clamp0_1(color.r) * 255);
+        const g = Math.round(Common.clamp0_1(color.g) * 255);
+        const b = Math.round(Common.clamp0_1(color.b) * 255);
+        const a = Math.round(Common.clamp0_1(color.a) * 255);
+        const pixels = new Uint8Array(width * height * 4);
+        for (let i = 0; i < pixels.length; i += 4) {
+            pixels[i] = r;
+            pixels[i + 1] = g;
+            pixels[i + 2] = b;
+            pixels[i + 3] = a;
+        }
+        return pixels;
+    }
+
+    private padPixelRect(rect: Rect, padding: number): Rect {
+        const x0 = Math.max(0, rect.origin.x - padding);
+        const y0 = Math.max(0, rect.origin.y - padding);
+        const x1 = Math.min(this.size.width, rect.origin.x + rect.size.width + padding);
+        const y1 = Math.min(this.size.height, rect.origin.y + rect.size.height + padding);
+        return new Rect(x0, y0, x1 - x0, y1 - y0);
+    }
+
+    private pixelRectToStageRect(rect: Rect, padding: number = 0): Rect {
+        const x0 = Math.max(0, rect.origin.x - padding);
+        const y0 = Math.max(0, rect.origin.y - padding);
+        const x1 = Math.min(this.size.width, rect.origin.x + rect.size.width + padding);
+        const y1 = Math.min(this.size.height, rect.origin.y + rect.size.height + padding);
+
+        return new Rect(
+            (x0 / this.size.width) * 2.0 - 1.0,
+            (y0 / this.size.height) * 2.0 - 1.0,
+            ((x1 - x0) / this.size.width) * 2.0,
+            ((y1 - y0) / this.size.height) * 2.0
+        );
     }
 
     // ---- fixer ----

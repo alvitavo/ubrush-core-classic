@@ -24,6 +24,17 @@ export interface CanvasDelegate {
 
 }
 
+export interface CanvasFloodFillResult {
+    fixerGroup: FixerGroup | null;
+    metrics: {
+        mode: 'fast-empty' | 'flood';
+        iterations: number;
+        gpuMs: number;
+        totalMs: number;
+        bounds: Rect;
+    };
+}
+
 export class Canvas implements LineDriverDelegate {
 
     public outputRenderTarget: WGPURenderTarget;
@@ -47,6 +58,7 @@ export class Canvas implements LineDriverDelegate {
     private alphaLock: boolean = false;
     private alphaMaskRenderTarget?: WGPURenderTarget;
     private transform: AffineTransform = new AffineTransform();
+    private hasContent: boolean = false;
 
     constructor(context: WGPUContext, size: Size) {
 
@@ -248,6 +260,7 @@ export class Canvas implements LineDriverDelegate {
 
             this.updateCanvasInRect(changeRect);
             this.lineRect = Rect.union(this.lineRect ?? changeRect, changeRect);
+            this.hasContent = true;
 
         }
 
@@ -267,6 +280,7 @@ export class Canvas implements LineDriverDelegate {
 
             this.updateCanvasInRect(changeRect);
             this.lineRect = Rect.union(this.lineRect ?? changeRect, changeRect);
+            this.hasContent = true;
 
         }
 
@@ -330,21 +344,30 @@ export class Canvas implements LineDriverDelegate {
 
     }
 
-    public async floodFill(seed: Point, color: Color, tolerance: number, edgeThreshold: number): Promise<FixerGroup | null> {
+    public async floodFill(seed: Point, color: Color, tolerance: number, edgeThreshold: number): Promise<CanvasFloodFillResult | null> {
         if (this.drawingEngine.alphaSmudgingMode) return null;
 
+        const start = performance.now();
         this.engineDry();
 
+        const result = await this.drawingEngine.floodFillDry(seed, color, tolerance, edgeThreshold, !this.hasContent);
+        this.updateCanvasInRect(result.rect);
+
         const fixerGroup = new FixerGroup();
-        fixerGroup.undoFixer = (await this.fixer()) || undefined;
-
-        const changeRect = this.drawingEngine.floodFillDry(seed, color, tolerance, edgeThreshold);
-        this.updateCanvasInRect(changeRect);
-
-        fixerGroup.redoFixer = (await this.fixer()) || undefined;
+        fixerGroup.undoFixer = result.undoFixer;
+        fixerGroup.redoFixer = result.redoFixer;
+        const hasHistory = !!(fixerGroup.undoFixer && fixerGroup.redoFixer);
+        if (hasHistory) this.hasContent = true;
         this.age++;
 
-        return fixerGroup.undoFixer && fixerGroup.redoFixer ? fixerGroup : null;
+        return {
+            fixerGroup: hasHistory ? fixerGroup : null,
+            metrics: {
+                ...result.metrics,
+                totalMs: performance.now() - start,
+                bounds: result.pixelBounds
+            }
+        };
     }
 
     // image and fixer
@@ -432,6 +455,7 @@ export class Canvas implements LineDriverDelegate {
         this.clearOutputRenderTarget();
         this.drawingEngine.clear();
         this.updateCanvas();
+        this.hasContent = false;
         
         this.age ++;
 

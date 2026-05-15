@@ -678,7 +678,12 @@ export class DrawingScreen implements CanvasDelegate {
         try {
             const tolerance = (this.fillTolerance / 255) * 2;
             const edgeThreshold = Math.max(0.02, (101 - this.fillEdgeSensitivity) / 100 * 1.5);
-            const fixerGroup = await this.canvas.floodFill(seed, this.currentColor.clone(), tolerance, edgeThreshold);
+            const result = await this.canvas.floodFill(seed, this.currentColor.clone(), tolerance, edgeThreshold);
+            if (!result) return;
+            console.debug(
+                `[FloodFill] ${result.metrics.mode} total=${result.metrics.totalMs.toFixed(1)}ms gpu=${result.metrics.gpuMs.toFixed(1)}ms iterations=${result.metrics.iterations} bounds=${result.metrics.bounds.toString()}`
+            );
+            const fixerGroup = result.fixerGroup;
             if (!fixerGroup) return;
 
             this.undoStack.push(fixerGroup);

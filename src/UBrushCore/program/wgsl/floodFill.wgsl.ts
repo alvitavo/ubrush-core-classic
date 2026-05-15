@@ -127,10 +127,19 @@ struct Params {
     fillColor : vec4f,
 };
 
+struct Bounds {
+    minX : atomic<u32>,
+    minY : atomic<u32>,
+    maxX : atomic<u32>,
+    maxY : atomic<u32>,
+    count : atomic<u32>,
+};
+
 @group(0) @binding(0) var sourceTex : texture_2d<f32>;
 @group(0) @binding(1) var maskTex : texture_2d<u32>;
 @group(0) @binding(2) var targetTex : texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(3) var<uniform> params : Params;
+@group(0) @binding(4) var<storage, read_write> bounds : Bounds;
 
 fn maskAt(p : vec2u) -> u32 {
     return textureLoad(maskTex, vec2i(p), 0).r;
@@ -165,6 +174,12 @@ fn main(@builtin(global_invocation_id) id : vec3u) {
         textureStore(targetTex, vec2i(p), src);
         return;
     }
+
+    atomicMin(&bounds.minX, p.x);
+    atomicMin(&bounds.minY, p.y);
+    atomicMax(&bounds.maxX, p.x);
+    atomicMax(&bounds.maxY, p.y);
+    atomicAdd(&bounds.count, 1u);
 
     let feather = edgeWeight(p);
     let alpha = params.fillColor.a * smoothstep(0.05, 0.95, feather);
