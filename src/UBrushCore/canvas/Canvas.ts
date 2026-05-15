@@ -330,6 +330,23 @@ export class Canvas implements LineDriverDelegate {
 
     }
 
+    public async floodFill(seed: Point, color: Color, tolerance: number, edgeThreshold: number): Promise<FixerGroup | null> {
+        if (this.drawingEngine.alphaSmudgingMode) return null;
+
+        this.engineDry();
+
+        const fixerGroup = new FixerGroup();
+        fixerGroup.undoFixer = (await this.fixer()) || undefined;
+
+        const changeRect = this.drawingEngine.floodFillDry(seed, color, tolerance, edgeThreshold);
+        this.updateCanvasInRect(changeRect);
+
+        fixerGroup.redoFixer = (await this.fixer()) || undefined;
+        this.age++;
+
+        return fixerGroup.undoFixer && fixerGroup.redoFixer ? fixerGroup : null;
+    }
+
     // image and fixer
 
     // public swapImage:(UIImage *)image;

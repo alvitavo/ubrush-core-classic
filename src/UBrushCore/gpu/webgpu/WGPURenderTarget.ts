@@ -27,7 +27,9 @@ export class WGPURenderTarget {
             usage:
                 GPUTextureUsage.RENDER_ATTACHMENT |
                 GPUTextureUsage.TEXTURE_BINDING |
-                GPUTextureUsage.COPY_SRC,
+                GPUTextureUsage.COPY_SRC |
+                GPUTextureUsage.COPY_DST |
+                GPUTextureUsage.STORAGE_BINDING,
         });
 
         this.view = this.gpuTexture.createView();

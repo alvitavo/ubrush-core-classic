@@ -40,6 +40,10 @@ export class DrawingScreen implements CanvasDelegate {
     private currentColor = new Color(0, 0, 0, 1);
     private currentSize = 0.1;
     private currentOpacity = 1.0;
+    private currentTool: 'brush' | 'fill' = 'brush';
+    private fillTolerance = 24;
+    private fillEdgeSensitivity = 72;
+    private fillInProgress = false;
 
     private savedBrush: IBrush | null = null;
     private isInitialRestore = false;
@@ -51,6 +55,8 @@ export class DrawingScreen implements CanvasDelegate {
     private undoBtnEl!: HTMLButtonElement;
     private redoBtnEl!: HTMLButtonElement;
     private colorInputEl!: HTMLInputElement;
+    private brushToolBtn!: HTMLButtonElement;
+    private fillToolBtn!: HTMLButtonElement;
     private selectedSwatch: HTMLButtonElement | null = null;
 
     private onEditBrush: () => void;
@@ -278,6 +284,8 @@ export class DrawingScreen implements CanvasDelegate {
         // Color section (palette + picker)
         sidebar.appendChild(this.buildColorSection());
 
+        sidebar.appendChild(this.buildToolSection());
+
         // Size slider
         sidebar.appendChild(sliderRow('Size', 0, 0.5, 0.001, this.currentSize, (v) => {
             this.currentSize = v;
@@ -291,6 +299,14 @@ export class DrawingScreen implements CanvasDelegate {
             this.canvas?.lineDriver.setBrushOpacity(v);
             this.saveState();
         }));
+
+        sidebar.appendChild(sliderRow('Fill Tolerance', 0, 255, 1, this.fillTolerance, (v) => {
+            this.fillTolerance = v;
+        }, 0));
+
+        sidebar.appendChild(sliderRow('Edge Sensitivity', 0, 100, 1, this.fillEdgeSensitivity, (v) => {
+            this.fillEdgeSensitivity = v;
+        }, 0));
 
         // Divider
         sidebar.appendChild(divider());
@@ -456,10 +472,16 @@ export class DrawingScreen implements CanvasDelegate {
         this.glCanvas.addEventListener('touchstart', this.onPointerDown, { passive: false });
     }
 
-    private onPointerDown = (e: MouseEvent | TouchEvent): void => {
+    private onPointerDown = async (e: MouseEvent | TouchEvent): Promise<void> => {
         e.preventDefault();
         this.stylusEventCount = 0;
         this.lastPos = this.eventPoint(e);
+
+        if (this.currentTool === 'fill') {
+            await this.applyFloodFill(this.lastPos);
+            return;
+        }
+
         this.lastStylus = this.eventStylus(e);
         this.canvas?.moveTo(this.lastPos, this.lastStylus);
 
@@ -600,6 +622,76 @@ export class DrawingScreen implements CanvasDelegate {
         this.selectedSwatch = null;
     }
 
+    private buildToolSection(): HTMLElement {
+        const wrap = document.createElement('div');
+        const lbl = document.createElement('label');
+        lbl.textContent = 'Tool';
+        lbl.style.cssText = `display:block; font-size:11px; color:#9a9a9a; margin-bottom:5px; font-weight:600; text-transform:uppercase; letter-spacing:.4px;`;
+        wrap.appendChild(lbl);
+
+        const row = document.createElement('div');
+        row.style.cssText = `display:grid; grid-template-columns:1fr 1fr; gap:5px;`;
+
+        this.brushToolBtn = this.toolButton('Brush', () => this.setTool('brush'));
+        this.fillToolBtn = this.toolButton('Fill', () => this.setTool('fill'));
+        row.appendChild(this.brushToolBtn);
+        row.appendChild(this.fillToolBtn);
+        wrap.appendChild(row);
+
+        this.updateToolButtons();
+        return wrap;
+    }
+
+    private toolButton(text: string, onClick: () => void): HTMLButtonElement {
+        const button = document.createElement('button');
+        button.textContent = text;
+        button.style.cssText = `
+            height:30px; background:#3a3a3a; color:#e0e0e0;
+            border:1px solid #555; border-radius:5px;
+            font-size:12px; cursor:pointer;
+        `;
+        button.addEventListener('click', onClick);
+        return button;
+    }
+
+    private setTool(tool: 'brush' | 'fill'): void {
+        this.currentTool = tool;
+        this.updateToolButtons();
+    }
+
+    private updateToolButtons(): void {
+        if (!this.brushToolBtn || !this.fillToolBtn) return;
+        const base = `
+            height:30px; border-radius:5px;
+            font-size:12px; cursor:pointer;
+        `;
+        const active = `${base} background:#4a90d9; border:1px solid #6db2f0; color:#fff;`;
+        const inactive = `${base} background:#3a3a3a; border:1px solid #555; color:#e0e0e0;`;
+        this.brushToolBtn.style.cssText = this.currentTool === 'brush' ? active : inactive;
+        this.fillToolBtn.style.cssText = this.currentTool === 'fill' ? active : inactive;
+        if (this.glCanvas) this.glCanvas.style.cursor = this.currentTool === 'fill' ? 'cell' : 'crosshair';
+    }
+
+    private async applyFloodFill(seed: Point): Promise<void> {
+        if (!this.canvas || this.fillInProgress) return;
+        this.fillInProgress = true;
+        try {
+            const tolerance = (this.fillTolerance / 255) * 2;
+            const edgeThreshold = Math.max(0.02, (101 - this.fillEdgeSensitivity) / 100 * 1.5);
+            const fixerGroup = await this.canvas.floodFill(seed, this.currentColor.clone(), tolerance, edgeThreshold);
+            if (!fixerGroup) return;
+
+            this.undoStack.push(fixerGroup);
+            this.redoStack = [];
+            this.undoBtnEl.disabled = false;
+            this.redoBtnEl.disabled = true;
+        } catch (error) {
+            console.error('Flood fill failed', error);
+        } finally {
+            this.fillInProgress = false;
+        }
+    }
+
     private buildColorSection(): HTMLElement {
         const PALETTE = [
             '#FFC312', '#F79F1F', '#EE5A24', '#EA2027',
@@ -705,7 +797,7 @@ function row(labelText: string, buildControl: () => HTMLElement): HTMLElement {
 
 function sliderRow(
     labelText: string, min: number, max: number, step: number,
-    initial: number, onChange: (v: number) => void
+    initial: number, onChange: (v: number) => void, decimals: number = 2
 ): HTMLElement {
     const wrap = document.createElement('div');
 
@@ -716,7 +808,7 @@ function sliderRow(
     lbl.style.cssText = `font-size:11px; color:#9a9a9a; font-weight:600; text-transform:uppercase; letter-spacing:.4px;`;
     const valSpan = document.createElement('span');
     valSpan.style.cssText = `font-size:11px; color:#7a9fc0;`;
-    valSpan.textContent = initial.toFixed(2);
+    valSpan.textContent = initial.toFixed(decimals);
     header.appendChild(lbl);
     header.appendChild(valSpan);
     wrap.appendChild(header);
@@ -730,7 +822,7 @@ function sliderRow(
     range.style.cssText = `width:100%; accent-color:#4a90d9; cursor:pointer;`;
     range.addEventListener('input', () => {
         const v = parseFloat(range.value);
-        valSpan.textContent = v.toFixed(2);
+        valSpan.textContent = v.toFixed(decimals);
         onChange(v);
     });
     wrap.appendChild(range);

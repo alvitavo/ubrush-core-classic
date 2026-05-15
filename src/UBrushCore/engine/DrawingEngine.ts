@@ -482,6 +482,50 @@ export class DrawingEngine {
         }
     }
 
+    // ---- floodFill ----
+
+    public floodFillDry(seed: Point, color: Color, tolerance: number, edgeThreshold: number): Rect {
+        if (this._alphaSmudgingMode) return Common.stageRect();
+
+        const canvasRect = new Rect(0, 0, this.size.width, this.size.height);
+        const sourceRenderTarget = this.context.createRenderTarget(this.size);
+
+        WGPUProgramManager.getInstance().fillRectProgram.fill(sourceRenderTarget, {
+            targetRect: canvasRect,
+            source: this.dryRenderTarget.texture,
+            sourceRect: canvasRect,
+            canvasRect,
+            transform: new AffineTransform(),
+            blend: RenderObjectBlend.None
+        });
+
+        WGPUProgramManager.getInstance().floodFillProgram.fill({
+            source: sourceRenderTarget,
+            target: this.dryRenderTarget,
+            seed,
+            color,
+            tolerance,
+            edgeThreshold,
+            maxIterations: this.size.width + this.size.height
+        });
+
+        this.context.deleteRenderTarget(sourceRenderTarget);
+        this.context.clearRenderTarget(this.liquidRenderTarget, Color.clear());
+        this.context.clearRenderTarget(this.drawingRenderTarget, Color.clear());
+
+        if (this._useSecondaryMask) {
+            this.context.clearRenderTarget(this.maskLiquidRenderTarget!, Color.clear());
+            this.context.clearRenderTarget(this.maskDrawingRenderTarget!, Color.clear());
+        }
+
+        if (this._useSmudging) {
+            this._fill(this.smudging0CopyRenderTarget, this.dryRenderTarget.texture);
+            this._fill(this.smudging1CopyRenderTarget, this.dryRenderTarget.texture);
+        }
+
+        return Common.stageRect();
+    }
+
     // ---- fixer ----
 
     public async fixer(fixerRenderTarget: FixerRenderTarget, rect: Rect): Promise<Fixer | null> {
