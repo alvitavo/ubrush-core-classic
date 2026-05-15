@@ -25,6 +25,7 @@ export interface DrawingFloodFillResult {
     metrics: {
         mode: 'fast-empty' | 'flood';
         iterations: number;
+        substeps: number;
         gpuMs: number;
     };
 }
@@ -504,7 +505,7 @@ export class DrawingEngine {
                 pixelBounds: fullPixelRect,
                 undoFixer: undefined,
                 redoFixer: undefined,
-                metrics: { mode: 'flood', iterations: 0, gpuMs: 0 }
+                metrics: { mode: 'flood', iterations: 0, substeps: 0, gpuMs: 0 }
             };
         }
 
@@ -529,7 +530,7 @@ export class DrawingEngine {
                 pixelBounds: fullPixelRect,
                 undoFixer: new Fixer(fullPixelRect, Common.stageRect(), FixerRenderTarget.Dry, undoPixels),
                 redoFixer: new Fixer(fullPixelRect, Common.stageRect(), FixerRenderTarget.Dry, redoPixels),
-                metrics: { mode: 'fast-empty', iterations: 0, gpuMs: performance.now() - start }
+                metrics: { mode: 'fast-empty', iterations: 0, substeps: 0, gpuMs: performance.now() - start }
             };
         }
 
@@ -577,6 +578,7 @@ export class DrawingEngine {
                 metrics: {
                     mode: 'flood',
                     iterations: fillResult.iterations,
+                    substeps: fillResult.substeps,
                     gpuMs: fillResult.elapsedMs
                 }
             };
@@ -601,6 +603,7 @@ export class DrawingEngine {
             metrics: {
                 mode: 'flood',
                 iterations: fillResult.iterations,
+                substeps: fillResult.substeps,
                 gpuMs: fillResult.elapsedMs
             }
         };

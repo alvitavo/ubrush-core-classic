@@ -29,6 +29,7 @@ export interface CanvasFloodFillResult {
     metrics: {
         mode: 'fast-empty' | 'flood';
         iterations: number;
+        substeps: number;
         gpuMs: number;
         totalMs: number;
         bounds: Rect;

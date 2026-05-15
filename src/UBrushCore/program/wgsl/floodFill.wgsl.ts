@@ -1,5 +1,4 @@
 const TILE_SIZE = 16;
-const TILE_SUBSTEPS = 4;
 
 export const floodFillSeedWGSL = /* wgsl */ `
 struct Params {
@@ -8,6 +7,8 @@ struct Params {
     tolerance : f32,
     edgeThreshold : f32,
     tileGrid : vec2u,
+    substeps : u32,
+    _pad0 : u32,
 };
 
 @group(0) @binding(0) var sourceTex : texture_2d<f32>;
@@ -77,6 +78,8 @@ struct Params {
     tolerance : f32,
     edgeThreshold : f32,
     tileGrid : vec2u,
+    substeps : u32,
+    _pad0 : u32,
 };
 
 @group(0) @binding(0) var sourceTex : texture_2d<f32>;
@@ -187,7 +190,7 @@ fn main(
 
     let seedColor = textureLoad(sourceTex, vec2i(params.seed), 0);
 
-    for (var substep = 0u; substep < ${TILE_SUBSTEPS}u; substep = substep + 1u) {
+    for (var substep = 0u; substep < params.substeps; substep = substep + 1u) {
         if (!maskAt(p) && eligible(p, seedColor) && neighborFilled(p)) {
             atomicStore(&mask[pixelIndex(p)], 1u);
             if (atomicExchange(&filledTiles[tileIndex], 1u) == 0u) {

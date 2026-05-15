@@ -19,11 +19,12 @@ export interface FloodFillResult {
     pixelBounds: Rect | null;
     iterations: number;
     elapsedMs: number;
+    substeps: number;
 }
 
 const TILE_SIZE = 16;
 const ITERATION_BATCH_SIZE = 64;
-const TILE_SUBSTEPS = 4;
+const DEFAULT_TILE_SUBSTEPS = 8;
 
 export class WGPUFloodFillProgram {
 
@@ -97,7 +98,7 @@ export class WGPUFloodFillProgram {
         const start = performance.now();
         const width = param.source.size.width;
         const height = param.source.size.height;
-        if (width <= 0 || height <= 0) return { pixelBounds: null, iterations: 0, elapsedMs: 0 };
+        if (width <= 0 || height <= 0) return { pixelBounds: null, iterations: 0, elapsedMs: 0, substeps: DEFAULT_TILE_SUBSTEPS };
 
         const seedX = Math.max(0, Math.min(width - 1, Math.floor(param.seed.x)));
         const seedY = Math.max(0, Math.min(height - 1, height - 1 - Math.floor(param.seed.y)));
@@ -108,7 +109,8 @@ export class WGPUFloodFillProgram {
             param.maxIterations ?? Math.ceil(Math.sqrt(width * width + height * height)),
             width + height,
         ));
-        const maxDispatchIterations = Math.ceil(maxPixelIterations / TILE_SUBSTEPS);
+        const substeps = this.chooseTileSubsteps(width, height);
+        const maxDispatchIterations = Math.ceil(maxPixelIterations / substeps);
 
         const maskBuffer = this.createStorageBuffer(width * height * 4);
         const activeListA = this.createStorageBuffer(tileCount * 4);
@@ -123,7 +125,7 @@ export class WGPUFloodFillProgram {
         const filledTiles = this.createStorageBuffer(tileCount * 4);
         const filledList = this.createStorageBuffer(tileCount * 4);
         const filledCount = this.createStorageBuffer(4);
-        const floodUniform = this.makeFloodUniform(width, height, seedX, seedY, tileCols, tileRows, param.tolerance, param.edgeThreshold);
+        const floodUniform = this.makeFloodUniform(width, height, seedX, seedY, tileCols, tileRows, substeps, param.tolerance, param.edgeThreshold);
         const applyUniform = this.makeApplyUniform(width, height, seedX, seedY, tileCols, tileRows, param.tolerance, param.edgeThreshold, param.color);
         const activeCountReadBuffer = this.device.createBuffer({
             size: 4,
@@ -246,7 +248,7 @@ export class WGPUFloodFillProgram {
         boundsBuffer.destroy();
         boundsReadBuffer.destroy();
 
-        return { pixelBounds, iterations: completedIterations * TILE_SUBSTEPS, elapsedMs: performance.now() - start };
+        return { pixelBounds, iterations: completedIterations * substeps, elapsedMs: performance.now() - start, substeps };
     }
 
     private createPipeline(wgsl: string, layout: GPUBindGroupLayout): GPUComputePipeline {
@@ -355,8 +357,12 @@ export class WGPUFloodFillProgram {
         });
     }
 
-    private makeFloodUniform(width: number, height: number, seedX: number, seedY: number, tileCols: number, tileRows: number, tolerance: number, edgeThreshold: number): GPUBuffer {
-        const data = new ArrayBuffer(40);
+    private chooseTileSubsteps(_width: number, _height: number): number {
+        return DEFAULT_TILE_SUBSTEPS;
+    }
+
+    private makeFloodUniform(width: number, height: number, seedX: number, seedY: number, tileCols: number, tileRows: number, substeps: number, tolerance: number, edgeThreshold: number): GPUBuffer {
+        const data = new ArrayBuffer(48);
         const u32 = new Uint32Array(data);
         const f32 = new Float32Array(data);
         u32[0] = width;
@@ -367,6 +373,7 @@ export class WGPUFloodFillProgram {
         f32[5] = edgeThreshold;
         u32[6] = tileCols;
         u32[7] = tileRows;
+        u32[8] = substeps;
         return this.makeUniformBuffer(data);
     }
 
