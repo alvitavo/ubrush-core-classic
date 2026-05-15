@@ -29,7 +29,10 @@ export interface CanvasFloodFillResult {
     metrics: {
         mode: 'fast-empty' | 'flood';
         iterations: number;
+        dispatchIterations: number;
         substeps: number;
+        tileSize: number;
+        batchSize: number;
         gpuMs: number;
         totalMs: number;
         bounds: Rect;

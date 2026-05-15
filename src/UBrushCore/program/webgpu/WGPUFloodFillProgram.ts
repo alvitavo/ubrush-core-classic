@@ -18,8 +18,11 @@ interface FloodFillParams {
 export interface FloodFillResult {
     pixelBounds: Rect | null;
     iterations: number;
+    dispatchIterations: number;
     elapsedMs: number;
     substeps: number;
+    tileSize: number;
+    batchSize: number;
 }
 
 const TILE_SIZE = 16;
@@ -98,7 +101,17 @@ export class WGPUFloodFillProgram {
         const start = performance.now();
         const width = param.source.size.width;
         const height = param.source.size.height;
-        if (width <= 0 || height <= 0) return { pixelBounds: null, iterations: 0, elapsedMs: 0, substeps: DEFAULT_TILE_SUBSTEPS };
+        if (width <= 0 || height <= 0) {
+            return {
+                pixelBounds: null,
+                iterations: 0,
+                dispatchIterations: 0,
+                elapsedMs: 0,
+                substeps: DEFAULT_TILE_SUBSTEPS,
+                tileSize: TILE_SIZE,
+                batchSize: ITERATION_BATCH_SIZE,
+            };
+        }
 
         const seedX = Math.max(0, Math.min(width - 1, Math.floor(param.seed.x)));
         const seedY = Math.max(0, Math.min(height - 1, height - 1 - Math.floor(param.seed.y)));
@@ -248,7 +261,15 @@ export class WGPUFloodFillProgram {
         boundsBuffer.destroy();
         boundsReadBuffer.destroy();
 
-        return { pixelBounds, iterations: completedIterations * substeps, elapsedMs: performance.now() - start, substeps };
+        return {
+            pixelBounds,
+            iterations: completedIterations * substeps,
+            dispatchIterations: completedIterations,
+            elapsedMs: performance.now() - start,
+            substeps,
+            tileSize: TILE_SIZE,
+            batchSize: ITERATION_BATCH_SIZE,
+        };
     }
 
     private createPipeline(wgsl: string, layout: GPUBindGroupLayout): GPUComputePipeline {

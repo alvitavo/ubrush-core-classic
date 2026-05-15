@@ -57,6 +57,7 @@ export class DrawingScreen implements CanvasDelegate {
     private colorInputEl!: HTMLInputElement;
     private brushToolBtn!: HTMLButtonElement;
     private fillToolBtn!: HTMLButtonElement;
+    private fillStatsEl!: HTMLElement;
     private selectedSwatch: HTMLButtonElement | null = null;
 
     private onEditBrush: () => void;
@@ -307,6 +308,8 @@ export class DrawingScreen implements CanvasDelegate {
         sidebar.appendChild(sliderRow('Edge Sensitivity', 0, 100, 1, this.fillEdgeSensitivity, (v) => {
             this.fillEdgeSensitivity = v;
         }, 0));
+
+        sidebar.appendChild(this.buildFillStatsSection());
 
         // Divider
         sidebar.appendChild(divider());
@@ -681,8 +684,9 @@ export class DrawingScreen implements CanvasDelegate {
             const result = await this.canvas.floodFill(seed, this.currentColor.clone(), tolerance, edgeThreshold);
             if (!result) return;
             console.debug(
-                `[FloodFill] ${result.metrics.mode} total=${result.metrics.totalMs.toFixed(1)}ms gpu=${result.metrics.gpuMs.toFixed(1)}ms iterations=${result.metrics.iterations} substeps=${result.metrics.substeps} bounds=${result.metrics.bounds.toString()}`
+                `[FloodFill] ${result.metrics.mode} total=${result.metrics.totalMs.toFixed(1)}ms gpu=${result.metrics.gpuMs.toFixed(1)}ms iterations=${result.metrics.iterations} dispatch=${result.metrics.dispatchIterations} substeps=${result.metrics.substeps} tile=${result.metrics.tileSize} batch=${result.metrics.batchSize} bounds=${result.metrics.bounds.toString()}`
             );
+            this.updateFillStats(result.metrics);
             const fixerGroup = result.fixerGroup;
             if (!fixerGroup) return;
 
@@ -695,6 +699,49 @@ export class DrawingScreen implements CanvasDelegate {
         } finally {
             this.fillInProgress = false;
         }
+    }
+
+    private buildFillStatsSection(): HTMLElement {
+        const wrap = document.createElement('div');
+        const lbl = document.createElement('label');
+        lbl.textContent = 'Fill Stats';
+        lbl.style.cssText = `display:block; font-size:11px; color:#9a9a9a; margin-bottom:5px; font-weight:600; text-transform:uppercase; letter-spacing:.4px;`;
+        wrap.appendChild(lbl);
+
+        this.fillStatsEl = document.createElement('div');
+        this.fillStatsEl.style.cssText = `
+            min-height:72px; padding:8px;
+            background:#202020; border:1px solid #3f3f3f; border-radius:5px;
+            color:#8fa8bd; font-size:11px; line-height:1.45;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            white-space:pre-wrap;
+        `;
+        this.fillStatsEl.textContent = 'No fill yet';
+        wrap.appendChild(this.fillStatsEl);
+        return wrap;
+    }
+
+    private updateFillStats(metrics: {
+        mode: 'fast-empty' | 'flood';
+        iterations: number;
+        dispatchIterations: number;
+        substeps: number;
+        tileSize: number;
+        batchSize: number;
+        gpuMs: number;
+        totalMs: number;
+        bounds: Rect;
+    }): void {
+        if (!this.fillStatsEl) return;
+        const bounds = `${metrics.bounds.size.width}x${metrics.bounds.size.height}`;
+        this.fillStatsEl.textContent =
+            `mode       ${metrics.mode}\n` +
+            `total      ${metrics.totalMs.toFixed(1)} ms\n` +
+            `gpu        ${metrics.gpuMs.toFixed(1)} ms\n` +
+            `iter       ${metrics.iterations} (${metrics.dispatchIterations} dispatch)\n` +
+            `tile/sub   ${metrics.tileSize}/${metrics.substeps}\n` +
+            `batch      ${metrics.batchSize}\n` +
+            `bounds     ${bounds}`;
     }
 
     private buildColorSection(): HTMLElement {

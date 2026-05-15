@@ -25,7 +25,10 @@ export interface DrawingFloodFillResult {
     metrics: {
         mode: 'fast-empty' | 'flood';
         iterations: number;
+        dispatchIterations: number;
         substeps: number;
+        tileSize: number;
+        batchSize: number;
         gpuMs: number;
     };
 }
@@ -505,7 +508,7 @@ export class DrawingEngine {
                 pixelBounds: fullPixelRect,
                 undoFixer: undefined,
                 redoFixer: undefined,
-                metrics: { mode: 'flood', iterations: 0, substeps: 0, gpuMs: 0 }
+                metrics: { mode: 'flood', iterations: 0, dispatchIterations: 0, substeps: 0, tileSize: 0, batchSize: 0, gpuMs: 0 }
             };
         }
 
@@ -530,7 +533,7 @@ export class DrawingEngine {
                 pixelBounds: fullPixelRect,
                 undoFixer: new Fixer(fullPixelRect, Common.stageRect(), FixerRenderTarget.Dry, undoPixels),
                 redoFixer: new Fixer(fullPixelRect, Common.stageRect(), FixerRenderTarget.Dry, redoPixels),
-                metrics: { mode: 'fast-empty', iterations: 0, substeps: 0, gpuMs: performance.now() - start }
+                metrics: { mode: 'fast-empty', iterations: 0, dispatchIterations: 0, substeps: 0, tileSize: this.size.width, batchSize: 0, gpuMs: performance.now() - start }
             };
         }
 
@@ -578,7 +581,10 @@ export class DrawingEngine {
                 metrics: {
                     mode: 'flood',
                     iterations: fillResult.iterations,
+                    dispatchIterations: fillResult.dispatchIterations,
                     substeps: fillResult.substeps,
+                    tileSize: fillResult.tileSize,
+                    batchSize: fillResult.batchSize,
                     gpuMs: fillResult.elapsedMs
                 }
             };
@@ -603,7 +609,10 @@ export class DrawingEngine {
             metrics: {
                 mode: 'flood',
                 iterations: fillResult.iterations,
+                dispatchIterations: fillResult.dispatchIterations,
                 substeps: fillResult.substeps,
+                tileSize: fillResult.tileSize,
+                batchSize: fillResult.batchSize,
                 gpuMs: fillResult.elapsedMs
             }
         };
