@@ -19,8 +19,7 @@ module.exports = {
         use: {
           loader: 'ts-loader',
           options: {
-            transpileOnly: true,
-            compilerOptions: { module: 'commonjs' }
+            transpileOnly: true
           }
         },
         exclude: /node_modules/
