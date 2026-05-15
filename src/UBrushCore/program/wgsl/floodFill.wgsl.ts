@@ -1,15 +1,19 @@
+const TILE_SIZE = 16;
+
 export const floodFillSeedWGSL = /* wgsl */ `
 struct Params {
     size : vec2u,
     seed : vec2u,
     tolerance : f32,
     edgeThreshold : f32,
-    _pad0 : vec2u,
+    tileGrid : vec2u,
 };
 
 @group(0) @binding(0) var sourceTex : texture_2d<f32>;
-@group(0) @binding(1) var maskTex : texture_storage_2d<r32uint, write>;
-@group(0) @binding(2) var<uniform> params : Params;
+@group(0) @binding(1) var<storage, read_write> mask : array<atomic<u32>>;
+@group(0) @binding(2) var<storage, read_write> activeTiles : array<atomic<u32>>;
+@group(0) @binding(3) var<storage, read_write> filledTiles : array<atomic<u32>>;
+@group(0) @binding(4) var<uniform> params : Params;
 
 fn colorDistance(a : vec4f, b : vec4f) -> f32 {
     let d = a - b;
@@ -30,16 +34,20 @@ fn eligible(p : vec2u, seedColor : vec4f) -> bool {
     return colorDistance(c, seedColor) <= params.tolerance && edgeStrength(p) <= params.edgeThreshold;
 }
 
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id : vec3u) {
-    if (id.x >= params.size.x || id.y >= params.size.y) {
+@compute @workgroup_size(1, 1)
+fn main() {
+    let p = params.seed;
+    let seedColor = textureLoad(sourceTex, vec2i(p), 0);
+    if (!eligible(p, seedColor)) {
         return;
     }
 
-    let p = id.xy;
-    let seedColor = textureLoad(sourceTex, vec2i(params.seed), 0);
-    let filled = p.x == params.seed.x && p.y == params.seed.y && eligible(p, seedColor);
-    textureStore(maskTex, vec2i(p), vec4u(select(0u, 1u, filled), 0u, 0u, 0u));
+    let pixelIndex = p.y * params.size.x + p.x;
+    let tile = p / vec2u(${TILE_SIZE}u, ${TILE_SIZE}u);
+    let tileIndex = tile.y * params.tileGrid.x + tile.x;
+    atomicStore(&mask[pixelIndex], 1u);
+    atomicStore(&activeTiles[tileIndex], 1u);
+    atomicStore(&filledTiles[tileIndex], 1u);
 }
 `;
 
@@ -49,13 +57,19 @@ struct Params {
     seed : vec2u,
     tolerance : f32,
     edgeThreshold : f32,
-    _pad0 : vec2u,
+    tileGrid : vec2u,
 };
 
 @group(0) @binding(0) var sourceTex : texture_2d<f32>;
-@group(0) @binding(1) var prevMask : texture_2d<u32>;
-@group(0) @binding(2) var nextMask : texture_storage_2d<r32uint, write>;
-@group(0) @binding(3) var<uniform> params : Params;
+@group(0) @binding(1) var<storage, read> activeTiles : array<u32>;
+@group(0) @binding(2) var<storage, read_write> nextActiveTiles : array<atomic<u32>>;
+@group(0) @binding(3) var<storage, read_write> filledTiles : array<atomic<u32>>;
+@group(0) @binding(4) var<storage, read_write> mask : array<atomic<u32>>;
+@group(0) @binding(5) var<uniform> params : Params;
+
+fn pixelIndex(p : vec2u) -> u32 {
+    return p.y * params.size.x + p.x;
+}
 
 fn colorDistance(a : vec4f, b : vec4f) -> f32 {
     let d = a - b;
@@ -82,39 +96,81 @@ fn eligible(p : vec2u, seedColor : vec4f) -> bool {
     return colorDistance(c, seedColor) <= params.tolerance && edgeStrength(p) <= params.edgeThreshold;
 }
 
+fn maskAt(p : vec2u) -> bool {
+    return atomicLoad(&mask[pixelIndex(p)]) != 0u;
+}
+
 fn neighborFilled(p : vec2u) -> bool {
     let maxP = params.size - vec2u(1u, 1u);
     var hit = false;
     if (p.x > 0u) {
         let n = vec2u(p.x - 1u, p.y);
-        hit = hit || (textureLoad(prevMask, vec2i(n), 0).r != 0u && edgeBetween(p, n) <= params.edgeThreshold);
+        hit = hit || (maskAt(n) && edgeBetween(p, n) <= params.edgeThreshold);
     }
     if (p.x < maxP.x) {
         let n = vec2u(p.x + 1u, p.y);
-        hit = hit || (textureLoad(prevMask, vec2i(n), 0).r != 0u && edgeBetween(p, n) <= params.edgeThreshold);
+        hit = hit || (maskAt(n) && edgeBetween(p, n) <= params.edgeThreshold);
     }
     if (p.y > 0u) {
         let n = vec2u(p.x, p.y - 1u);
-        hit = hit || (textureLoad(prevMask, vec2i(n), 0).r != 0u && edgeBetween(p, n) <= params.edgeThreshold);
+        hit = hit || (maskAt(n) && edgeBetween(p, n) <= params.edgeThreshold);
     }
     if (p.y < maxP.y) {
         let n = vec2u(p.x, p.y + 1u);
-        hit = hit || (textureLoad(prevMask, vec2i(n), 0).r != 0u && edgeBetween(p, n) <= params.edgeThreshold);
+        hit = hit || (maskAt(n) && edgeBetween(p, n) <= params.edgeThreshold);
     }
     return hit;
 }
 
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id : vec3u) {
-    if (id.x >= params.size.x || id.y >= params.size.y) {
+fn wakeTile(tile : vec2u) {
+    if (tile.x >= params.tileGrid.x || tile.y >= params.tileGrid.y) {
+        return;
+    }
+    atomicStore(&nextActiveTiles[tile.y * params.tileGrid.x + tile.x], 1u);
+}
+
+fn wakeNeighbors(tile : vec2u, local : vec2u) {
+    wakeTile(tile);
+    if (local.x == 0u && tile.x > 0u) {
+        wakeTile(vec2u(tile.x - 1u, tile.y));
+    }
+    if (local.x == ${TILE_SIZE - 1}u && tile.x + 1u < params.tileGrid.x) {
+        wakeTile(vec2u(tile.x + 1u, tile.y));
+    }
+    if (local.y == 0u && tile.y > 0u) {
+        wakeTile(vec2u(tile.x, tile.y - 1u));
+    }
+    if (local.y == ${TILE_SIZE - 1}u && tile.y + 1u < params.tileGrid.y) {
+        wakeTile(vec2u(tile.x, tile.y + 1u));
+    }
+}
+
+@compute @workgroup_size(${TILE_SIZE}, ${TILE_SIZE})
+fn main(
+    @builtin(workgroup_id) tileId : vec3u,
+    @builtin(local_invocation_id) localId : vec3u
+) {
+    let tile = tileId.xy;
+    let tileIndex = tile.y * params.tileGrid.x + tile.x;
+    if (activeTiles[tileIndex] == 0u) {
         return;
     }
 
-    let p = id.xy;
-    let alreadyFilled = textureLoad(prevMask, vec2i(p), 0).r != 0u;
+    let p = tile * vec2u(${TILE_SIZE}u, ${TILE_SIZE}u) + localId.xy;
+    if (p.x >= params.size.x || p.y >= params.size.y) {
+        return;
+    }
+
+    if (maskAt(p)) {
+        return;
+    }
+
     let seedColor = textureLoad(sourceTex, vec2i(params.seed), 0);
-    let filled = alreadyFilled || (eligible(p, seedColor) && neighborFilled(p));
-    textureStore(nextMask, vec2i(p), vec4u(select(0u, 1u, filled), 0u, 0u, 0u));
+    if (eligible(p, seedColor) && neighborFilled(p)) {
+        atomicStore(&mask[pixelIndex(p)], 1u);
+        atomicStore(&filledTiles[tileIndex], 1u);
+        wakeNeighbors(tile, localId.xy);
+    }
 }
 `;
 
@@ -124,6 +180,7 @@ struct Params {
     seed : vec2u,
     tolerance : f32,
     edgeThreshold : f32,
+    tileGrid : vec2u,
     fillColor : vec4f,
 };
 
@@ -136,13 +193,18 @@ struct Bounds {
 };
 
 @group(0) @binding(0) var sourceTex : texture_2d<f32>;
-@group(0) @binding(1) var maskTex : texture_2d<u32>;
-@group(0) @binding(2) var targetTex : texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(3) var<uniform> params : Params;
-@group(0) @binding(4) var<storage, read_write> bounds : Bounds;
+@group(0) @binding(1) var<storage, read> mask : array<u32>;
+@group(0) @binding(2) var<storage, read> filledTiles : array<u32>;
+@group(0) @binding(3) var targetTex : texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(4) var<uniform> params : Params;
+@group(0) @binding(5) var<storage, read_write> bounds : Bounds;
+
+fn pixelIndex(p : vec2u) -> u32 {
+    return p.y * params.size.x + p.x;
+}
 
 fn maskAt(p : vec2u) -> u32 {
-    return textureLoad(maskTex, vec2i(p), 0).r;
+    return mask[pixelIndex(p)];
 }
 
 fn edgeWeight(p : vec2u) -> f32 {
@@ -162,13 +224,22 @@ fn edgeWeight(p : vec2u) -> f32 {
     return clamp(insideCount / total, 0.0, 1.0);
 }
 
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id : vec3u) {
-    if (id.x >= params.size.x || id.y >= params.size.y) {
+@compute @workgroup_size(${TILE_SIZE}, ${TILE_SIZE})
+fn main(
+    @builtin(workgroup_id) tileId : vec3u,
+    @builtin(local_invocation_id) localId : vec3u
+) {
+    let tile = tileId.xy;
+    let tileIndex = tile.y * params.tileGrid.x + tile.x;
+    if (filledTiles[tileIndex] == 0u) {
         return;
     }
 
-    let p = id.xy;
+    let p = tile * vec2u(${TILE_SIZE}u, ${TILE_SIZE}u) + localId.xy;
+    if (p.x >= params.size.x || p.y >= params.size.y) {
+        return;
+    }
+
     let src = textureLoad(sourceTex, vec2i(p), 0);
     if (maskAt(p) == 0u) {
         textureStore(targetTex, vec2i(p), src);

@@ -21,6 +21,8 @@ export interface FloodFillResult {
     elapsedMs: number;
 }
 
+const TILE_SIZE = 16;
+
 export class WGPUFloodFillProgram {
 
     private context: WGPUContext;
@@ -39,25 +41,30 @@ export class WGPUFloodFillProgram {
         this.seedLayout = this.device.createBindGroupLayout({
             entries: [
                 { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } },
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } },
-                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
             ],
         });
         this.stepLayout = this.device.createBindGroupLayout({
             entries: [
                 { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } },
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } },
-                { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } },
-                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
             ],
         });
         this.applyLayout = this.device.createBindGroupLayout({
             entries: [
                 { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } },
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } },
-                { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba8unorm" } },
-                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba8unorm" } },
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
             ],
         });
 
@@ -76,63 +83,74 @@ export class WGPUFloodFillProgram {
 
         const seedX = Math.max(0, Math.min(width - 1, Math.floor(param.seed.x)));
         const seedY = Math.max(0, Math.min(height - 1, height - 1 - Math.floor(param.seed.y)));
+        const tileCols = Math.ceil(width / TILE_SIZE);
+        const tileRows = Math.ceil(height / TILE_SIZE);
+        const tileCount = tileCols * tileRows;
         const iterations = Math.max(1, Math.min(
             param.maxIterations ?? Math.ceil(Math.sqrt(width * width + height * height)),
             width + height,
         ));
 
-        const maskA = this.createMaskTexture(width, height);
-        const maskB = this.createMaskTexture(width, height);
-        const floodUniform = this.makeFloodUniform(width, height, seedX, seedY, param.tolerance, param.edgeThreshold);
-        const applyUniform = this.makeApplyUniform(width, height, seedX, seedY, param.tolerance, param.edgeThreshold, param.color);
+        const maskBuffer = this.createStorageBuffer(width * height * 4);
+        const activeA = this.createStorageBuffer(tileCount * 4);
+        const activeB = this.createStorageBuffer(tileCount * 4);
+        const filledTiles = this.createStorageBuffer(tileCount * 4);
+        const floodUniform = this.makeFloodUniform(width, height, seedX, seedY, tileCols, tileRows, param.tolerance, param.edgeThreshold);
+        const applyUniform = this.makeApplyUniform(width, height, seedX, seedY, tileCols, tileRows, param.tolerance, param.edgeThreshold, param.color);
         const boundsBuffer = this.makeBoundsBuffer(width, height);
         const boundsReadBuffer = this.device.createBuffer({
             size: 20,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         });
 
-        const groupsX = Math.ceil(width / 8);
-        const groupsY = Math.ceil(height / 8);
-
         const encoder = this.device.createCommandEncoder();
+        encoder.clearBuffer(maskBuffer);
+        encoder.clearBuffer(activeA);
+        encoder.clearBuffer(activeB);
+        encoder.clearBuffer(filledTiles);
 
         {
             const bindGroup = this.device.createBindGroup({
                 layout: this.seedLayout,
                 entries: [
                     { binding: 0, resource: param.source.texture.getView() },
-                    { binding: 1, resource: maskA.createView() },
-                    { binding: 2, resource: { buffer: floodUniform } },
+                    { binding: 1, resource: { buffer: maskBuffer } },
+                    { binding: 2, resource: { buffer: activeA } },
+                    { binding: 3, resource: { buffer: filledTiles } },
+                    { binding: 4, resource: { buffer: floodUniform } },
                 ],
             });
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.seedPipeline);
             pass.setBindGroup(0, bindGroup);
-            pass.dispatchWorkgroups(groupsX, groupsY);
+            pass.dispatchWorkgroups(1, 1);
             pass.end();
         }
 
-        let readMask = maskA;
-        let writeMask = maskB;
+        let readActive = activeA;
+        let writeActive = activeB;
         for (let i = 0; i < iterations; i++) {
+            encoder.clearBuffer(writeActive);
             const bindGroup = this.device.createBindGroup({
                 layout: this.stepLayout,
                 entries: [
                     { binding: 0, resource: param.source.texture.getView() },
-                    { binding: 1, resource: readMask.createView() },
-                    { binding: 2, resource: writeMask.createView() },
-                    { binding: 3, resource: { buffer: floodUniform } },
+                    { binding: 1, resource: { buffer: readActive } },
+                    { binding: 2, resource: { buffer: writeActive } },
+                    { binding: 3, resource: { buffer: filledTiles } },
+                    { binding: 4, resource: { buffer: maskBuffer } },
+                    { binding: 5, resource: { buffer: floodUniform } },
                 ],
             });
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.stepPipeline);
             pass.setBindGroup(0, bindGroup);
-            pass.dispatchWorkgroups(groupsX, groupsY);
+            pass.dispatchWorkgroups(tileCols, tileRows);
             pass.end();
 
-            const tmp = readMask;
-            readMask = writeMask;
-            writeMask = tmp;
+            const tmp = readActive;
+            readActive = writeActive;
+            writeActive = tmp;
         }
 
         {
@@ -140,16 +158,17 @@ export class WGPUFloodFillProgram {
                 layout: this.applyLayout,
                 entries: [
                     { binding: 0, resource: param.source.texture.getView() },
-                    { binding: 1, resource: readMask.createView() },
-                    { binding: 2, resource: param.target.view },
-                    { binding: 3, resource: { buffer: applyUniform } },
-                    { binding: 4, resource: { buffer: boundsBuffer } },
+                    { binding: 1, resource: { buffer: maskBuffer } },
+                    { binding: 2, resource: { buffer: filledTiles } },
+                    { binding: 3, resource: param.target.view },
+                    { binding: 4, resource: { buffer: applyUniform } },
+                    { binding: 5, resource: { buffer: boundsBuffer } },
                 ],
             });
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.applyPipeline);
             pass.setBindGroup(0, bindGroup);
-            pass.dispatchWorkgroups(groupsX, groupsY);
+            pass.dispatchWorkgroups(tileCols, tileRows);
             pass.end();
         }
 
@@ -162,8 +181,10 @@ export class WGPUFloodFillProgram {
 
         const pixelBounds = this.boundsFromRaw(rawBounds, width, height);
 
-        maskA.destroy();
-        maskB.destroy();
+        maskBuffer.destroy();
+        activeA.destroy();
+        activeB.destroy();
+        filledTiles.destroy();
         floodUniform.destroy();
         applyUniform.destroy();
         boundsBuffer.destroy();
@@ -182,16 +203,15 @@ export class WGPUFloodFillProgram {
         });
     }
 
-    private createMaskTexture(width: number, height: number): GPUTexture {
-        return this.device.createTexture({
-            size: [width, height, 1],
-            format: "r32uint",
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
+    private createStorageBuffer(size: number): GPUBuffer {
+        return this.device.createBuffer({
+            size,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
     }
 
-    private makeFloodUniform(width: number, height: number, seedX: number, seedY: number, tolerance: number, edgeThreshold: number): GPUBuffer {
-        const data = new ArrayBuffer(32);
+    private makeFloodUniform(width: number, height: number, seedX: number, seedY: number, tileCols: number, tileRows: number, tolerance: number, edgeThreshold: number): GPUBuffer {
+        const data = new ArrayBuffer(40);
         const u32 = new Uint32Array(data);
         const f32 = new Float32Array(data);
         u32[0] = width;
@@ -200,11 +220,13 @@ export class WGPUFloodFillProgram {
         u32[3] = seedY;
         f32[4] = tolerance;
         f32[5] = edgeThreshold;
+        u32[6] = tileCols;
+        u32[7] = tileRows;
         return this.makeUniformBuffer(data);
     }
 
-    private makeApplyUniform(width: number, height: number, seedX: number, seedY: number, tolerance: number, edgeThreshold: number, color: Color): GPUBuffer {
-        const data = new ArrayBuffer(48);
+    private makeApplyUniform(width: number, height: number, seedX: number, seedY: number, tileCols: number, tileRows: number, tolerance: number, edgeThreshold: number, color: Color): GPUBuffer {
+        const data = new ArrayBuffer(64);
         const u32 = new Uint32Array(data);
         const f32 = new Float32Array(data);
         u32[0] = width;
@@ -213,6 +235,8 @@ export class WGPUFloodFillProgram {
         u32[3] = seedY;
         f32[4] = tolerance;
         f32[5] = edgeThreshold;
+        u32[6] = tileCols;
+        u32[7] = tileRows;
         f32[8] = color.r;
         f32[9] = color.g;
         f32[10] = color.b;
