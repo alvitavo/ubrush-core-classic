@@ -23,6 +23,7 @@ export interface FloodFillResult {
 
 const TILE_SIZE = 16;
 const ITERATION_BATCH_SIZE = 64;
+const TILE_SUBSTEPS = 4;
 
 export class WGPUFloodFillProgram {
 
@@ -103,10 +104,11 @@ export class WGPUFloodFillProgram {
         const tileCols = Math.ceil(width / TILE_SIZE);
         const tileRows = Math.ceil(height / TILE_SIZE);
         const tileCount = tileCols * tileRows;
-        const iterations = Math.max(1, Math.min(
+        const maxPixelIterations = Math.max(1, Math.min(
             param.maxIterations ?? Math.ceil(Math.sqrt(width * width + height * height)),
             width + height,
         ));
+        const maxDispatchIterations = Math.ceil(maxPixelIterations / TILE_SUBSTEPS);
 
         const maskBuffer = this.createStorageBuffer(width * height * 4);
         const activeListA = this.createStorageBuffer(tileCount * 4);
@@ -158,8 +160,8 @@ export class WGPUFloodFillProgram {
         let writeActiveCount = activeCountB;
         let completedIterations = 0;
 
-        while (activeCount > 0 && completedIterations < iterations) {
-            const batchCount = Math.min(ITERATION_BATCH_SIZE, iterations - completedIterations);
+        while (activeCount > 0 && completedIterations < maxDispatchIterations) {
+            const batchCount = Math.min(ITERATION_BATCH_SIZE, maxDispatchIterations - completedIterations);
             const batchEncoder = this.device.createCommandEncoder();
 
             for (let i = 0; i < batchCount; i++) {
@@ -244,7 +246,7 @@ export class WGPUFloodFillProgram {
         boundsBuffer.destroy();
         boundsReadBuffer.destroy();
 
-        return { pixelBounds, iterations: completedIterations, elapsedMs: performance.now() - start };
+        return { pixelBounds, iterations: completedIterations * TILE_SUBSTEPS, elapsedMs: performance.now() - start };
     }
 
     private createPipeline(wgsl: string, layout: GPUBindGroupLayout): GPUComputePipeline {

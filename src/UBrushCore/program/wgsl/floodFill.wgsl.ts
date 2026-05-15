@@ -1,4 +1,5 @@
 const TILE_SIZE = 16;
+const TILE_SUBSTEPS = 4;
 
 export const floodFillSeedWGSL = /* wgsl */ `
 struct Params {
@@ -184,18 +185,20 @@ fn main(
         return;
     }
 
-    if (maskAt(p)) {
-        return;
-    }
-
     let seedColor = textureLoad(sourceTex, vec2i(params.seed), 0);
-    if (eligible(p, seedColor) && neighborFilled(p)) {
-        atomicStore(&mask[pixelIndex(p)], 1u);
-        if (atomicExchange(&filledTiles[tileIndex], 1u) == 0u) {
-            let filledListIndex = atomicAdd(&filledCount, 1u);
-            filledList[filledListIndex] = tileIndex;
+
+    for (var substep = 0u; substep < ${TILE_SUBSTEPS}u; substep = substep + 1u) {
+        if (!maskAt(p) && eligible(p, seedColor) && neighborFilled(p)) {
+            atomicStore(&mask[pixelIndex(p)], 1u);
+            if (atomicExchange(&filledTiles[tileIndex], 1u) == 0u) {
+                let filledListIndex = atomicAdd(&filledCount, 1u);
+                filledList[filledListIndex] = tileIndex;
+            }
+            wakeNeighbors(tile, localId.xy);
         }
-        wakeNeighbors(tile, localId.xy);
+
+        storageBarrier();
+        workgroupBarrier();
     }
 }
 `;
