@@ -22,6 +22,7 @@ export interface FloodFillResult {
 }
 
 const TILE_SIZE = 16;
+const ITERATION_BATCH_SIZE = 64;
 
 export class WGPUFloodFillProgram {
 
@@ -122,88 +123,82 @@ export class WGPUFloodFillProgram {
         const filledCount = this.createStorageBuffer(4);
         const floodUniform = this.makeFloodUniform(width, height, seedX, seedY, tileCols, tileRows, param.tolerance, param.edgeThreshold);
         const applyUniform = this.makeApplyUniform(width, height, seedX, seedY, tileCols, tileRows, param.tolerance, param.edgeThreshold, param.color);
+        const activeCountReadBuffer = this.device.createBuffer({
+            size: 4,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
         const boundsBuffer = this.makeBoundsBuffer(width, height);
         const boundsReadBuffer = this.device.createBuffer({
             size: 20,
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         });
 
-        const encoder = this.device.createCommandEncoder();
-        encoder.clearBuffer(maskBuffer);
-        encoder.clearBuffer(activeListA);
-        encoder.clearBuffer(activeListB);
-        encoder.clearBuffer(activeFlagsB);
-        encoder.clearBuffer(activeCountA);
-        encoder.clearBuffer(activeCountB);
-        encoder.clearBuffer(indirectBuffer);
-        encoder.clearBuffer(filledTiles);
-        encoder.clearBuffer(filledList);
-        encoder.clearBuffer(filledCount);
+        const initEncoder = this.device.createCommandEncoder();
+        initEncoder.clearBuffer(maskBuffer);
+        initEncoder.clearBuffer(activeListA);
+        initEncoder.clearBuffer(activeListB);
+        initEncoder.clearBuffer(activeFlagsB);
+        initEncoder.clearBuffer(activeCountA);
+        initEncoder.clearBuffer(activeCountB);
+        initEncoder.clearBuffer(indirectBuffer);
+        initEncoder.clearBuffer(filledTiles);
+        initEncoder.clearBuffer(filledList);
+        initEncoder.clearBuffer(filledCount);
 
-        {
-            const bindGroup = this.device.createBindGroup({
-                layout: this.seedLayout,
-                entries: [
-                    { binding: 0, resource: param.source.texture.getView() },
-                    { binding: 1, resource: { buffer: maskBuffer } },
-                    { binding: 2, resource: { buffer: activeListA } },
-                    { binding: 3, resource: { buffer: filledTiles } },
-                    { binding: 4, resource: { buffer: activeCountA } },
-                    { binding: 5, resource: { buffer: filledList } },
-                    { binding: 6, resource: { buffer: filledCount } },
-                    { binding: 7, resource: { buffer: floodUniform } },
-                ],
-            });
-            const pass = encoder.beginComputePass();
-            pass.setPipeline(this.seedPipeline);
-            pass.setBindGroup(0, bindGroup);
-            pass.dispatchWorkgroups(1, 1);
-            pass.end();
-        }
+        this.encodeSeed(initEncoder, param.source, maskBuffer, activeListA, filledTiles, activeCountA, filledList, filledCount, floodUniform);
+        this.encodeIndirectUpdate(initEncoder, activeCountA, indirectBuffer);
+        initEncoder.copyBufferToBuffer(activeCountA, 0, activeCountReadBuffer, 0, 4);
+        this.device.queue.submit([initEncoder.finish()]);
 
-        this.encodeIndirectUpdate(encoder, activeCountA, indirectBuffer);
+        let activeCount = await this.readU32(activeCountReadBuffer);
 
         let readActiveList = activeListA;
         let writeActiveList = activeListB;
         let readActiveCount = activeCountA;
         let writeActiveCount = activeCountB;
-        for (let i = 0; i < iterations; i++) {
-            encoder.clearBuffer(writeActiveList);
-            encoder.clearBuffer(activeFlagsB);
-            encoder.clearBuffer(writeActiveCount);
-            const bindGroup = this.device.createBindGroup({
-                layout: this.stepLayout,
-                entries: [
-                    { binding: 0, resource: param.source.texture.getView() },
-                    { binding: 1, resource: { buffer: readActiveList } },
-                    { binding: 2, resource: { buffer: writeActiveList } },
-                    { binding: 3, resource: { buffer: activeFlagsB } },
-                    { binding: 4, resource: { buffer: writeActiveCount } },
-                    { binding: 5, resource: { buffer: filledTiles } },
-                    { binding: 6, resource: { buffer: filledList } },
-                    { binding: 7, resource: { buffer: filledCount } },
-                    { binding: 8, resource: { buffer: maskBuffer } },
-                    { binding: 9, resource: { buffer: floodUniform } },
-                ],
-            });
-            const pass = encoder.beginComputePass();
-            pass.setPipeline(this.stepPipeline);
-            pass.setBindGroup(0, bindGroup);
-            pass.dispatchWorkgroupsIndirect(indirectBuffer, 0);
-            pass.end();
+        let completedIterations = 0;
 
-            this.encodeIndirectUpdate(encoder, writeActiveCount, indirectBuffer);
+        while (activeCount > 0 && completedIterations < iterations) {
+            const batchCount = Math.min(ITERATION_BATCH_SIZE, iterations - completedIterations);
+            const batchEncoder = this.device.createCommandEncoder();
 
-            const tmpList = readActiveList;
-            readActiveList = writeActiveList;
-            writeActiveList = tmpList;
+            for (let i = 0; i < batchCount; i++) {
+                batchEncoder.clearBuffer(writeActiveList);
+                batchEncoder.clearBuffer(activeFlagsB);
+                batchEncoder.clearBuffer(writeActiveCount);
+                this.encodeStep(
+                    batchEncoder,
+                    param.source,
+                    readActiveList,
+                    writeActiveList,
+                    activeFlagsB,
+                    writeActiveCount,
+                    filledTiles,
+                    filledList,
+                    filledCount,
+                    maskBuffer,
+                    floodUniform,
+                    indirectBuffer
+                );
+                this.encodeIndirectUpdate(batchEncoder, writeActiveCount, indirectBuffer);
 
-            const tmpCount = readActiveCount;
-            readActiveCount = writeActiveCount;
-            writeActiveCount = tmpCount;
+                const tmpList = readActiveList;
+                readActiveList = writeActiveList;
+                writeActiveList = tmpList;
+
+                const tmpCount = readActiveCount;
+                readActiveCount = writeActiveCount;
+                writeActiveCount = tmpCount;
+            }
+
+            completedIterations += batchCount;
+            batchEncoder.copyBufferToBuffer(readActiveCount, 0, activeCountReadBuffer, 0, 4);
+            this.device.queue.submit([batchEncoder.finish()]);
+            activeCount = await this.readU32(activeCountReadBuffer);
         }
 
-        this.encodeIndirectUpdate(encoder, filledCount, indirectBuffer);
+        const applyEncoder = this.device.createCommandEncoder();
+        this.encodeIndirectUpdate(applyEncoder, filledCount, indirectBuffer);
 
         {
             const bindGroup = this.device.createBindGroup({
@@ -217,15 +212,15 @@ export class WGPUFloodFillProgram {
                     { binding: 5, resource: { buffer: boundsBuffer } },
                 ],
             });
-            const pass = encoder.beginComputePass();
+            const pass = applyEncoder.beginComputePass();
             pass.setPipeline(this.applyPipeline);
             pass.setBindGroup(0, bindGroup);
             pass.dispatchWorkgroupsIndirect(indirectBuffer, 0);
             pass.end();
         }
 
-        encoder.copyBufferToBuffer(boundsBuffer, 0, boundsReadBuffer, 0, 20);
-        this.device.queue.submit([encoder.finish()]);
+        applyEncoder.copyBufferToBuffer(boundsBuffer, 0, boundsReadBuffer, 0, 20);
+        this.device.queue.submit([applyEncoder.finish()]);
 
         await boundsReadBuffer.mapAsync(GPUMapMode.READ);
         const rawBounds = new Uint32Array(boundsReadBuffer.getMappedRange().slice(0));
@@ -239,6 +234,7 @@ export class WGPUFloodFillProgram {
         activeFlagsB.destroy();
         activeCountA.destroy();
         activeCountB.destroy();
+        activeCountReadBuffer.destroy();
         indirectBuffer.destroy();
         filledTiles.destroy();
         filledList.destroy();
@@ -248,7 +244,7 @@ export class WGPUFloodFillProgram {
         boundsBuffer.destroy();
         boundsReadBuffer.destroy();
 
-        return { pixelBounds, iterations, elapsedMs: performance.now() - start };
+        return { pixelBounds, iterations: completedIterations, elapsedMs: performance.now() - start };
     }
 
     private createPipeline(wgsl: string, layout: GPUBindGroupLayout): GPUComputePipeline {
@@ -274,6 +270,80 @@ export class WGPUFloodFillProgram {
         pass.setBindGroup(0, bindGroup);
         pass.dispatchWorkgroups(1, 1);
         pass.end();
+    }
+
+    private encodeSeed(
+        encoder: GPUCommandEncoder,
+        source: WGPURenderTarget,
+        maskBuffer: GPUBuffer,
+        activeList: GPUBuffer,
+        filledTiles: GPUBuffer,
+        activeCount: GPUBuffer,
+        filledList: GPUBuffer,
+        filledCount: GPUBuffer,
+        floodUniform: GPUBuffer
+    ): void {
+        const bindGroup = this.device.createBindGroup({
+            layout: this.seedLayout,
+            entries: [
+                { binding: 0, resource: source.texture.getView() },
+                { binding: 1, resource: { buffer: maskBuffer } },
+                { binding: 2, resource: { buffer: activeList } },
+                { binding: 3, resource: { buffer: filledTiles } },
+                { binding: 4, resource: { buffer: activeCount } },
+                { binding: 5, resource: { buffer: filledList } },
+                { binding: 6, resource: { buffer: filledCount } },
+                { binding: 7, resource: { buffer: floodUniform } },
+            ],
+        });
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(this.seedPipeline);
+        pass.setBindGroup(0, bindGroup);
+        pass.dispatchWorkgroups(1, 1);
+        pass.end();
+    }
+
+    private encodeStep(
+        encoder: GPUCommandEncoder,
+        source: WGPURenderTarget,
+        readActiveList: GPUBuffer,
+        writeActiveList: GPUBuffer,
+        activeFlags: GPUBuffer,
+        writeActiveCount: GPUBuffer,
+        filledTiles: GPUBuffer,
+        filledList: GPUBuffer,
+        filledCount: GPUBuffer,
+        maskBuffer: GPUBuffer,
+        floodUniform: GPUBuffer,
+        indirectBuffer: GPUBuffer
+    ): void {
+        const bindGroup = this.device.createBindGroup({
+            layout: this.stepLayout,
+            entries: [
+                { binding: 0, resource: source.texture.getView() },
+                { binding: 1, resource: { buffer: readActiveList } },
+                { binding: 2, resource: { buffer: writeActiveList } },
+                { binding: 3, resource: { buffer: activeFlags } },
+                { binding: 4, resource: { buffer: writeActiveCount } },
+                { binding: 5, resource: { buffer: filledTiles } },
+                { binding: 6, resource: { buffer: filledList } },
+                { binding: 7, resource: { buffer: filledCount } },
+                { binding: 8, resource: { buffer: maskBuffer } },
+                { binding: 9, resource: { buffer: floodUniform } },
+            ],
+        });
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(this.stepPipeline);
+        pass.setBindGroup(0, bindGroup);
+        pass.dispatchWorkgroupsIndirect(indirectBuffer, 0);
+        pass.end();
+    }
+
+    private async readU32(buffer: GPUBuffer): Promise<number> {
+        await buffer.mapAsync(GPUMapMode.READ);
+        const value = new Uint32Array(buffer.getMappedRange())[0];
+        buffer.unmap();
+        return value;
     }
 
     private createStorageBuffer(size: number): GPUBuffer {
