@@ -32,6 +32,11 @@ export interface DrawingFloodFillResult {
         batchSize: number;
         tuningMode: FloodFillTuningMode;
         gpuMs: number;
+        sourceCopyMs: number;
+        postProcessMs: number;
+        historyMs: number;
+        undoReadMs: number;
+        redoReadMs: number;
     };
 }
 
@@ -510,7 +515,21 @@ export class DrawingEngine {
                 pixelBounds: fullPixelRect,
                 undoFixer: undefined,
                 redoFixer: undefined,
-                metrics: { mode: 'flood', iterations: 0, dispatchIterations: 0, substeps: 0, tileSize: 0, batchSize: 0, tuningMode, gpuMs: 0 }
+                metrics: {
+                    mode: 'flood',
+                    iterations: 0,
+                    dispatchIterations: 0,
+                    substeps: 0,
+                    tileSize: 0,
+                    batchSize: 0,
+                    tuningMode,
+                    gpuMs: 0,
+                    sourceCopyMs: 0,
+                    postProcessMs: 0,
+                    historyMs: 0,
+                    undoReadMs: 0,
+                    redoReadMs: 0
+                }
             };
         }
 
@@ -528,19 +547,36 @@ export class DrawingEngine {
                 this._fill(this.smudging0CopyRenderTarget, this.dryRenderTarget.texture);
                 this._fill(this.smudging1CopyRenderTarget, this.dryRenderTarget.texture);
             }
+            const historyStart = performance.now();
             const undoPixels = new Uint8Array(this.size.width * this.size.height * 4);
             const redoPixels = this.buildSolidPixels(this.size.width, this.size.height, color);
+            const historyMs = performance.now() - historyStart;
             return {
                 rect: Common.stageRect(),
                 pixelBounds: fullPixelRect,
                 undoFixer: new Fixer(fullPixelRect, Common.stageRect(), FixerRenderTarget.Dry, undoPixels),
                 redoFixer: new Fixer(fullPixelRect, Common.stageRect(), FixerRenderTarget.Dry, redoPixels),
-                metrics: { mode: 'fast-empty', iterations: 0, dispatchIterations: 0, substeps: 0, tileSize: 0, batchSize: 0, tuningMode, gpuMs: performance.now() - start }
+                metrics: {
+                    mode: 'fast-empty',
+                    iterations: 0,
+                    dispatchIterations: 0,
+                    substeps: 0,
+                    tileSize: 0,
+                    batchSize: 0,
+                    tuningMode,
+                    gpuMs: performance.now() - start,
+                    sourceCopyMs: 0,
+                    postProcessMs: 0,
+                    historyMs,
+                    undoReadMs: 0,
+                    redoReadMs: 0
+                }
             };
         }
 
         const sourceRenderTarget = this.context.createRenderTarget(this.size);
 
+        const sourceCopyStart = performance.now();
         WGPUProgramManager.getInstance().fillRectProgram.fill(sourceRenderTarget, {
             targetRect: canvasRect,
             source: this.dryRenderTarget.texture,
@@ -549,6 +585,7 @@ export class DrawingEngine {
             transform: new AffineTransform(),
             blend: RenderObjectBlend.None
         });
+        const sourceCopyMs = performance.now() - sourceCopyStart;
 
         const fillResult = await WGPUProgramManager.getInstance().floodFillProgram.fill({
             source: sourceRenderTarget,
@@ -561,6 +598,7 @@ export class DrawingEngine {
             maxIterations: this.size.width + this.size.height
         });
 
+        const postProcessStart = performance.now();
         this.context.clearRenderTarget(this.liquidRenderTarget, Color.clear());
         this.context.clearRenderTarget(this.drawingRenderTarget, Color.clear());
 
@@ -573,6 +611,7 @@ export class DrawingEngine {
             this._fill(this.smudging0CopyRenderTarget, this.dryRenderTarget.texture);
             this._fill(this.smudging1CopyRenderTarget, this.dryRenderTarget.texture);
         }
+        const postProcessMs = performance.now() - postProcessStart;
 
         if (!fillResult.pixelBounds) {
             this.context.deleteRenderTarget(sourceRenderTarget);
@@ -589,7 +628,12 @@ export class DrawingEngine {
                     tileSize: fillResult.tileSize,
                     batchSize: fillResult.batchSize,
                     tuningMode: fillResult.tuningMode,
-                    gpuMs: fillResult.elapsedMs
+                    gpuMs: fillResult.elapsedMs,
+                    sourceCopyMs,
+                    postProcessMs,
+                    historyMs: 0,
+                    undoReadMs: 0,
+                    redoReadMs: 0
                 }
             };
         }
@@ -598,10 +642,16 @@ export class DrawingEngine {
         const stageRect = this.pixelRectToStageRect(pixelBounds, 2);
         const paddedPixelBounds = this.padPixelRect(pixelBounds, 2);
         const paddedStageRect = this.pixelRectToStageRect(paddedPixelBounds, 0);
+        const historyStart = performance.now();
+        const undoReadStart = performance.now();
         const undoPixels = await this.context.readPixels(sourceRenderTarget, paddedPixelBounds);
+        const undoReadMs = performance.now() - undoReadStart;
+        const redoReadStart = performance.now();
         const redoPixels = await this.context.readPixels(this.dryRenderTarget, paddedPixelBounds);
+        const redoReadMs = performance.now() - redoReadStart;
         const undoFixer = new Fixer(paddedPixelBounds, paddedStageRect, FixerRenderTarget.Dry, undoPixels);
         const redoFixer = new Fixer(paddedPixelBounds, paddedStageRect, FixerRenderTarget.Dry, redoPixels);
+        const historyMs = performance.now() - historyStart;
 
         this.context.deleteRenderTarget(sourceRenderTarget);
 
@@ -618,7 +668,12 @@ export class DrawingEngine {
                 tileSize: fillResult.tileSize,
                 batchSize: fillResult.batchSize,
                 tuningMode: fillResult.tuningMode,
-                gpuMs: fillResult.elapsedMs
+                gpuMs: fillResult.elapsedMs,
+                sourceCopyMs,
+                postProcessMs,
+                historyMs,
+                undoReadMs,
+                redoReadMs
             }
         };
     }

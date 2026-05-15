@@ -36,6 +36,13 @@ export interface CanvasFloodFillResult {
         batchSize: number;
         tuningMode: FloodFillTuningMode;
         gpuMs: number;
+        sourceCopyMs: number;
+        postProcessMs: number;
+        historyMs: number;
+        undoReadMs: number;
+        redoReadMs: number;
+        dryMs: number;
+        updateMs: number;
         totalMs: number;
         bounds: Rect;
     };
@@ -354,10 +361,14 @@ export class Canvas implements LineDriverDelegate {
         if (this.drawingEngine.alphaSmudgingMode) return null;
 
         const start = performance.now();
+        const dryStart = performance.now();
         this.engineDry();
+        const dryMs = performance.now() - dryStart;
 
         const result = await this.drawingEngine.floodFillDry(seed, color, tolerance, edgeThreshold, !this.hasContent, tuningMode);
+        const updateStart = performance.now();
         this.updateCanvasInRect(result.rect);
+        const updateMs = performance.now() - updateStart;
 
         const fixerGroup = new FixerGroup();
         fixerGroup.undoFixer = result.undoFixer;
@@ -370,6 +381,8 @@ export class Canvas implements LineDriverDelegate {
             fixerGroup: hasHistory ? fixerGroup : null,
             metrics: {
                 ...result.metrics,
+                dryMs,
+                updateMs,
                 totalMs: performance.now() - start,
                 bounds: result.pixelBounds
             }

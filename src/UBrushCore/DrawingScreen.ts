@@ -710,7 +710,7 @@ export class DrawingScreen implements CanvasDelegate {
             const result = await this.canvas.floodFill(seed, this.currentColor.clone(), tolerance, edgeThreshold, this.fillTuningMode);
             if (!result) return;
             console.debug(
-                `[FloodFill] ${result.metrics.mode} tuning=${result.metrics.tuningMode} total=${result.metrics.totalMs.toFixed(1)}ms gpu=${result.metrics.gpuMs.toFixed(1)}ms iterations=${result.metrics.iterations} dispatch=${result.metrics.dispatchIterations} substeps=${result.metrics.substeps} tile=${result.metrics.tileSize} batch=${result.metrics.batchSize} bounds=${result.metrics.bounds.toString()}`
+                `[FloodFill] ${result.metrics.mode} tuning=${result.metrics.tuningMode} total=${result.metrics.totalMs.toFixed(1)}ms dry=${result.metrics.dryMs.toFixed(1)}ms source=${result.metrics.sourceCopyMs.toFixed(1)}ms gpu=${result.metrics.gpuMs.toFixed(1)}ms post=${result.metrics.postProcessMs.toFixed(1)}ms history=${result.metrics.historyMs.toFixed(1)}ms update=${result.metrics.updateMs.toFixed(1)}ms undo=${result.metrics.undoReadMs.toFixed(1)}ms redo=${result.metrics.redoReadMs.toFixed(1)}ms iterations=${result.metrics.iterations} dispatch=${result.metrics.dispatchIterations} substeps=${result.metrics.substeps} tile=${result.metrics.tileSize} batch=${result.metrics.batchSize} bounds=${result.metrics.bounds.toString()}`
             );
             this.updateFillStats(result.metrics);
             const fixerGroup = result.fixerGroup;
@@ -756,6 +756,13 @@ export class DrawingScreen implements CanvasDelegate {
         batchSize: number;
         tuningMode: FloodFillTuningMode;
         gpuMs: number;
+        sourceCopyMs: number;
+        postProcessMs: number;
+        historyMs: number;
+        undoReadMs: number;
+        redoReadMs: number;
+        dryMs: number;
+        updateMs: number;
         totalMs: number;
         bounds: Rect;
     }): void {
@@ -765,8 +772,14 @@ export class DrawingScreen implements CanvasDelegate {
             `mode       ${metrics.mode}\n` +
             `tuning     ${metrics.tuningMode}\n` +
             `total      ${metrics.totalMs.toFixed(1)} ms\n` +
+            `dry        ${metrics.dryMs.toFixed(1)} ms\n` +
+            `source     ${metrics.sourceCopyMs.toFixed(1)} ms\n` +
             `gpu        ${metrics.gpuMs.toFixed(1)} ms\n` +
+            `post       ${metrics.postProcessMs.toFixed(1)} ms\n` +
+            `history    ${metrics.historyMs.toFixed(1)} ms\n` +
+            `update     ${metrics.updateMs.toFixed(1)} ms\n` +
             `iter       ${metrics.iterations} (${metrics.dispatchIterations} dispatch)\n` +
+            `readback   ${metrics.undoReadMs.toFixed(1)} / ${metrics.redoReadMs.toFixed(1)} ms\n` +
             `tile/sub   ${metrics.tileSize}/${metrics.substeps}\n` +
             `batch      ${metrics.batchSize}\n` +
             `bounds     ${bounds}`;
