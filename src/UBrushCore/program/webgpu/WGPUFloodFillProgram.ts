@@ -3,7 +3,7 @@ import { WGPURenderTarget } from "../../gpu/webgpu/WGPURenderTarget";
 import { Point } from "../../common/Point";
 import { Color } from "../../common/Color";
 import { Rect } from "../../common/Rect";
-import { floodFillApplyWGSL, floodFillSeedWGSL, floodFillStepWGSL } from "../wgsl/floodFill.wgsl";
+import { floodFillApplyWGSL, floodFillIndirectWGSL, floodFillSeedWGSL, floodFillStepWGSL } from "../wgsl/floodFill.wgsl";
 
 interface FloodFillParams {
     source: WGPURenderTarget;
@@ -28,9 +28,11 @@ export class WGPUFloodFillProgram {
     private context: WGPUContext;
     private device: GPUDevice;
     private seedPipeline: GPUComputePipeline;
+    private indirectPipeline: GPUComputePipeline;
     private stepPipeline: GPUComputePipeline;
     private applyPipeline: GPUComputePipeline;
     private seedLayout: GPUBindGroupLayout;
+    private indirectLayout: GPUBindGroupLayout;
     private stepLayout: GPUBindGroupLayout;
     private applyLayout: GPUBindGroupLayout;
 
@@ -44,7 +46,14 @@ export class WGPUFloodFillProgram {
                 { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+            ],
+        });
+        this.indirectLayout = this.device.createBindGroupLayout({
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
             ],
         });
         this.stepLayout = this.device.createBindGroupLayout({
@@ -54,7 +63,9 @@ export class WGPUFloodFillProgram {
                 { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
                 { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+                { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
             ],
         });
         this.applyLayout = this.device.createBindGroupLayout({
@@ -69,6 +80,7 @@ export class WGPUFloodFillProgram {
         });
 
         this.seedPipeline = this.createPipeline(floodFillSeedWGSL, this.seedLayout);
+        this.indirectPipeline = this.createPipeline(floodFillIndirectWGSL, this.indirectLayout);
         this.stepPipeline = this.createPipeline(floodFillStepWGSL, this.stepLayout);
         this.applyPipeline = this.createPipeline(floodFillApplyWGSL, this.applyLayout);
     }
@@ -92,8 +104,15 @@ export class WGPUFloodFillProgram {
         ));
 
         const maskBuffer = this.createStorageBuffer(width * height * 4);
-        const activeA = this.createStorageBuffer(tileCount * 4);
-        const activeB = this.createStorageBuffer(tileCount * 4);
+        const activeListA = this.createStorageBuffer(tileCount * 4);
+        const activeListB = this.createStorageBuffer(tileCount * 4);
+        const activeFlagsB = this.createStorageBuffer(tileCount * 4);
+        const activeCountA = this.createStorageBuffer(4);
+        const activeCountB = this.createStorageBuffer(4);
+        const indirectBuffer = this.device.createBuffer({
+            size: 12,
+            usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
         const filledTiles = this.createStorageBuffer(tileCount * 4);
         const floodUniform = this.makeFloodUniform(width, height, seedX, seedY, tileCols, tileRows, param.tolerance, param.edgeThreshold);
         const applyUniform = this.makeApplyUniform(width, height, seedX, seedY, tileCols, tileRows, param.tolerance, param.edgeThreshold, param.color);
@@ -105,8 +124,12 @@ export class WGPUFloodFillProgram {
 
         const encoder = this.device.createCommandEncoder();
         encoder.clearBuffer(maskBuffer);
-        encoder.clearBuffer(activeA);
-        encoder.clearBuffer(activeB);
+        encoder.clearBuffer(activeListA);
+        encoder.clearBuffer(activeListB);
+        encoder.clearBuffer(activeFlagsB);
+        encoder.clearBuffer(activeCountA);
+        encoder.clearBuffer(activeCountB);
+        encoder.clearBuffer(indirectBuffer);
         encoder.clearBuffer(filledTiles);
 
         {
@@ -115,9 +138,10 @@ export class WGPUFloodFillProgram {
                 entries: [
                     { binding: 0, resource: param.source.texture.getView() },
                     { binding: 1, resource: { buffer: maskBuffer } },
-                    { binding: 2, resource: { buffer: activeA } },
+                    { binding: 2, resource: { buffer: activeListA } },
                     { binding: 3, resource: { buffer: filledTiles } },
-                    { binding: 4, resource: { buffer: floodUniform } },
+                    { binding: 4, resource: { buffer: activeCountA } },
+                    { binding: 5, resource: { buffer: floodUniform } },
                 ],
             });
             const pass = encoder.beginComputePass();
@@ -127,30 +151,44 @@ export class WGPUFloodFillProgram {
             pass.end();
         }
 
-        let readActive = activeA;
-        let writeActive = activeB;
+        this.encodeIndirectUpdate(encoder, activeCountA, indirectBuffer);
+
+        let readActiveList = activeListA;
+        let writeActiveList = activeListB;
+        let readActiveCount = activeCountA;
+        let writeActiveCount = activeCountB;
         for (let i = 0; i < iterations; i++) {
-            encoder.clearBuffer(writeActive);
+            encoder.clearBuffer(writeActiveList);
+            encoder.clearBuffer(activeFlagsB);
+            encoder.clearBuffer(writeActiveCount);
             const bindGroup = this.device.createBindGroup({
                 layout: this.stepLayout,
                 entries: [
                     { binding: 0, resource: param.source.texture.getView() },
-                    { binding: 1, resource: { buffer: readActive } },
-                    { binding: 2, resource: { buffer: writeActive } },
-                    { binding: 3, resource: { buffer: filledTiles } },
-                    { binding: 4, resource: { buffer: maskBuffer } },
-                    { binding: 5, resource: { buffer: floodUniform } },
+                    { binding: 1, resource: { buffer: readActiveList } },
+                    { binding: 2, resource: { buffer: writeActiveList } },
+                    { binding: 3, resource: { buffer: activeFlagsB } },
+                    { binding: 4, resource: { buffer: writeActiveCount } },
+                    { binding: 5, resource: { buffer: filledTiles } },
+                    { binding: 6, resource: { buffer: maskBuffer } },
+                    { binding: 7, resource: { buffer: floodUniform } },
                 ],
             });
             const pass = encoder.beginComputePass();
             pass.setPipeline(this.stepPipeline);
             pass.setBindGroup(0, bindGroup);
-            pass.dispatchWorkgroups(tileCols, tileRows);
+            pass.dispatchWorkgroupsIndirect(indirectBuffer, 0);
             pass.end();
 
-            const tmp = readActive;
-            readActive = writeActive;
-            writeActive = tmp;
+            this.encodeIndirectUpdate(encoder, writeActiveCount, indirectBuffer);
+
+            const tmpList = readActiveList;
+            readActiveList = writeActiveList;
+            writeActiveList = tmpList;
+
+            const tmpCount = readActiveCount;
+            readActiveCount = writeActiveCount;
+            writeActiveCount = tmpCount;
         }
 
         {
@@ -182,8 +220,12 @@ export class WGPUFloodFillProgram {
         const pixelBounds = this.boundsFromRaw(rawBounds, width, height);
 
         maskBuffer.destroy();
-        activeA.destroy();
-        activeB.destroy();
+        activeListA.destroy();
+        activeListB.destroy();
+        activeFlagsB.destroy();
+        activeCountA.destroy();
+        activeCountB.destroy();
+        indirectBuffer.destroy();
         filledTiles.destroy();
         floodUniform.destroy();
         applyUniform.destroy();
@@ -203,10 +245,25 @@ export class WGPUFloodFillProgram {
         });
     }
 
+    private encodeIndirectUpdate(encoder: GPUCommandEncoder, countBuffer: GPUBuffer, indirectBuffer: GPUBuffer): void {
+        const bindGroup = this.device.createBindGroup({
+            layout: this.indirectLayout,
+            entries: [
+                { binding: 0, resource: { buffer: countBuffer } },
+                { binding: 1, resource: { buffer: indirectBuffer } },
+            ],
+        });
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(this.indirectPipeline);
+        pass.setBindGroup(0, bindGroup);
+        pass.dispatchWorkgroups(1, 1);
+        pass.end();
+    }
+
     private createStorageBuffer(size: number): GPUBuffer {
         return this.device.createBuffer({
             size,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
         });
     }
 

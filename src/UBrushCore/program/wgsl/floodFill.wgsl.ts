@@ -11,9 +11,10 @@ struct Params {
 
 @group(0) @binding(0) var sourceTex : texture_2d<f32>;
 @group(0) @binding(1) var<storage, read_write> mask : array<atomic<u32>>;
-@group(0) @binding(2) var<storage, read_write> activeTiles : array<atomic<u32>>;
+@group(0) @binding(2) var<storage, read_write> activeList : array<u32>;
 @group(0) @binding(3) var<storage, read_write> filledTiles : array<atomic<u32>>;
-@group(0) @binding(4) var<uniform> params : Params;
+@group(0) @binding(4) var<storage, read_write> activeCount : atomic<u32>;
+@group(0) @binding(5) var<uniform> params : Params;
 
 fn colorDistance(a : vec4f, b : vec4f) -> f32 {
     let d = a - b;
@@ -46,8 +47,21 @@ fn main() {
     let tile = p / vec2u(${TILE_SIZE}u, ${TILE_SIZE}u);
     let tileIndex = tile.y * params.tileGrid.x + tile.x;
     atomicStore(&mask[pixelIndex], 1u);
-    atomicStore(&activeTiles[tileIndex], 1u);
+    let listIndex = atomicAdd(&activeCount, 1u);
+    activeList[listIndex] = tileIndex;
     atomicStore(&filledTiles[tileIndex], 1u);
+}
+`;
+
+export const floodFillIndirectWGSL = /* wgsl */ `
+@group(0) @binding(0) var<storage, read> count : u32;
+@group(0) @binding(1) var<storage, read_write> indirect : array<u32>;
+
+@compute @workgroup_size(1, 1)
+fn main() {
+    indirect[0] = count;
+    indirect[1] = 1u;
+    indirect[2] = 1u;
 }
 `;
 
@@ -61,11 +75,13 @@ struct Params {
 };
 
 @group(0) @binding(0) var sourceTex : texture_2d<f32>;
-@group(0) @binding(1) var<storage, read> activeTiles : array<u32>;
-@group(0) @binding(2) var<storage, read_write> nextActiveTiles : array<atomic<u32>>;
-@group(0) @binding(3) var<storage, read_write> filledTiles : array<atomic<u32>>;
-@group(0) @binding(4) var<storage, read_write> mask : array<atomic<u32>>;
-@group(0) @binding(5) var<uniform> params : Params;
+@group(0) @binding(1) var<storage, read> activeList : array<u32>;
+@group(0) @binding(2) var<storage, read_write> nextActiveList : array<u32>;
+@group(0) @binding(3) var<storage, read_write> nextActiveFlags : array<atomic<u32>>;
+@group(0) @binding(4) var<storage, read_write> nextActiveCount : atomic<u32>;
+@group(0) @binding(5) var<storage, read_write> filledTiles : array<atomic<u32>>;
+@group(0) @binding(6) var<storage, read_write> mask : array<atomic<u32>>;
+@group(0) @binding(7) var<uniform> params : Params;
 
 fn pixelIndex(p : vec2u) -> u32 {
     return p.y * params.size.x + p.x;
@@ -126,7 +142,11 @@ fn wakeTile(tile : vec2u) {
     if (tile.x >= params.tileGrid.x || tile.y >= params.tileGrid.y) {
         return;
     }
-    atomicStore(&nextActiveTiles[tile.y * params.tileGrid.x + tile.x], 1u);
+    let tileIndex = tile.y * params.tileGrid.x + tile.x;
+    if (atomicExchange(&nextActiveFlags[tileIndex], 1u) == 0u) {
+        let listIndex = atomicAdd(&nextActiveCount, 1u);
+        nextActiveList[listIndex] = tileIndex;
+    }
 }
 
 fn wakeNeighbors(tile : vec2u, local : vec2u) {
@@ -147,14 +167,11 @@ fn wakeNeighbors(tile : vec2u, local : vec2u) {
 
 @compute @workgroup_size(${TILE_SIZE}, ${TILE_SIZE})
 fn main(
-    @builtin(workgroup_id) tileId : vec3u,
+    @builtin(workgroup_id) workgroupId : vec3u,
     @builtin(local_invocation_id) localId : vec3u
 ) {
-    let tile = tileId.xy;
-    let tileIndex = tile.y * params.tileGrid.x + tile.x;
-    if (activeTiles[tileIndex] == 0u) {
-        return;
-    }
+    let tileIndex = activeList[workgroupId.x];
+    let tile = vec2u(tileIndex % params.tileGrid.x, tileIndex / params.tileGrid.x);
 
     let p = tile * vec2u(${TILE_SIZE}u, ${TILE_SIZE}u) + localId.xy;
     if (p.x >= params.size.x || p.y >= params.size.y) {
