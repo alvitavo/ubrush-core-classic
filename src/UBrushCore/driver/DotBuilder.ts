@@ -155,6 +155,11 @@ export class DotBuilder {
         dot.prepareAltitudeAngle = altitudeAngle;
         dot.prepareAzimuthAngle = azimuthAngle;
 
+        if (this.dotBufferSize === 0) {
+            this.processReadyDot(dot);
+            return;
+        }
+
         this.dotBuffer.push(dot);
         this.testDotBuffer();
 
@@ -181,6 +186,12 @@ export class DotBuilder {
         }
 
         const dot: Dot = this.dotBuffer.shift()!;
+        this.processReadyDot(dot);
+
+    }
+
+    private processReadyDot(dot: Dot): void {
+
         this.processDot(dot);
 
         if (this.usedDotBufferSize > 0) {
