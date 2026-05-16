@@ -883,8 +883,19 @@ export class DrawingEngine {
 
     protected renderMultiDots(dots: Dot[]): Rect | null {
         if (dots.length === 0) return null;
-        const drawingDots = dots.filter(d => !d.isMask);
-        const maskDots = dots.filter(d => d.isMask);
+
+        let maskCount = 0;
+        for (const dot of dots) {
+            if (dot.isMask) maskCount++;
+        }
+        if (maskCount === 0) return this._drawDotsCore(dots, [], dots);
+        if (maskCount === dots.length) return this._drawDotsCore([], dots, dots);
+
+        const drawingDots: Dot[] = [];
+        const maskDots: Dot[] = [];
+        for (const dot of dots) {
+            (dot.isMask ? maskDots : drawingDots).push(dot);
+        }
         return this._drawDotsCore(drawingDots, maskDots, dots);
     }
 
