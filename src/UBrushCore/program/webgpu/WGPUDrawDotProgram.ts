@@ -38,7 +38,7 @@ export const QUAD_CORNERS = new Float32Array([
 const INSTANCE_STRIDE_BYTES = 160;
 const INSTANCE_STRIDE_FLOATS = INSTANCE_STRIDE_BYTES / 4;
 
-export function packInstances(param: {
+export interface DotInstancePackParam {
     posCenterAxisU: Float32Array,
     posAxisV: Float32Array,
     tipUV: Float32Array,
@@ -52,10 +52,15 @@ export function packInstances(param: {
     opacity: Float32Array,
     corrosion: Float32Array,
     instanceCount: number,
-}): Float32Array {
+}
+
+export function packedInstanceFloatCount(instanceCount: number): number {
+    return instanceCount * INSTANCE_STRIDE_FLOATS;
+}
+
+export function packInstances(param: DotInstancePackParam, out: Float32Array): Float32Array {
 
     const n = param.instanceCount;
-    const out = new Float32Array(n * INSTANCE_STRIDE_FLOATS);
 
     for (let i = 0; i < n; i++) {
         const o = i * INSTANCE_STRIDE_FLOATS;
@@ -157,6 +162,7 @@ export class WGPUDrawDotProgram {
     private cornerBuffer: GPUBuffer;
     private instanceBuffer?: GPUBuffer;
     private instanceBufferBytes = 0;
+    private packedInstances = new Float32Array(0);
     private pipelineCache: Map<string, GPURenderPipeline> = new Map();
 
     constructor(context: WGPUContext) {
@@ -193,6 +199,7 @@ export class WGPUDrawDotProgram {
         this.instanceBuffer?.destroy();
         this.instanceBuffer = undefined;
         this.instanceBufferBytes = 0;
+        this.packedInstances = new Float32Array(0);
         this.pipelineCache.clear();
 
     }
@@ -223,7 +230,7 @@ export class WGPUDrawDotProgram {
 
         const tip = param.useDualTip ? param.dualTipTexture : param.tipTexture;
 
-        const packed = packInstances(param);
+        const packed = this.packInstances(param);
         const instanceBuffer = this.writeInstanceBuffer(packed);
 
         const bindGroup = this.device.createBindGroup({
@@ -256,6 +263,14 @@ export class WGPUDrawDotProgram {
         pass.end();
         this.device.queue.submit([encoder.finish()]);
 
+    }
+
+    private packInstances(param: DotInstancePackParam): Float32Array {
+        const floats = packedInstanceFloatCount(param.instanceCount);
+        if (this.packedInstances.length < floats) {
+            this.packedInstances = new Float32Array(Math.max(floats, this.packedInstances.length * 2, 1024));
+        }
+        return packInstances(param, this.packedInstances).subarray(0, floats);
     }
 
     private writeInstanceBuffer(data: Float32Array): GPUBuffer {

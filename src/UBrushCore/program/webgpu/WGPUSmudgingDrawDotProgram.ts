@@ -12,7 +12,9 @@ import {
 } from "./_common";
 import {
     QUAD_CORNERS,
+    DotInstancePackParam,
     packInstances,
+    packedInstanceFloatCount,
     INSTANCE_VERTEX_LAYOUT,
     CORNER_VERTEX_LAYOUT,
 } from "./WGPUDrawDotProgram";
@@ -36,6 +38,7 @@ export class WGPUSmudgingDrawDotProgram {
     private cornerBuffer: GPUBuffer;
     private instanceBuffer?: GPUBuffer;
     private instanceBufferBytes = 0;
+    private packedInstances = new Float32Array(0);
     private alphaUniform: GPUBuffer;
     private colorUniform: GPUBuffer;
     private pipeline: GPURenderPipeline | null = null;
@@ -85,6 +88,7 @@ export class WGPUSmudgingDrawDotProgram {
         this.colorUniform.destroy();
         this.instanceBuffer = undefined;
         this.instanceBufferBytes = 0;
+        this.packedInstances = new Float32Array(0);
         this.pipeline = null;
 
     }
@@ -118,7 +122,7 @@ export class WGPUSmudgingDrawDotProgram {
 
         const tip = param.useDualTip ? param.dualTipTexture : param.tipTexture;
 
-        const packed = packInstances(param);
+        const packed = this.packInstances(param);
         const instanceBuffer = this.writeInstanceBuffer(packed);
 
         const alphaBindGroup = this.device.createBindGroup({
@@ -187,6 +191,14 @@ export class WGPUSmudgingDrawDotProgram {
 
         this.device.queue.submit([encoder.finish()]);
 
+    }
+
+    private packInstances(param: DotInstancePackParam): Float32Array {
+        const floats = packedInstanceFloatCount(param.instanceCount);
+        if (this.packedInstances.length < floats) {
+            this.packedInstances = new Float32Array(Math.max(floats, this.packedInstances.length * 2, 1024));
+        }
+        return packInstances(param, this.packedInstances).subarray(0, floats);
     }
 
     private writeInstanceBuffer(data: Float32Array): GPUBuffer {
