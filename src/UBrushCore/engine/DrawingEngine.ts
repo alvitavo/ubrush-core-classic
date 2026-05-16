@@ -580,14 +580,7 @@ export class DrawingEngine {
         const sourceRenderTarget = this.context.createRenderTarget(this.size);
 
         const sourceCopyStart = performance.now();
-        WGPUProgramManager.getInstance().fillRectProgram.fill(sourceRenderTarget, {
-            targetRect: canvasRect,
-            source: this.dryRenderTarget.texture,
-            sourceRect: canvasRect,
-            canvasRect,
-            transform: new AffineTransform(),
-            blend: RenderObjectBlend.None
-        });
+        this.context.copyTexture(sourceRenderTarget, this.dryRenderTarget);
         const sourceCopyMs = performance.now() - sourceCopyStart;
 
         const fillResult = await WGPUProgramManager.getInstance().floodFillProgram.fill({
