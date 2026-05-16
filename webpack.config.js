@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
@@ -10,6 +11,16 @@ const DEV_CERT_DIR = path.resolve(__dirname, '.cert');
 const DEV_CERT_KEY = path.join(DEV_CERT_DIR, 'dev.key');
 const DEV_CERT_CRT = path.join(DEV_CERT_DIR, 'dev.crt');
 const USE_HTTPS = process.env.HTTPS === '1';
+
+function localIPv4() {
+  const nets = os.networkInterfaces();
+  for (const interfaces of Object.values(nets)) {
+    for (const item of interfaces || []) {
+      if (item.family === 'IPv4' && !item.internal) return item.address;
+    }
+  }
+  return 'localhost';
+}
 
 function devServerConfig() {
   const config = {
@@ -33,6 +44,17 @@ function devServerConfig() {
         : {},
     };
   }
+
+  config.onListening = (server) => {
+    const address = server.server.address();
+    const port = typeof address === 'object' && address ? address.port : config.port;
+    const protocol = USE_HTTPS ? 'https' : 'http';
+    const host = localIPv4();
+    console.log('');
+    console.log(`Device URL:    ${protocol}://${host}:${port}/`);
+    console.log(`Benchmark URL: ${protocol}://${host}:${port}/benchmark.html`);
+    console.log('');
+  };
 
   return config;
 }
