@@ -12,7 +12,6 @@ import {
     quadPositions,
     quadTexCoords,
     createLinearClampSampler,
-    makeVertexBuffer,
     makeUniformBuffer,
 } from "./_common";
 
@@ -62,6 +61,12 @@ export class WGPUHighLowCutProgram {
 
     private edgeTextures: Map<string, WGPUTexture> = new Map();
     private pipelineCache: Map<GPUTextureFormat, GPURenderPipeline> = new Map();
+    private positionBuffer?: GPUBuffer;
+    private texCoordBuffer?: GPUBuffer;
+    private uniformBuffer?: GPUBuffer;
+    private uniformBytes = new ArrayBuffer(UNIFORM_BYTES);
+    private uniformF = new Float32Array(this.uniformBytes);
+    private uniformI = new Int32Array(this.uniformBytes);
 
     constructor(context: WGPUContext) {
 
@@ -100,6 +105,12 @@ export class WGPUHighLowCutProgram {
 
         for (const t of this.edgeTextures.values()) t.destroy();
         this.edgeTextures.clear();
+        this.positionBuffer?.destroy();
+        this.texCoordBuffer?.destroy();
+        this.uniformBuffer?.destroy();
+        this.positionBuffer = undefined;
+        this.texCoordBuffer = undefined;
+        this.uniformBuffer = undefined;
         this.pipelineCache.clear();
 
     }
@@ -125,18 +136,17 @@ export class WGPUHighLowCutProgram {
         const texCoords = quadTexCoords(param.sourceRect, param.canvasRect);
         const ortho = orthoMatrix(param.canvasRect);
 
-        const positionBuffer = makeVertexBuffer(this.device, positions);
-        const texCoordBuffer = makeVertexBuffer(this.device, texCoords);
+        const positionBuffer = this.writeVertexBuffer('position', positions);
+        const texCoordBuffer = this.writeVertexBuffer('texCoord', texCoords);
 
         const edgeTex = this.edgeTextures.get(param.edgeStyle as string) ?? null;
         const wetTex = edgeTex ?? this.edgeTextures.get("WET")!;
 
         const blendmodeCode = BLEND_MODE_MAP[param.liquidSourceBlendmode as string] ?? 0;
 
-        const uniformBuffer = makeUniformBuffer(this.device, UNIFORM_BYTES);
-        const uniformBytes = new ArrayBuffer(UNIFORM_BYTES);
-        const f = new Float32Array(uniformBytes);
-        const i = new Int32Array(uniformBytes);
+        const uniformBuffer = this.getUniformBuffer();
+        const f = this.uniformF;
+        const i = this.uniformI;
         f.set(ortho, 0);                                  // 0..15  : orthoMatrix
         f[16] = param.liquidColor.r;                      // 16..19 : liquidColor
         f[17] = param.liquidColor.g;
@@ -150,7 +160,7 @@ export class WGPUHighLowCutProgram {
         i[25] = blendmodeCode;                            // 25     : blendmode
         i[26] = 0;                                        // 26     : _pad0
         i[27] = 0;                                        // 27     : _pad1
-        this.device.queue.writeBuffer(uniformBuffer, 0, uniformBytes);
+        this.device.queue.writeBuffer(uniformBuffer, 0, this.uniformBytes);
 
         const bindGroup = this.device.createBindGroup({
             layout: this.bindGroupLayout,
@@ -186,10 +196,27 @@ export class WGPUHighLowCutProgram {
         pass.end();
         this.device.queue.submit([encoder.finish()]);
 
-        positionBuffer.destroy();
-        texCoordBuffer.destroy();
-        uniformBuffer.destroy();
+    }
 
+    private writeVertexBuffer(kind: 'position' | 'texCoord', data: Float32Array): GPUBuffer {
+        let buffer = kind === 'position' ? this.positionBuffer : this.texCoordBuffer;
+        if (!buffer) {
+            buffer = this.device.createBuffer({
+                size: data.byteLength,
+                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+            });
+            if (kind === 'position') this.positionBuffer = buffer;
+            else this.texCoordBuffer = buffer;
+        }
+        this.device.queue.writeBuffer(buffer, 0, data as BufferSource);
+        return buffer;
+    }
+
+    private getUniformBuffer(): GPUBuffer {
+        if (!this.uniformBuffer) {
+            this.uniformBuffer = makeUniformBuffer(this.device, UNIFORM_BYTES);
+        }
+        return this.uniformBuffer;
     }
 
     private getPipeline(format: GPUTextureFormat): GPURenderPipeline {
