@@ -1,49 +1,177 @@
-import { WGPUContext } from '../gpu/webgpu/WGPUContext';
-import { bootstrapWebGPU } from '../gpu/webgpu/bootstrap';
 import { Canvas } from '../canvas/Canvas';
-import { Size } from '../common/Size';
 import { Color } from '../common/Color';
 import { IBrush } from '../common/IBrush';
+import { Size } from '../common/Size';
+import { Stylus } from '../common/Stylus';
+import { WGPUContext } from '../gpu/webgpu/WGPUContext';
+import { bootstrapWebGPU } from '../gpu/webgpu/bootstrap';
 import { WGPUProgramManager } from '../program/webgpu/WGPUProgramManager';
 import { CurveKind, sampleUniformSpacing } from './curves';
-import { AnimationStyle, Mode, RunResult, installDrawCallCounter, runAnimation, runFrame, runThroughput } from './runner';
 
 interface CategoryEntry { key: string; displayName: string; file: string; }
-interface FavoriteEntry { name: string; file: string; }
-interface FavoriteScore {
-    name: string;
-    file: string;
-    scenarios: number;     // count of throughput scenarios that contributed
-    totalFlushMs: number;  // sum of flushMs across throughput scenarios — lower is better
-    avgPointsPerSec: number;
-    totalDrawCalls?: number;
-    avgDrawCallsPerStroke?: number;
-    error?: string;
-}
-interface FavoriteAnimScore {
-    name: string;
-    file: string;
-    perStyleFps: Partial<Record<AnimationStyle, number>>;
-    avgFps: number;
-    avgDrawCallsPerFrame?: number;
-    error?: string;
+
+type StrokeMode = 'realtime' | 'batched';
+type SuiteKind = 'quick' | 'full' | 'stress';
+
+interface StrokeCase {
+    id: string;
+    curve: CurveKind;
+    spacingPx: number;
+    mode: StrokeMode;
 }
 
-const CURVES: CurveKind[] = ['line', 'sine', 'spiral'];
-const SPACINGS: { label: string; px: number }[] = [
-    { label: 'dense (2px)', px: 2 },
-    { label: 'medium (10px)', px: 10 },
-];
-const MODES: Mode[] = ['throughput', 'frame', 'animate', 'throughput-batch', 'animate-batch'];
-const ANIMATION_STYLES: AnimationStyle[] = ['translate', 'scale', 'rotate'];
-const DURATIONS: { label: string; sec: number }[] = [
-    { label: '1s', sec: 1 },
-    { label: '3s', sec: 3 },
-    { label: '5s', sec: 5 },
-];
-const FAVORITES_ANIM_DURATION_SEC = 3;
+interface StrokeMeasurement {
+    caseId: string;
+    brushName: string;
+    brushFile: string;
+    mode: StrokeMode;
+    curve: CurveKind;
+    spacingPx: number;
+    points: number;
+    iteration: number;
+    totalMs: number;
+    lineToMs: number;
+    lineToAvgMs: number;
+    lineToP95Ms: number;
+    lineToMaxMs: number;
+    endLineMs: number;
+    gpuWaitMs: number;
+    pointsPerSec: number;
+    drawCalls?: number;
+    heapDeltaMb?: number;
+}
 
-class BenchmarkApp {
+interface CaseSummary {
+    caseId: string;
+    brushName: string;
+    mode: StrokeMode;
+    curve: CurveKind;
+    spacingPx: number;
+    points: number;
+    runs: number;
+    totalAvgMs: number;
+    totalP95Ms: number;
+    lineToAvgMs: number;
+    lineToP95Ms: number;
+    lineToMaxMs: number;
+    endLineAvgMs: number;
+    gpuWaitAvgMs: number;
+    pointsPerSecAvg: number;
+    drawCallsAvg?: number;
+    heapDeltaAvgMb?: number;
+    score: number;
+}
+
+const CASES: Record<SuiteKind, StrokeCase[]> = {
+    quick: [
+        { id: 'line-6-realtime', curve: 'line', spacingPx: 6, mode: 'realtime' },
+        { id: 'sine-6-realtime', curve: 'sine', spacingPx: 6, mode: 'realtime' },
+        { id: 'sine-6-batched', curve: 'sine', spacingPx: 6, mode: 'batched' },
+    ],
+    full: [
+        { id: 'line-2-realtime', curve: 'line', spacingPx: 2, mode: 'realtime' },
+        { id: 'line-6-realtime', curve: 'line', spacingPx: 6, mode: 'realtime' },
+        { id: 'sine-2-realtime', curve: 'sine', spacingPx: 2, mode: 'realtime' },
+        { id: 'sine-6-realtime', curve: 'sine', spacingPx: 6, mode: 'realtime' },
+        { id: 'spiral-4-realtime', curve: 'spiral', spacingPx: 4, mode: 'realtime' },
+        { id: 'sine-2-batched', curve: 'sine', spacingPx: 2, mode: 'batched' },
+        { id: 'spiral-4-batched', curve: 'spiral', spacingPx: 4, mode: 'batched' },
+    ],
+    stress: [
+        { id: 'line-1-realtime', curve: 'line', spacingPx: 1, mode: 'realtime' },
+        { id: 'sine-1-realtime', curve: 'sine', spacingPx: 1, mode: 'realtime' },
+        { id: 'spiral-2-realtime', curve: 'spiral', spacingPx: 2, mode: 'realtime' },
+        { id: 'line-1-batched', curve: 'line', spacingPx: 1, mode: 'batched' },
+        { id: 'sine-1-batched', curve: 'sine', spacingPx: 1, mode: 'batched' },
+        { id: 'spiral-2-batched', curve: 'spiral', spacingPx: 2, mode: 'batched' },
+    ],
+};
+
+let drawCallCounter: { count: number } | null = null;
+let drawCounterInstalled = false;
+
+function installDrawCallCounter(): void {
+    if (drawCounterInstalled) return;
+    drawCounterInstalled = true;
+    drawCallCounter = { count: 0 };
+    const counter = drawCallCounter;
+    const proto = (globalThis as any).GPURenderPassEncoder?.prototype;
+    if (!proto) return;
+
+    for (const method of ['draw', 'drawIndexed', 'drawIndirect', 'drawIndexedIndirect']) {
+        const orig = proto[method];
+        if (typeof orig !== 'function') continue;
+        proto[method] = function (...args: unknown[]) {
+            counter.count++;
+            return orig.apply(this, args);
+        };
+    }
+}
+
+function resetDrawCalls(): void {
+    if (drawCallCounter) drawCallCounter.count = 0;
+}
+
+function getDrawCalls(): number | undefined {
+    return drawCallCounter?.count;
+}
+
+function heapMb(): number | undefined {
+    const memory = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
+    return typeof memory?.usedJSHeapSize === 'number' ? memory.usedJSHeapSize / (1024 * 1024) : undefined;
+}
+
+function avg(values: number[]): number {
+    return values.length === 0 ? 0 : values.reduce((s, v) => s + v, 0) / values.length;
+}
+
+function quantile(values: number[], q: number): number {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const index = Math.min(sorted.length - 1, Math.floor(q * (sorted.length - 1)));
+    return sorted[index];
+}
+
+function max(values: number[]): number {
+    return values.length === 0 ? 0 : Math.max(...values);
+}
+
+function componentScore(value: number, budget: number): number {
+    if (!Number.isFinite(value) || value < 0) return 0;
+    if (budget <= 0) return 0;
+    return 100 * Math.exp(-0.35 * (value / budget));
+}
+
+function performanceScore(summary: Omit<CaseSummary, 'score'>): number {
+    const realtime = summary.mode === 'realtime';
+    const budgets = realtime
+        ? { lineP95: 2, lineMax: 16, totalPerPoint: 2, gpuWait: 16, drawsPerK: 1000 }
+        : { lineP95: 0.15, lineMax: 1.5, totalPerPoint: 0.12, gpuWait: 8, drawsPerK: 160 };
+    const totalPerPoint = summary.totalAvgMs / Math.max(1, summary.points);
+    const drawsPerK = summary.drawCallsAvg === undefined
+        ? 0
+        : (summary.drawCallsAvg / Math.max(1, summary.points)) * 1000;
+
+    const score =
+        componentScore(summary.lineToP95Ms, budgets.lineP95) * 0.35 +
+        componentScore(summary.lineToMaxMs, budgets.lineMax) * 0.2 +
+        componentScore(totalPerPoint, budgets.totalPerPoint) * 0.2 +
+        componentScore(summary.gpuWaitAvgMs, budgets.gpuWait) * 0.15 +
+        componentScore(drawsPerK, budgets.drawsPerK) * 0.1;
+    return Math.max(0, Math.min(100, score));
+}
+
+function escapeHtml(value: string): string {
+    return value.replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+    }[c] ?? c));
+}
+
+class DrawingBenchmarkLab {
     private context!: WGPUContext;
     private canvas!: Canvas;
     private canvasW = 0;
@@ -51,37 +179,102 @@ class BenchmarkApp {
 
     private categories: CategoryEntry[] = [];
     private brushesByFile = new Map<string, IBrush[]>();
-    private currentBrush?: IBrush;
 
     private categorySel!: HTMLSelectElement;
     private brushSel!: HTMLSelectElement;
-    private curveSel!: HTMLSelectElement;
-    private spacingSel!: HTMLSelectElement;
-    private modeSel!: HTMLSelectElement;
-    private animSel!: HTMLSelectElement;
-    private durSel!: HTMLSelectElement;
+    private suiteSel!: HTMLSelectElement;
+    private iterationsInput!: HTMLInputElement;
+    private warmupInput!: HTMLInputElement;
     private runBtn!: HTMLButtonElement;
     private runAllBtn!: HTMLButtonElement;
-    private runFavBtn!: HTMLButtonElement;
-    private runFavAnimBtn!: HTMLButtonElement;
     private clearBtn!: HTMLButtonElement;
     private copyBtn!: HTMLButtonElement;
     private statusEl!: HTMLElement;
+    private diagnosticsEl!: HTMLElement;
     private resultsEl!: HTMLElement;
 
-    private results: (RunResult & { scenario: string })[] = [];
-    private favoriteScores: FavoriteScore[] = [];
-    private favoriteAnimScores: FavoriteAnimScore[] = [];
+    private measurements: StrokeMeasurement[] = [];
 
     async init(): Promise<void> {
-        this.buildSidebar();
-        this.statusEl = document.getElementById('status')!;
-        this.resultsEl = document.getElementById('results')!;
-        this.renderResultsTable();
-
+        this.bindElements();
+        this.buildControls();
+        this.setStatus('Initializing WebGPU...');
         await this.initWebGPU();
         await this.loadCategories();
-        await this.applyCurrentBrush();
+        await this.applySelectedBrush();
+        this.render();
+        this.setStatus('Ready.');
+    }
+
+    private bindElements(): void {
+        this.statusEl = document.getElementById('status')!;
+        this.diagnosticsEl = document.getElementById('diagnostics')!;
+        this.resultsEl = document.getElementById('results')!;
+    }
+
+    private buildControls(): void {
+        const sidebar = document.getElementById('sidebar')!;
+        sidebar.innerHTML = '';
+
+        const title = document.createElement('h1');
+        title.textContent = 'Drawing Engine Lab';
+        sidebar.appendChild(title);
+
+        this.categorySel = makeSelect();
+        sidebar.appendChild(labeled('Category', this.categorySel));
+        this.categorySel.addEventListener('change', async () => {
+            await this.loadBrushesForCategory(this.categorySel.value);
+            this.refreshBrushes();
+            await this.applySelectedBrush();
+        });
+
+        this.brushSel = makeSelect();
+        sidebar.appendChild(labeled('Brush', this.brushSel));
+        this.brushSel.addEventListener('change', async () => this.applySelectedBrush());
+
+        this.suiteSel = makeSelect();
+        for (const suite of ['quick', 'full', 'stress'] as SuiteKind[]) {
+            const option = document.createElement('option');
+            option.value = suite;
+            option.textContent = suite;
+            this.suiteSel.appendChild(option);
+        }
+        sidebar.appendChild(labeled('Suite', this.suiteSel));
+
+        this.iterationsInput = makeInput('number', '5');
+        this.iterationsInput.min = '1';
+        this.iterationsInput.max = '50';
+        sidebar.appendChild(labeled('Measured runs', this.iterationsInput));
+
+        this.warmupInput = makeInput('number', '1');
+        this.warmupInput.min = '0';
+        this.warmupInput.max = '10';
+        sidebar.appendChild(labeled('Warmup runs', this.warmupInput));
+
+        this.runBtn = makeButton('Run Selected Brush', false);
+        this.runBtn.addEventListener('click', () => void this.runSelectedBrush());
+        sidebar.appendChild(this.runBtn);
+
+        this.runAllBtn = makeButton('Run All Brushes In Category', false);
+        this.runAllBtn.addEventListener('click', () => void this.runAllBrushesInCategory());
+        sidebar.appendChild(this.runAllBtn);
+
+        this.clearBtn = makeButton('Clear Results', true);
+        this.clearBtn.addEventListener('click', () => {
+            this.measurements = [];
+            this.canvas?.clear();
+            this.render();
+        });
+        sidebar.appendChild(this.clearBtn);
+
+        this.copyBtn = makeButton('Copy JSON', true);
+        this.copyBtn.addEventListener('click', () => void navigator.clipboard.writeText(JSON.stringify(this.exportPayload(), null, 2)));
+        sidebar.appendChild(this.copyBtn);
+
+        const note = document.createElement('div');
+        note.className = 'note';
+        note.textContent = 'Realtime measures per-event flush behavior. Batched measures pure stroke throughput. Each case clears the canvas and waits for GPU completion.';
+        sidebar.appendChild(note);
     }
 
     private async initWebGPU(): Promise<void> {
@@ -89,15 +282,12 @@ class BenchmarkApp {
         const wrap = glCanvas.parentElement!;
         const cssW = wrap.clientWidth;
         const cssH = wrap.clientHeight;
-        this.canvasW = cssW * 2;
-        this.canvasH = cssH * 2;
+        this.canvasW = Math.max(1, Math.floor(cssW * 2));
+        this.canvasH = Math.max(1, Math.floor(cssH * 2));
         glCanvas.width = this.canvasW;
         glCanvas.height = this.canvasH;
 
-        // Patch GPURenderPassEncoder.prototype.draw* before any RenderPipeline
-        // is created so the counter sees every draw call from the start.
         installDrawCallCounter();
-
         const bootstrap = await bootstrapWebGPU(glCanvas);
         const size = new Size(this.canvasW, this.canvasH);
         this.context = new WGPUContext(bootstrap.device, bootstrap.presentationContext, bootstrap.presentationFormat, size);
@@ -106,25 +296,36 @@ class BenchmarkApp {
 
         this.canvas.setColor(new Color(0, 0, 0, 1));
         this.canvas.lineDriver.setBrushSize(0.1);
-        this.canvas.lineDriver.setBrushOpacity(1.0);
+        this.canvas.lineDriver.setBrushOpacity(1);
+
+        const adapterInfo = (bootstrap.adapter as unknown as { info?: Record<string, unknown> }).info;
+        this.diagnosticsEl.textContent = [
+            `secure: ${window.isSecureContext ? 'yes' : 'no'}`,
+            `format: ${bootstrap.presentationFormat}`,
+            `vendor: ${adapterInfo?.vendor ?? '-'}`,
+            `arch: ${adapterInfo?.architecture ?? '-'}`,
+            `device: ${adapterInfo?.device ?? '-'}`,
+            `maxTexture2D: ${bootstrap.device.limits.maxTextureDimension2D}`,
+            `maxStorageBuffer: ${bootstrap.device.limits.maxStorageBufferBindingSize}`,
+            `ua: ${navigator.userAgent}`,
+        ].join('\n');
     }
 
     private async loadCategories(): Promise<void> {
         const resp = await fetch('brushCategories.json');
-        const manifest = await resp.json() as CategoryEntry[];
-        this.categories = manifest;
-
-        for (const cat of manifest) {
-            const opt = document.createElement('option');
-            opt.value = cat.file;
-            opt.textContent = cat.displayName;
-            this.categorySel.appendChild(opt);
+        this.categories = await resp.json() as CategoryEntry[];
+        this.categorySel.innerHTML = '';
+        for (const category of this.categories) {
+            const option = document.createElement('option');
+            option.value = category.file;
+            option.textContent = category.displayName;
+            this.categorySel.appendChild(option);
         }
 
-        if (manifest.length > 0) {
-            await this.loadBrushesForCategory(manifest[0].file);
-            this.categorySel.value = manifest[0].file;
-            this.refreshBrushSelect();
+        if (this.categories.length > 0) {
+            this.categorySel.value = this.categories[0].file;
+            await this.loadBrushesForCategory(this.categorySel.value);
+            this.refreshBrushes();
         }
     }
 
@@ -135,129 +336,292 @@ class BenchmarkApp {
         this.brushesByFile.set(file, Array.isArray(data) ? data : []);
     }
 
-    private refreshBrushSelect(): void {
-        const file = this.categorySel.value;
-        const brushes = this.brushesByFile.get(file) ?? [];
+    private refreshBrushes(): void {
+        const brushes = this.brushesByFile.get(this.categorySel.value) ?? [];
         this.brushSel.innerHTML = '';
-        brushes.forEach((b, i) => {
-            const opt = document.createElement('option');
-            opt.value = String(i);
-            opt.textContent = b.name ?? `Brush ${i + 1}`;
-            this.brushSel.appendChild(opt);
+        brushes.forEach((brush, index) => {
+            const option = document.createElement('option');
+            option.value = String(index);
+            option.textContent = brush.name ?? `Brush ${index + 1}`;
+            this.brushSel.appendChild(option);
         });
-        if (brushes.length > 0) this.brushSel.value = '0';
+        this.brushSel.value = '0';
     }
 
-    private async applyCurrentBrush(): Promise<void> {
-        const file = this.categorySel.value;
-        const brushes = this.brushesByFile.get(file) ?? [];
-        const idx = parseInt(this.brushSel.value || '0', 10);
-        const brush = brushes[idx];
+    private async applySelectedBrush(): Promise<void> {
+        const brush = this.selectedBrush();
         if (!brush) return;
-        this.currentBrush = JSON.parse(JSON.stringify(brush));
-        await this.canvas.setBrush(this.currentBrush);
+        await this.canvas.setBrush(JSON.parse(JSON.stringify(brush)));
     }
 
-    private buildSidebar(): void {
-        const sidebar = document.getElementById('sidebar')!;
-        sidebar.innerHTML = '';
+    private selectedBrush(): IBrush | undefined {
+        const brushes = this.brushesByFile.get(this.categorySel.value) ?? [];
+        return brushes[Number(this.brushSel.value || 0)];
+    }
 
-        const h1 = document.createElement('h1');
-        h1.textContent = 'UBrush Benchmark';
-        sidebar.appendChild(h1);
+    private selectedBrushesInCategory(): IBrush[] {
+        return this.brushesByFile.get(this.categorySel.value) ?? [];
+    }
 
-        // Category
-        sidebar.appendChild(labeled('Brush category', this.categorySel = makeSelect()));
-        this.categorySel.addEventListener('change', async () => {
-            await this.loadBrushesForCategory(this.categorySel.value);
-            this.refreshBrushSelect();
-            await this.applyCurrentBrush();
-        });
+    private selectedSuite(): SuiteKind {
+        return this.suiteSel.value as SuiteKind;
+    }
 
-        // Brush
-        sidebar.appendChild(labeled('Brush', this.brushSel = makeSelect()));
-        this.brushSel.addEventListener('change', async () => { await this.applyCurrentBrush(); });
+    private iterations(): number {
+        return Math.max(1, Math.min(50, Number(this.iterationsInput.value || 1)));
+    }
 
-        // Curve
-        this.curveSel = makeSelect();
-        for (const c of CURVES) {
-            const o = document.createElement('option');
-            o.value = c; o.textContent = c;
-            this.curveSel.appendChild(o);
+    private warmups(): number {
+        return Math.max(0, Math.min(10, Number(this.warmupInput.value || 0)));
+    }
+
+    private async runSelectedBrush(): Promise<void> {
+        const brush = this.selectedBrush();
+        if (!brush) return;
+        await this.runBrush(brush, this.categorySel.value);
+    }
+
+    private async runAllBrushesInCategory(): Promise<void> {
+        const file = this.categorySel.value;
+        const brushes = this.selectedBrushesInCategory();
+        this.setBusy(true);
+        try {
+            for (let i = 0; i < brushes.length; i++) {
+                this.brushSel.value = String(i);
+                await this.runBrush(brushes[i], file, `${i + 1}/${brushes.length}`, false);
+            }
+        } finally {
+            this.setBusy(false);
+            this.setStatus('Done.');
         }
-        sidebar.appendChild(labeled('Curve', this.curveSel));
+    }
 
-        // Spacing
-        this.spacingSel = makeSelect();
-        for (const s of SPACINGS) {
-            const o = document.createElement('option');
-            o.value = String(s.px); o.textContent = s.label;
-            this.spacingSel.appendChild(o);
+    private async runBrush(brush: IBrush, file: string, prefix: string = '1/1', manageBusy: boolean = true): Promise<void> {
+        if (manageBusy) this.setBusy(true);
+        try {
+            await this.canvas.setBrush(JSON.parse(JSON.stringify(brush)));
+            const cases = CASES[this.selectedSuite()];
+            const warmups = this.warmups();
+            const runs = this.iterations();
+
+            for (const testCase of cases) {
+                for (let i = 0; i < warmups; i++) {
+                    this.setStatus(`Warmup ${prefix}: ${brush.name} / ${testCase.id} (${i + 1}/${warmups})`);
+                    await this.measureStrokeCase(brush, file, testCase, -1);
+                }
+                for (let i = 0; i < runs; i++) {
+                    this.setStatus(`Run ${prefix}: ${brush.name} / ${testCase.id} (${i + 1}/${runs})`);
+                    const measurement = await this.measureStrokeCase(brush, file, testCase, i + 1);
+                    this.measurements.push(measurement);
+                    this.render();
+                }
+            }
+        } finally {
+            if (manageBusy) {
+                this.setBusy(false);
+                this.setStatus('Ready.');
+            }
         }
-        sidebar.appendChild(labeled('Spacing', this.spacingSel));
+    }
 
-        // Mode
-        this.modeSel = makeSelect();
-        for (const m of MODES) {
-            const o = document.createElement('option');
-            o.value = m; o.textContent = m;
-            this.modeSel.appendChild(o);
+    private async measureStrokeCase(brush: IBrush, file: string, testCase: StrokeCase, iteration: number): Promise<StrokeMeasurement> {
+        this.canvas.clear();
+        await this.context.device.queue.onSubmittedWorkDone();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+        const points = sampleUniformSpacing({
+            kind: testCase.curve,
+            canvasWidth: this.canvasW,
+            canvasHeight: this.canvasH,
+        }, testCase.spacingPx);
+        const stylus = new Stylus(1, Math.PI / 2, 0);
+        const lineTimes: number[] = [];
+        const heapBefore = heapMb();
+
+        resetDrawCalls();
+        this.canvas.setStrokeBatchingEnabled(testCase.mode === 'batched');
+
+        try {
+            const start = performance.now();
+            this.canvas.moveTo(points[0], stylus);
+            for (let i = 1; i < points.length - 1; i++) {
+                const t0 = performance.now();
+                this.canvas.lineTo(points[i], stylus);
+                lineTimes.push(performance.now() - t0);
+            }
+            const endStart = performance.now();
+            await this.canvas.endLine(points[points.length - 1], stylus);
+            const endLineMs = performance.now() - endStart;
+            const gpuStart = performance.now();
+            await this.context.device.queue.onSubmittedWorkDone();
+            const gpuWaitMs = performance.now() - gpuStart;
+            const totalMs = performance.now() - start;
+            const heapAfter = heapMb();
+
+            return {
+                caseId: testCase.id,
+                brushName: brush.name ?? 'Untitled',
+                brushFile: file,
+                mode: testCase.mode,
+                curve: testCase.curve,
+                spacingPx: testCase.spacingPx,
+                points: points.length,
+                iteration,
+                totalMs,
+                lineToMs: lineTimes.reduce((s, v) => s + v, 0),
+                lineToAvgMs: avg(lineTimes),
+                lineToP95Ms: quantile(lineTimes, 0.95),
+                lineToMaxMs: max(lineTimes),
+                endLineMs,
+                gpuWaitMs,
+                pointsPerSec: points.length / (totalMs / 1000),
+                drawCalls: getDrawCalls(),
+                heapDeltaMb: heapBefore !== undefined && heapAfter !== undefined ? heapAfter - heapBefore : undefined,
+            };
+        } finally {
+            this.canvas.setStrokeBatchingEnabled(false);
         }
-        sidebar.appendChild(labeled('Mode', this.modeSel));
-        this.modeSel.addEventListener('change', () => this.refreshAnimEnable());
+    }
 
-        // Animation style (active only when mode === 'animate')
-        this.animSel = makeSelect();
-        for (const s of ANIMATION_STYLES) {
-            const o = document.createElement('option');
-            o.value = s; o.textContent = s;
-            this.animSel.appendChild(o);
+    private summaries(): CaseSummary[] {
+        const groups = new Map<string, StrokeMeasurement[]>();
+        for (const measurement of this.measurements) {
+            const key = `${measurement.brushFile}|${measurement.brushName}|${measurement.caseId}`;
+            const group = groups.get(key) ?? [];
+            group.push(measurement);
+            groups.set(key, group);
         }
-        sidebar.appendChild(labeled('Animation', this.animSel));
 
-        // Duration (active only when mode === 'animate')
-        this.durSel = makeSelect();
-        for (const d of DURATIONS) {
-            const o = document.createElement('option');
-            o.value = String(d.sec); o.textContent = d.label;
-            this.durSel.appendChild(o);
+        return Array.from(groups.values()).map((group) => {
+            const first = group[0];
+            const drawCalls = group.map((m) => m.drawCalls).filter((v): v is number => v !== undefined);
+            const heapDeltas = group.map((m) => m.heapDeltaMb).filter((v): v is number => v !== undefined);
+            const summary = {
+                caseId: first.caseId,
+                brushName: first.brushName,
+                mode: first.mode,
+                curve: first.curve,
+                spacingPx: first.spacingPx,
+                points: first.points,
+                runs: group.length,
+                totalAvgMs: avg(group.map((m) => m.totalMs)),
+                totalP95Ms: quantile(group.map((m) => m.totalMs), 0.95),
+                lineToAvgMs: avg(group.map((m) => m.lineToAvgMs)),
+                lineToP95Ms: avg(group.map((m) => m.lineToP95Ms)),
+                lineToMaxMs: max(group.map((m) => m.lineToMaxMs)),
+                endLineAvgMs: avg(group.map((m) => m.endLineMs)),
+                gpuWaitAvgMs: avg(group.map((m) => m.gpuWaitMs)),
+                pointsPerSecAvg: avg(group.map((m) => m.pointsPerSec)),
+                drawCallsAvg: drawCalls.length > 0 ? avg(drawCalls) : undefined,
+                heapDeltaAvgMb: heapDeltas.length > 0 ? avg(heapDeltas) : undefined,
+            };
+            return { ...summary, score: performanceScore(summary) };
+        }).sort((a, b) => a.score - b.score);
+    }
+
+    private render(): void {
+        const summaries = this.summaries();
+        if (summaries.length === 0) {
+            this.resultsEl.innerHTML = '<div class="empty">No measurements yet.</div>';
+            return;
         }
-        this.durSel.value = '3';
-        sidebar.appendChild(labeled('Duration', this.durSel));
 
-        this.refreshAnimEnable();
+        const scores = this.brushScores(summaries).map((s) => `
+            <tr>
+                <td>${escapeHtml(s.brushName)}</td>
+                <td>${s.score.toFixed(1)}</td>
+                <td>${s.cases}</td>
+                <td>${escapeHtml(s.worstCase)}</td>
+            </tr>
+        `).join('');
+        const rows = summaries.map((s) => `
+            <tr>
+                <td>${escapeHtml(s.brushName)}</td>
+                <td>${escapeHtml(s.caseId)}</td>
+                <td>${s.score.toFixed(1)}</td>
+                <td>${s.mode}</td>
+                <td>${s.points}</td>
+                <td>${s.runs}</td>
+                <td>${s.totalAvgMs.toFixed(1)}</td>
+                <td>${s.totalP95Ms.toFixed(1)}</td>
+                <td>${s.lineToAvgMs.toFixed(3)}</td>
+                <td>${s.lineToP95Ms.toFixed(3)}</td>
+                <td>${s.lineToMaxMs.toFixed(3)}</td>
+                <td>${s.endLineAvgMs.toFixed(1)}</td>
+                <td>${s.gpuWaitAvgMs.toFixed(1)}</td>
+                <td>${Math.round(s.pointsPerSecAvg).toLocaleString()}</td>
+                <td>${s.drawCallsAvg === undefined ? '-' : s.drawCallsAvg.toFixed(1)}</td>
+                <td>${s.heapDeltaAvgMb === undefined ? '-' : s.heapDeltaAvgMb.toFixed(2)}</td>
+            </tr>
+        `).join('');
 
-        // Buttons
-        this.runBtn = makeButton('Run', false);
-        this.runBtn.addEventListener('click', () => this.runOne());
-        sidebar.appendChild(this.runBtn);
+        this.resultsEl.innerHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>brush</th>
+                        <th>score</th>
+                        <th>cases</th>
+                        <th>worst case</th>
+                    </tr>
+                </thead>
+                <tbody>${scores}</tbody>
+            </table>
+            <div style="height:12px"></div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>brush</th>
+                        <th>case</th>
+                        <th>score</th>
+                        <th>mode</th>
+                        <th>pts</th>
+                        <th>runs</th>
+                        <th>total avg</th>
+                        <th>total p95</th>
+                        <th>line avg</th>
+                        <th>line p95</th>
+                        <th>line max</th>
+                        <th>endLine</th>
+                        <th>gpu wait</th>
+                        <th>pts/sec</th>
+                        <th>draws</th>
+                        <th>heap MB</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    }
 
-        this.runAllBtn = makeButton('Run All (12 scenarios)', false);
-        this.runAllBtn.addEventListener('click', () => this.runAll());
-        sidebar.appendChild(this.runAllBtn);
+    private brushScores(summaries: CaseSummary[]): { brushName: string; score: number; cases: number; worstCase: string }[] {
+        const groups = new Map<string, CaseSummary[]>();
+        for (const summary of summaries) {
+            const group = groups.get(summary.brushName) ?? [];
+            group.push(summary);
+            groups.set(summary.brushName, group);
+        }
+        return Array.from(groups.entries()).map(([brushName, group]) => {
+            const worst = [...group].sort((a, b) => a.score - b.score)[0];
+            return {
+                brushName,
+                score: avg(group.map((s) => s.score)),
+                cases: group.length,
+                worstCase: worst?.caseId ?? '-',
+            };
+        }).sort((a, b) => a.score - b.score);
+    }
 
-        this.runFavBtn = makeButton('Score Favorites', false);
-        this.runFavBtn.addEventListener('click', () => this.runFavorites());
-        sidebar.appendChild(this.runFavBtn);
-
-        this.runFavAnimBtn = makeButton(`Score Favorites (Animation, ${FAVORITES_ANIM_DURATION_SEC}s)`, false);
-        this.runFavAnimBtn.addEventListener('click', () => this.runFavoritesAnimation());
-        sidebar.appendChild(this.runFavAnimBtn);
-
-        this.clearBtn = makeButton('Clear canvas', true);
-        this.clearBtn.addEventListener('click', () => { this.canvas?.clear(); });
-        sidebar.appendChild(this.clearBtn);
-
-        this.copyBtn = makeButton('Copy results JSON', true);
-        this.copyBtn.addEventListener('click', () => this.copyResults());
-        sidebar.appendChild(this.copyBtn);
-
-        const note = document.createElement('div');
-        note.style.cssText = 'color:#666; font-size:10px; line-height:1.5; margin-top:8px;';
-        note.textContent = 'Throughput = synchronous moveTo→lineTo→endLine then gl.finish(). '
-            + 'Frame = batched across rAF (4 points/frame), records frame-time histogram. '
-            + 'Same brush state, deterministic input.';
-        sidebar.appendChild(note);
+    private exportPayload(): unknown {
+        const summaries = this.summaries();
+        return {
+            generatedAt: new Date().toISOString(),
+            canvas: { width: this.canvasW, height: this.canvasH },
+            suite: this.selectedSuite(),
+            brushScores: this.brushScores(summaries),
+            summaries,
+            measurements: this.measurements,
+        };
     }
 
     private setStatus(text: string): void {
@@ -267,470 +631,11 @@ class BenchmarkApp {
     private setBusy(busy: boolean): void {
         this.runBtn.disabled = busy;
         this.runAllBtn.disabled = busy;
-        this.runFavBtn.disabled = busy;
-        this.runFavAnimBtn.disabled = busy;
         this.categorySel.disabled = busy;
         this.brushSel.disabled = busy;
-    }
-
-    private refreshAnimEnable(): void {
-        const m = this.modeSel.value as Mode;
-        const isAnim = m === 'animate' || m === 'animate-batch';
-        this.animSel.disabled = !isAnim;
-        this.durSel.disabled = !isAnim;
-    }
-
-    private async runOne(): Promise<void> {
-        this.setBusy(true);
-        try {
-            const curve = this.curveSel.value as CurveKind;
-            const spacing = parseFloat(this.spacingSel.value);
-            const mode = this.modeSel.value as Mode;
-            const style = this.animSel.value as AnimationStyle;
-            const durSec = parseFloat(this.durSel.value);
-            await this.runScenario(curve, spacing, mode, style, durSec);
-        } finally {
-            this.setBusy(false);
-            this.setStatus('');
-        }
-    }
-
-    private async runAll(): Promise<void> {
-        this.setBusy(true);
-        this.results = [];
-        try {
-            for (const curve of CURVES) {
-                for (const s of SPACINGS) {
-                    for (const mode of MODES) {
-                        // Skip animate variants in batch run — favorites button covers it
-                        // and animate scenarios take O(seconds) each.
-                        if (mode === 'animate' || mode === 'animate-batch') continue;
-                        await this.runScenario(curve, s.px, mode);
-                    }
-                }
-            }
-        } finally {
-            this.setBusy(false);
-            this.setStatus('Done.');
-        }
-    }
-
-    private async runFavorites(): Promise<void> {
-        this.setBusy(true);
-        this.favoriteScores = [];
-        this.renderResultsTable();
-
-        try {
-            const favorites = await this.fetchFavorites();
-            if (favorites.length === 0) {
-                this.setStatus('No favorites found.');
-                return;
-            }
-
-            for (let i = 0; i < favorites.length; i++) {
-                const fav = favorites[i];
-                this.setStatus(`Scoring ${i + 1}/${favorites.length}: ${fav.name}…`);
-                const score = await this.scoreFavorite(fav, i + 1, favorites.length);
-                this.favoriteScores.push(score);
-                this.renderResultsTable();
-            }
-
-            const total = this.favoriteScores.reduce((s, f) => s + f.totalFlushMs, 0);
-            this.setStatus(`Done. Total = ${(total / 1000).toFixed(2)}s across ${this.favoriteScores.length} favorites.`);
-        } catch (e) {
-            console.error(e);
-            this.setStatus(`Favorites run failed: ${(e as Error).message}`);
-        } finally {
-            this.setBusy(false);
-        }
-    }
-
-    private async fetchFavorites(): Promise<FavoriteEntry[]> {
-        const resp = await fetch('favorites.json');
-        if (!resp.ok) return [];
-        const data = await resp.json() as any[];
-        return data.map(e => ({ name: e.name, file: e.file }));
-    }
-
-    private async scoreFavorite(fav: FavoriteEntry, idx: number, total: number): Promise<FavoriteScore> {
-        try {
-            await this.loadBrushesForCategory(fav.file);
-            const brushes = this.brushesByFile.get(fav.file) ?? [];
-            const brush = brushes.find(b => b.name === fav.name);
-            if (!brush) {
-                return { name: fav.name, file: fav.file, scenarios: 0, totalFlushMs: 0, avgPointsPerSec: 0, error: 'not found' };
-            }
-
-            this.currentBrush = JSON.parse(JSON.stringify(brush));
-            await this.canvas.setBrush(this.currentBrush);
-
-            let totalFlushMs = 0;
-            let scenariosRun = 0;
-            let ptsSecSum = 0;
-            let totalDrawCalls = 0;
-            let drawCallsScenarios = 0;
-
-            for (const curve of CURVES) {
-                for (const s of SPACINGS) {
-                    this.setStatus(`Scoring ${idx}/${total}: ${fav.name} — ${curve}/${s.label}`);
-                    this.canvas.clear();
-                    await this.context.device.queue.onSubmittedWorkDone();
-                    const points = sampleUniformSpacing(
-                        { kind: curve, canvasWidth: this.canvasW, canvasHeight: this.canvasH },
-                        s.px,
-                    );
-                    await new Promise<void>(r => requestAnimationFrame(() => r()));
-                    const result = await runThroughput(this.canvas, this.context, points);
-                    totalFlushMs += result.flushMs;
-                    ptsSecSum += result.pointsPerSec;
-                    if (result.drawCalls !== undefined) {
-                        totalDrawCalls += result.drawCalls;
-                        drawCallsScenarios++;
-                    }
-                    scenariosRun++;
-                }
-            }
-
-            return {
-                name: fav.name,
-                file: fav.file,
-                scenarios: scenariosRun,
-                totalFlushMs,
-                avgPointsPerSec: ptsSecSum / Math.max(1, scenariosRun),
-                totalDrawCalls: drawCallsScenarios > 0 ? totalDrawCalls : undefined,
-                avgDrawCallsPerStroke: drawCallsScenarios > 0
-                    ? totalDrawCalls / drawCallsScenarios : undefined,
-            };
-        } catch (e) {
-            return {
-                name: fav.name, file: fav.file, scenarios: 0, totalFlushMs: 0, avgPointsPerSec: 0,
-                error: (e as Error).message,
-            };
-        }
-    }
-
-    private async runFavoritesAnimation(): Promise<void> {
-        this.setBusy(true);
-        this.favoriteAnimScores = [];
-        this.renderResultsTable();
-
-        try {
-            const favorites = await this.fetchFavorites();
-            if (favorites.length === 0) {
-                this.setStatus('No favorites found.');
-                return;
-            }
-
-            for (let i = 0; i < favorites.length; i++) {
-                const fav = favorites[i];
-                this.setStatus(`Animating ${i + 1}/${favorites.length}: ${fav.name}…`);
-                const score = await this.scoreFavoriteAnimation(fav, i + 1, favorites.length);
-                this.favoriteAnimScores.push(score);
-                this.renderResultsTable();
-            }
-
-            const valid = this.favoriteAnimScores.filter(s => !s.error);
-            const overall = valid.length === 0
-                ? 0
-                : valid.reduce((s, f) => s + f.avgFps, 0) / valid.length;
-            this.setStatus(`Done. Overall avg FPS = ${overall.toFixed(1)} across ${valid.length} brushes.`);
-        } catch (e) {
-            console.error(e);
-            this.setStatus(`Favorites animation run failed: ${(e as Error).message}`);
-        } finally {
-            this.setBusy(false);
-        }
-    }
-
-    private async scoreFavoriteAnimation(
-        fav: FavoriteEntry, idx: number, total: number,
-    ): Promise<FavoriteAnimScore> {
-        try {
-            await this.loadBrushesForCategory(fav.file);
-            const brushes = this.brushesByFile.get(fav.file) ?? [];
-            const brush = brushes.find(b => b.name === fav.name);
-            if (!brush) {
-                return { name: fav.name, file: fav.file, perStyleFps: {}, avgFps: 0, error: 'not found' };
-            }
-
-            this.currentBrush = JSON.parse(JSON.stringify(brush));
-            await this.canvas.setBrush(this.currentBrush);
-
-            // Fixed scenario: spiral / 2px — peak load that exposes regressions.
-            const points = sampleUniformSpacing(
-                { kind: 'spiral', canvasWidth: this.canvasW, canvasHeight: this.canvasH },
-                2,
-            );
-
-            const perStyleFps: Partial<Record<AnimationStyle, number>> = {};
-            let fpsSum = 0;
-            let stylesRun = 0;
-            let drawPerFrameSum = 0;
-            let drawPerFrameStyles = 0;
-
-            for (const style of ANIMATION_STYLES) {
-                this.setStatus(`Animating ${idx}/${total}: ${fav.name} — ${style}`);
-                this.canvas.clear();
-                await this.context.device.queue.onSubmittedWorkDone();
-                await new Promise<void>(r => requestAnimationFrame(() => r()));
-                const result = await runAnimation(
-                    this.canvas, this.context, points,
-                    style, FAVORITES_ANIM_DURATION_SEC, this.canvasW, this.canvasH,
-                );
-                const fps = result.avgFps ?? 0;
-                perStyleFps[style] = fps;
-                fpsSum += fps;
-                stylesRun++;
-                if (result.drawCalls !== undefined && result.frames && result.frames > 0) {
-                    drawPerFrameSum += result.drawCalls / result.frames;
-                    drawPerFrameStyles++;
-                }
-            }
-
-            return {
-                name: fav.name,
-                file: fav.file,
-                perStyleFps,
-                avgFps: stylesRun === 0 ? 0 : fpsSum / stylesRun,
-                avgDrawCallsPerFrame: drawPerFrameStyles > 0
-                    ? drawPerFrameSum / drawPerFrameStyles : undefined,
-            };
-        } catch (e) {
-            return {
-                name: fav.name, file: fav.file, perStyleFps: {}, avgFps: 0,
-                error: (e as Error).message,
-            };
-        }
-    }
-
-    private async runScenario(
-        curve: CurveKind,
-        spacingPx: number,
-        mode: Mode,
-        animStyle: AnimationStyle = 'translate',
-        durSec: number = 3,
-    ): Promise<void> {
-        const isAnim = mode === 'animate' || mode === 'animate-batch';
-        const label = isAnim
-            ? `${curve} / ${spacingPx}px / ${mode}-${animStyle}-${durSec}s`
-            : `${curve} / ${spacingPx}px / ${mode}`;
-        this.setStatus(`Running ${label}…`);
-
-        // Reset canvas state between runs to keep measurements independent.
-        this.canvas.clear();
-        await this.context.device.queue.onSubmittedWorkDone();
-
-        const points = sampleUniformSpacing(
-            { kind: curve, canvasWidth: this.canvasW, canvasHeight: this.canvasH },
-            spacingPx,
-        );
-
-        // Yield once so the UI status update paints before we block.
-        await new Promise<void>(r => requestAnimationFrame(() => r()));
-
-        let result: RunResult;
-        switch (mode) {
-            case 'throughput':
-                result = await runThroughput(this.canvas, this.context, points, false);
-                break;
-            case 'throughput-batch':
-                result = await runThroughput(this.canvas, this.context, points, true);
-                break;
-            case 'frame':
-                result = await runFrame(this.canvas, this.context, points);
-                break;
-            case 'animate':
-                result = await runAnimation(
-                    this.canvas, this.context, points,
-                    animStyle, durSec, this.canvasW, this.canvasH, false,
-                );
-                break;
-            case 'animate-batch':
-                result = await runAnimation(
-                    this.canvas, this.context, points,
-                    animStyle, durSec, this.canvasW, this.canvasH, true,
-                );
-                break;
-        }
-
-        this.results.push({ ...result, scenario: label });
-        this.renderResultsTable();
-    }
-
-    private renderResultsTable(): void {
-        let html = this.renderFavoritesSummary();
-        html += this.renderFavoritesAnimSummary();
-        html += this.renderScenarioTable();
-        this.resultsEl.innerHTML = html || '<div style="color:#555;text-align:center;padding:12px;">No runs yet.</div>';
-    }
-
-    private renderFavoritesSummary(): string {
-        if (this.favoriteScores.length === 0) return '';
-        const total = this.favoriteScores.reduce((s, f) => s + f.totalFlushMs, 0);
-        const sorted = [...this.favoriteScores].sort((a, b) => b.totalFlushMs - a.totalFlushMs);
-
-        let html = '<div style="margin-bottom:10px;">'
-            + `<div style="color:#4a90d9;font-weight:600;margin-bottom:4px;">Favorites score — total ${(total / 1000).toFixed(2)}s `
-            + `(sum of throughput flushMs across ${this.favoriteScores.length} brushes; lower is better)</div>`
-            + '<table><thead><tr>'
-            + '<th>brush</th><th>file</th><th>score (ms)</th><th>avg pts/sec</th>'
-            + '<th>draws/stroke</th><th>total draws</th><th>scenarios</th>'
-            + '</tr></thead><tbody>';
-        for (const f of sorted) {
-            html += `<tr><td>${escapeHtml(f.name)}</td>`
-                + `<td>${escapeHtml(f.file)}</td>`
-                + `<td>${f.error ? `<span style="color:#c66">${escapeHtml(f.error)}</span>` : f.totalFlushMs.toFixed(1)}</td>`
-                + `<td>${f.error ? '—' : Math.round(f.avgPointsPerSec).toLocaleString()}</td>`
-                + `<td>${f.avgDrawCallsPerStroke !== undefined ? Math.round(f.avgDrawCallsPerStroke).toLocaleString() : '—'}</td>`
-                + `<td>${f.totalDrawCalls !== undefined ? f.totalDrawCalls.toLocaleString() : '—'}</td>`
-                + `<td>${f.scenarios}</td></tr>`;
-        }
-        html += '</tbody></table></div>';
-        return html;
-    }
-
-    private renderFavoritesAnimSummary(): string {
-        if (this.favoriteAnimScores.length === 0) return '';
-        const valid = this.favoriteAnimScores.filter(s => !s.error);
-        const overallAvg = valid.length === 0
-            ? 0
-            : valid.reduce((s, f) => s + f.avgFps, 0) / valid.length;
-
-        // Worst per-style fps across all valid brushes
-        let worstFps = Infinity;
-        let worstBrush = '';
-        let worstStyle: AnimationStyle | '' = '';
-        for (const f of valid) {
-            for (const style of ANIMATION_STYLES) {
-                const fps = f.perStyleFps[style];
-                if (fps !== undefined && fps < worstFps) {
-                    worstFps = fps;
-                    worstBrush = f.name;
-                    worstStyle = style;
-                }
-            }
-        }
-        const worstStr = worstFps === Infinity
-            ? ''
-            : ` (worst ${worstFps.toFixed(1)} on ${escapeHtml(worstBrush)}/${worstStyle})`;
-
-        // Sort: slowest first (regression visibility); errors at the bottom.
-        const sorted = [...this.favoriteAnimScores].sort((a, b) => {
-            if (a.error && !b.error) return 1;
-            if (!a.error && b.error) return -1;
-            return a.avgFps - b.avgFps;
-        });
-
-        let html = '<div style="margin-bottom:10px;">'
-            + `<div style="color:#4a90d9;font-weight:600;margin-bottom:4px;">`
-            + `Favorites animation FPS — overall avg ${overallAvg.toFixed(1)}`
-            + `${worstStr} (spiral / 2px / ${FAVORITES_ANIM_DURATION_SEC}s, ${valid.length} brushes; higher is better)`
-            + `</div>`
-            + '<table><thead><tr>'
-            + '<th>brush</th><th>file</th>'
-            + '<th>translate fps</th><th>scale fps</th><th>rotate fps</th>'
-            + '<th>avg fps</th><th>draws/frame</th>'
-            + '</tr></thead><tbody>';
-        for (const f of sorted) {
-            html += `<tr><td>${escapeHtml(f.name)}</td>`
-                + `<td>${escapeHtml(f.file)}</td>`;
-            if (f.error) {
-                html += `<td colspan="5"><span style="color:#c66">${escapeHtml(f.error)}</span></td>`;
-            } else {
-                for (const style of ANIMATION_STYLES) {
-                    const fps = f.perStyleFps[style];
-                    html += `<td>${fps !== undefined ? fps.toFixed(1) : '—'}</td>`;
-                }
-                html += `<td><b>${f.avgFps.toFixed(1)}</b></td>`;
-                html += `<td>${f.avgDrawCallsPerFrame !== undefined ? f.avgDrawCallsPerFrame.toFixed(1) : '—'}</td>`;
-            }
-            html += '</tr>';
-        }
-        html += '</tbody></table></div>';
-        return html;
-    }
-
-    private renderScenarioTable(): string {
-        const rows = this.results;
-        if (rows.length === 0) return '';
-        const hasFrame = rows.some(r => r.frameMs);
-        const hasFps = rows.some(r => r.avgFps !== undefined);
-        const hasHeap = rows.some(r => r.heapDeltaMb !== undefined);
-        const hasDraws = rows.some(r => r.drawCalls !== undefined);
-
-        let html = '<div style="color:#4a90d9;font-weight:600;margin-bottom:4px;">Scenario detail</div>'
-            + '<table><thead><tr>'
-            + '<th>scenario</th><th>n</th><th>cpu (ms)</th><th>flush (ms)</th><th>pts/sec</th>';
-        if (hasDraws) html += '<th>draws</th><th>draws/frame</th>';
-        if (hasFps) html += '<th>fps</th><th>frames</th>';
-        if (hasFrame) html += '<th>p50 (ms)</th><th>p95 (ms)</th><th>p99 (ms)</th><th>max (ms)</th>';
-        if (hasHeap) html += '<th>Δheap (MB)</th>';
-        html += '</tr></thead><tbody>';
-
-        for (const r of rows) {
-            html += `<tr><td>${escapeHtml(r.scenario)}</td>`
-                + `<td>${r.n}</td>`
-                + `<td>${r.cpuMs.toFixed(2)}</td>`
-                + `<td>${r.flushMs.toFixed(2)}</td>`
-                + `<td>${Math.round(r.pointsPerSec).toLocaleString()}</td>`;
-            if (hasDraws) {
-                if (r.drawCalls !== undefined) {
-                    const perFrame = r.frames && r.frames > 0
-                        ? (r.drawCalls / r.frames).toFixed(1)
-                        : '—';
-                    html += `<td>${r.drawCalls.toLocaleString()}</td><td>${perFrame}</td>`;
-                } else {
-                    html += '<td>—</td><td>—</td>';
-                }
-            }
-            if (hasFps) {
-                html += r.avgFps !== undefined
-                    ? `<td>${r.avgFps.toFixed(1)}</td><td>${r.frames ?? 0}</td>`
-                    : '<td>—</td><td>—</td>';
-            }
-            if (hasFrame) {
-                if (r.frameMs) {
-                    html += `<td>${r.frameMs.p50.toFixed(2)}</td>`
-                        + `<td>${r.frameMs.p95.toFixed(2)}</td>`
-                        + `<td>${r.frameMs.p99.toFixed(2)}</td>`
-                        + `<td>${r.frameMs.max.toFixed(2)}</td>`;
-                } else {
-                    html += '<td>—</td><td>—</td><td>—</td><td>—</td>';
-                }
-            }
-            if (hasHeap) {
-                html += r.heapDeltaMb !== undefined
-                    ? `<td>${r.heapDeltaMb.toFixed(2)}</td>` : '<td>—</td>';
-            }
-            html += '</tr>';
-        }
-        html += '</tbody></table>';
-        return html;
-    }
-
-    private async copyResults(): Promise<void> {
-        const favTotal = this.favoriteScores.reduce((s, f) => s + f.totalFlushMs, 0);
-        const animValid = this.favoriteAnimScores.filter(s => !s.error);
-        const animOverallFps = animValid.length === 0
-            ? null
-            : animValid.reduce((s, f) => s + f.avgFps, 0) / animValid.length;
-        const payload = {
-            timestamp: new Date().toISOString(),
-            canvasSize: { width: this.canvasW, height: this.canvasH },
-            brush: this.currentBrush?.name ?? null,
-            favoritesTotalMs: this.favoriteScores.length > 0 ? favTotal : null,
-            favoriteScores: this.favoriteScores,
-            favoritesAnimOverallFps: animOverallFps,
-            favoriteAnimScores: this.favoriteAnimScores,
-            results: this.results,
-        };
-        try {
-            await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-            this.setStatus('Copied results JSON to clipboard.');
-        } catch (e) {
-            this.setStatus('Clipboard unavailable; see console.');
-            console.log(JSON.stringify(payload, null, 2));
-        }
+        this.suiteSel.disabled = busy;
+        this.iterationsInput.disabled = busy;
+        this.warmupInput.disabled = busy;
     }
 }
 
@@ -738,32 +643,33 @@ function makeSelect(): HTMLSelectElement {
     return document.createElement('select');
 }
 
-function makeButton(text: string, secondary: boolean): HTMLButtonElement {
-    const b = document.createElement('button');
-    b.textContent = text;
-    if (secondary) b.classList.add('secondary');
-    return b;
+function makeInput(type: string, value: string): HTMLInputElement {
+    const input = document.createElement('input');
+    input.type = type;
+    input.value = value;
+    return input;
 }
 
-function labeled(text: string, control: HTMLElement): HTMLElement {
+function makeButton(text: string, secondary: boolean): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.textContent = text;
+    if (secondary) button.className = 'secondary';
+    return button;
+}
+
+function labeled(labelText: string, control: HTMLElement): HTMLElement {
     const wrap = document.createElement('div');
-    const lbl = document.createElement('label');
-    lbl.textContent = text;
-    wrap.appendChild(lbl);
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    wrap.appendChild(label);
     wrap.appendChild(control);
     return wrap;
 }
 
-function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    } as Record<string, string>)[c]);
-}
-
 window.addEventListener('DOMContentLoaded', () => {
-    new BenchmarkApp().init().catch((e) => {
-        console.error(e);
+    new DrawingBenchmarkLab().init().catch((error) => {
+        console.error(error);
         const status = document.getElementById('status');
-        if (status) status.textContent = `Init failed: ${e?.message ?? e}`;
+        if (status) status.textContent = `Benchmark init failed: ${error instanceof Error ? error.message : String(error)}`;
     });
 });
