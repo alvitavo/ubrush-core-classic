@@ -163,6 +163,13 @@ export class WGPUDrawDotProgram {
     private instanceBuffer?: GPUBuffer;
     private instanceBufferBytes = 0;
     private packedInstances = new Float32Array(0);
+    private bindGroupCache?: {
+        tip: WGPUTexture;
+        pattern: WGPUTexture;
+        smudging0: WGPUTexture;
+        smudging: WGPUTexture;
+        bindGroup: GPUBindGroup;
+    };
     private pipelineCache: Map<string, GPURenderPipeline> = new Map();
 
     constructor(context: WGPUContext) {
@@ -200,6 +207,7 @@ export class WGPUDrawDotProgram {
         this.instanceBuffer = undefined;
         this.instanceBufferBytes = 0;
         this.packedInstances = new Float32Array(0);
+        this.bindGroupCache = undefined;
         this.pipelineCache.clear();
 
     }
@@ -233,17 +241,7 @@ export class WGPUDrawDotProgram {
         const packed = this.packInstances(param);
         const instanceBuffer = this.writeInstanceBuffer(packed);
 
-        const bindGroup = this.device.createBindGroup({
-            layout: this.bindGroupLayout,
-            entries: [
-                { binding: 0, resource: tip.getView() },
-                { binding: 1, resource: param.patternTexture.getView() },
-                { binding: 2, resource: param.smudging0Texture.getView() },
-                { binding: 3, resource: param.smudgingTexture.getView() },
-                { binding: 4, resource: this.sampler },
-                { binding: 5, resource: this.patternSampler },
-            ],
-        });
+        const bindGroup = this.getBindGroup(tip, param.patternTexture, param.smudging0Texture, param.smudgingTexture);
 
         const pipeline = this.getPipeline(param.blend, "rgba8unorm");
 
@@ -263,6 +261,31 @@ export class WGPUDrawDotProgram {
         pass.end();
         this.device.queue.submit([encoder.finish()]);
 
+    }
+
+    private getBindGroup(tip: WGPUTexture, pattern: WGPUTexture, smudging0: WGPUTexture, smudging: WGPUTexture): GPUBindGroup {
+        const cached = this.bindGroupCache;
+        if (cached &&
+            cached.tip === tip &&
+            cached.pattern === pattern &&
+            cached.smudging0 === smudging0 &&
+            cached.smudging === smudging) {
+            return cached.bindGroup;
+        }
+
+        const bindGroup = this.device.createBindGroup({
+            layout: this.bindGroupLayout,
+            entries: [
+                { binding: 0, resource: tip.getView() },
+                { binding: 1, resource: pattern.getView() },
+                { binding: 2, resource: smudging0.getView() },
+                { binding: 3, resource: smudging.getView() },
+                { binding: 4, resource: this.sampler },
+                { binding: 5, resource: this.patternSampler },
+            ],
+        });
+        this.bindGroupCache = { tip, pattern, smudging0, smudging, bindGroup };
+        return bindGroup;
     }
 
     private packInstances(param: DotInstancePackParam): Float32Array {

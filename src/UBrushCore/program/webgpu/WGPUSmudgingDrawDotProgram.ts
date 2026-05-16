@@ -41,6 +41,16 @@ export class WGPUSmudgingDrawDotProgram {
     private packedInstances = new Float32Array(0);
     private alphaUniform: GPUBuffer;
     private colorUniform: GPUBuffer;
+    private bindGroupCache?: {
+        tip: WGPUTexture;
+        pattern: WGPUTexture;
+        smudging0Alpha: WGPUTexture;
+        smudging0Color: WGPUTexture;
+        smudgingAlpha: WGPUTexture;
+        smudgingColor: WGPUTexture;
+        alphaBindGroup: GPUBindGroup;
+        colorBindGroup: GPUBindGroup;
+    };
     private pipeline: GPURenderPipeline | null = null;
 
     constructor(context: WGPUContext) {
@@ -89,6 +99,7 @@ export class WGPUSmudgingDrawDotProgram {
         this.instanceBuffer = undefined;
         this.instanceBufferBytes = 0;
         this.packedInstances = new Float32Array(0);
+        this.bindGroupCache = undefined;
         this.pipeline = null;
 
     }
@@ -125,31 +136,14 @@ export class WGPUSmudgingDrawDotProgram {
         const packed = this.packInstances(param);
         const instanceBuffer = this.writeInstanceBuffer(packed);
 
-        const alphaBindGroup = this.device.createBindGroup({
-            layout: this.bindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: this.alphaUniform } },
-                { binding: 1, resource: tip.getView() },
-                { binding: 2, resource: param.patternTexture.getView() },
-                { binding: 3, resource: param.smudging0CopyAlphaTexture.getView() },
-                { binding: 4, resource: param.smudgingCopyAlphaTexture.getView() },
-                { binding: 5, resource: this.sampler },
-                { binding: 6, resource: this.patternSampler },
-            ],
-        });
-
-        const colorBindGroup = this.device.createBindGroup({
-            layout: this.bindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: this.colorUniform } },
-                { binding: 1, resource: tip.getView() },
-                { binding: 2, resource: param.patternTexture.getView() },
-                { binding: 3, resource: param.smudging0CopyColorFramebuffer.getView() },
-                { binding: 4, resource: param.smudgingCopyColorFramebuffer.getView() },
-                { binding: 5, resource: this.sampler },
-                { binding: 6, resource: this.patternSampler },
-            ],
-        });
+        const { alphaBindGroup, colorBindGroup } = this.getBindGroups(
+            tip,
+            param.patternTexture,
+            param.smudging0CopyAlphaTexture,
+            param.smudging0CopyColorFramebuffer,
+            param.smudgingCopyAlphaTexture,
+            param.smudgingCopyColorFramebuffer,
+        );
 
         const pipeline = this.getPipeline("rgba8unorm");
 
@@ -191,6 +185,56 @@ export class WGPUSmudgingDrawDotProgram {
 
         this.device.queue.submit([encoder.finish()]);
 
+    }
+
+    private getBindGroups(
+        tip: WGPUTexture,
+        pattern: WGPUTexture,
+        smudging0Alpha: WGPUTexture,
+        smudging0Color: WGPUTexture,
+        smudgingAlpha: WGPUTexture,
+        smudgingColor: WGPUTexture,
+    ): { alphaBindGroup: GPUBindGroup; colorBindGroup: GPUBindGroup } {
+        const cached = this.bindGroupCache;
+        if (cached &&
+            cached.tip === tip &&
+            cached.pattern === pattern &&
+            cached.smudging0Alpha === smudging0Alpha &&
+            cached.smudging0Color === smudging0Color &&
+            cached.smudgingAlpha === smudgingAlpha &&
+            cached.smudgingColor === smudgingColor) {
+            return cached;
+        }
+
+        const alphaBindGroup = this.device.createBindGroup({
+            layout: this.bindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.alphaUniform } },
+                { binding: 1, resource: tip.getView() },
+                { binding: 2, resource: pattern.getView() },
+                { binding: 3, resource: smudging0Alpha.getView() },
+                { binding: 4, resource: smudgingAlpha.getView() },
+                { binding: 5, resource: this.sampler },
+                { binding: 6, resource: this.patternSampler },
+            ],
+        });
+        const colorBindGroup = this.device.createBindGroup({
+            layout: this.bindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.colorUniform } },
+                { binding: 1, resource: tip.getView() },
+                { binding: 2, resource: pattern.getView() },
+                { binding: 3, resource: smudging0Color.getView() },
+                { binding: 4, resource: smudgingColor.getView() },
+                { binding: 5, resource: this.sampler },
+                { binding: 6, resource: this.patternSampler },
+            ],
+        });
+        this.bindGroupCache = {
+            tip, pattern, smudging0Alpha, smudging0Color, smudgingAlpha, smudgingColor,
+            alphaBindGroup, colorBindGroup,
+        };
+        return this.bindGroupCache;
     }
 
     private packInstances(param: DotInstancePackParam): Float32Array {
