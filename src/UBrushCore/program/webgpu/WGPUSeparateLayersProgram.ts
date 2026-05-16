@@ -5,17 +5,18 @@ import { Rect } from "../../common/Rect";
 import { AffineTransform } from "../../common/AffineTransform";
 import { separateLayersWGSL } from "../wgsl/separateLayers.wgsl";
 import {
-    orthoMatrix,
-    quadPositions,
-    quadTexCoords,
+    writeOrthoMatrix,
+    writeQuadPositions,
+    writeQuadTexCoords,
     createLinearClampSampler,
-    makeVertexBuffer,
     makeUniformBuffer,
 } from "./_common";
 
 // WebGPU port of SeparateLayersProgram. Splits a source RGBA texture into
 // an alpha-only target and a color-only target by running the same pipeline
 // twice with different `targetChannel` uniform values.
+
+const UNIFORM_BYTES = 96;
 
 export class WGPUSeparateLayersProgram {
 
@@ -27,6 +28,21 @@ export class WGPUSeparateLayersProgram {
     private sampler: GPUSampler;
 
     private pipelineCache: Map<GPUTextureFormat, GPURenderPipeline> = new Map();
+    private positionBuffer?: GPUBuffer;
+    private texCoordBuffer?: GPUBuffer;
+    private alphaUniform?: GPUBuffer;
+    private colorUniform?: GPUBuffer;
+    private positions = new Float32Array(8);
+    private texCoords = new Float32Array(8);
+    private ortho = new Float32Array(16);
+    private alphaBytes = new ArrayBuffer(UNIFORM_BYTES);
+    private colorBytes = new ArrayBuffer(UNIFORM_BYTES);
+    private identity = new AffineTransform();
+    private bindGroupCache?: {
+        source: WGPUTexture;
+        alphaBindGroup: GPUBindGroup;
+        colorBindGroup: GPUBindGroup;
+    };
 
     constructor(context: WGPUContext) {
 
@@ -52,6 +68,15 @@ export class WGPUSeparateLayersProgram {
 
     public distroy(): void {
 
+        this.positionBuffer?.destroy();
+        this.texCoordBuffer?.destroy();
+        this.alphaUniform?.destroy();
+        this.colorUniform?.destroy();
+        this.positionBuffer = undefined;
+        this.texCoordBuffer = undefined;
+        this.alphaUniform = undefined;
+        this.colorUniform = undefined;
+        this.bindGroupCache = undefined;
         this.pipelineCache.clear();
 
     }
@@ -66,49 +91,30 @@ export class WGPUSeparateLayersProgram {
             canvasRect: Rect
         }): void {
 
-        const identity = new AffineTransform();
+        const positions = writeQuadPositions(this.positions, param.targetRect, this.identity);
+        const texCoords = writeQuadTexCoords(this.texCoords, param.sourceRect, param.canvasRect);
+        const ortho = writeOrthoMatrix(this.ortho, param.canvasRect);
 
-        const positions = quadPositions(param.targetRect, identity);
-        const texCoords = quadTexCoords(param.sourceRect, param.canvasRect);
-        const ortho = orthoMatrix(param.canvasRect);
-
-        const positionBuffer = makeVertexBuffer(this.device, positions);
-        const texCoordBuffer = makeVertexBuffer(this.device, texCoords);
+        const positionBuffer = this.writeVertexBuffer('position', positions);
+        const texCoordBuffer = this.writeVertexBuffer('texCoord', texCoords);
 
         // U layout (WGSL): mat4x4f orthoMatrix (64) + i32 targetChannel (4) — 80 bytes total.
         // Pad to 96 so the next 16-byte boundary is honored.
-        const uniformBytes = 96;
-        const alphaUniform = makeUniformBuffer(this.device, uniformBytes);
-        const colorUniform = makeUniformBuffer(this.device, uniformBytes);
+        const alphaUniform = this.getUniformBuffer('alpha');
+        const colorUniform = this.getUniformBuffer('color');
 
-        const alphaBytes = new ArrayBuffer(uniformBytes);
+        const alphaBytes = this.alphaBytes;
         new Float32Array(alphaBytes, 0, 16).set(ortho);
         new Int32Array(alphaBytes, 64, 1)[0] = 0;
 
-        const colorBytes = new ArrayBuffer(uniformBytes);
+        const colorBytes = this.colorBytes;
         new Float32Array(colorBytes, 0, 16).set(ortho);
         new Int32Array(colorBytes, 64, 1)[0] = 1;
 
         this.device.queue.writeBuffer(alphaUniform, 0, alphaBytes);
         this.device.queue.writeBuffer(colorUniform, 0, colorBytes);
 
-        const alphaBindGroup = this.device.createBindGroup({
-            layout: this.bindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: alphaUniform } },
-                { binding: 1, resource: param.source.getView() },
-                { binding: 2, resource: this.sampler },
-            ],
-        });
-
-        const colorBindGroup = this.device.createBindGroup({
-            layout: this.bindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: colorUniform } },
-                { binding: 1, resource: param.source.getView() },
-                { binding: 2, resource: this.sampler },
-            ],
-        });
+        const { alphaBindGroup, colorBindGroup } = this.getBindGroups(param.source);
 
         const pipeline = this.getPipeline("rgba8unorm");
 
@@ -150,11 +156,51 @@ export class WGPUSeparateLayersProgram {
 
         this.device.queue.submit([encoder.finish()]);
 
-        positionBuffer.destroy();
-        texCoordBuffer.destroy();
-        alphaUniform.destroy();
-        colorUniform.destroy();
+    }
 
+    private writeVertexBuffer(kind: 'position' | 'texCoord', data: Float32Array): GPUBuffer {
+        let buffer = kind === 'position' ? this.positionBuffer : this.texCoordBuffer;
+        if (!buffer) {
+            buffer = this.device.createBuffer({
+                size: data.byteLength,
+                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+            });
+            if (kind === 'position') this.positionBuffer = buffer;
+            else this.texCoordBuffer = buffer;
+        }
+        this.device.queue.writeBuffer(buffer, 0, data as BufferSource);
+        return buffer;
+    }
+
+    private getUniformBuffer(kind: 'alpha' | 'color'): GPUBuffer {
+        if (kind === 'alpha') {
+            if (!this.alphaUniform) this.alphaUniform = makeUniformBuffer(this.device, UNIFORM_BYTES);
+            return this.alphaUniform;
+        }
+        if (!this.colorUniform) this.colorUniform = makeUniformBuffer(this.device, UNIFORM_BYTES);
+        return this.colorUniform;
+    }
+
+    private getBindGroups(source: WGPUTexture): { alphaBindGroup: GPUBindGroup; colorBindGroup: GPUBindGroup } {
+        if (this.bindGroupCache?.source === source) return this.bindGroupCache;
+        const alphaBindGroup = this.device.createBindGroup({
+            layout: this.bindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.getUniformBuffer('alpha') } },
+                { binding: 1, resource: source.getView() },
+                { binding: 2, resource: this.sampler },
+            ],
+        });
+        const colorBindGroup = this.device.createBindGroup({
+            layout: this.bindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.getUniformBuffer('color') } },
+                { binding: 1, resource: source.getView() },
+                { binding: 2, resource: this.sampler },
+            ],
+        });
+        this.bindGroupCache = { source, alphaBindGroup, colorBindGroup };
+        return this.bindGroupCache;
     }
 
     private getPipeline(format: GPUTextureFormat): GPURenderPipeline {
