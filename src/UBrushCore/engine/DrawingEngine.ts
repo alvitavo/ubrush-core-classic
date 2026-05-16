@@ -23,6 +23,12 @@ export interface DrawingFloodFillResult {
     pixelBounds: Rect;
     undoFixer?: Fixer;
     redoFixer?: Fixer;
+    historyPromise?: Promise<{
+        undoFixer?: Fixer;
+        redoFixer?: Fixer;
+        historyMs: number;
+        readbackMs: number;
+    }>;
     metrics: {
         mode: 'fast-empty' | 'flood';
         iterations: number;
@@ -35,8 +41,7 @@ export interface DrawingFloodFillResult {
         sourceCopyMs: number;
         postProcessMs: number;
         historyMs: number;
-        undoReadMs: number;
-        redoReadMs: number;
+        readbackMs: number;
     };
 }
 
@@ -527,8 +532,7 @@ export class DrawingEngine {
                     sourceCopyMs: 0,
                     postProcessMs: 0,
                     historyMs: 0,
-                    undoReadMs: 0,
-                    redoReadMs: 0
+                    readbackMs: 0
                 }
             };
         }
@@ -568,8 +572,7 @@ export class DrawingEngine {
                     sourceCopyMs: 0,
                     postProcessMs: 0,
                     historyMs,
-                    undoReadMs: 0,
-                    redoReadMs: 0
+                    readbackMs: 0
                 }
             };
         }
@@ -632,8 +635,7 @@ export class DrawingEngine {
                     sourceCopyMs,
                     postProcessMs,
                     historyMs: 0,
-                    undoReadMs: 0,
-                    redoReadMs: 0
+                    readbackMs: 0
                 }
             };
         }
@@ -642,24 +644,14 @@ export class DrawingEngine {
         const stageRect = this.pixelRectToStageRect(pixelBounds, 2);
         const paddedPixelBounds = this.padPixelRect(pixelBounds, 2);
         const paddedStageRect = this.pixelRectToStageRect(paddedPixelBounds, 0);
-        const historyStart = performance.now();
-        const readbackStart = performance.now();
-        const [undoPixels, redoPixels] = await this.context.readPixelsBatch([
-            { renderTarget: sourceRenderTarget, pixelBounds: paddedPixelBounds },
-            { renderTarget: this.dryRenderTarget, pixelBounds: paddedPixelBounds },
-        ]);
-        const readbackMs = performance.now() - readbackStart;
-        const undoFixer = new Fixer(paddedPixelBounds, paddedStageRect, FixerRenderTarget.Dry, undoPixels);
-        const redoFixer = new Fixer(paddedPixelBounds, paddedStageRect, FixerRenderTarget.Dry, redoPixels);
-        const historyMs = performance.now() - historyStart;
-
-        this.context.deleteRenderTarget(sourceRenderTarget);
+        const redoRenderTarget = this.context.createRenderTarget(this.size);
+        this.context.copyTexture(redoRenderTarget, this.dryRenderTarget);
+        const historyPromise = this.buildFloodFillHistory(sourceRenderTarget, redoRenderTarget, paddedPixelBounds, paddedStageRect);
 
         return {
             rect: stageRect,
             pixelBounds,
-            undoFixer,
-            redoFixer,
+            historyPromise,
             metrics: {
                 mode: 'flood',
                 iterations: fillResult.iterations,
@@ -671,11 +663,33 @@ export class DrawingEngine {
                 gpuMs: fillResult.elapsedMs,
                 sourceCopyMs,
                 postProcessMs,
-                historyMs,
-                undoReadMs: readbackMs,
-                redoReadMs: 0
+                historyMs: 0,
+                readbackMs: 0
             }
         };
+    }
+
+    private async buildFloodFillHistory(sourceRenderTarget: WGPURenderTarget, redoRenderTarget: WGPURenderTarget, paddedPixelBounds: Rect, paddedStageRect: Rect): Promise<{
+        undoFixer?: Fixer;
+        redoFixer?: Fixer;
+        historyMs: number;
+        readbackMs: number;
+    }> {
+        const historyStart = performance.now();
+        const readbackStart = performance.now();
+        const [undoPixels, redoPixels] = await this.context.readPixelsBatch([
+            { renderTarget: sourceRenderTarget, pixelBounds: paddedPixelBounds },
+            { renderTarget: redoRenderTarget, pixelBounds: paddedPixelBounds },
+        ]);
+        const readbackMs = performance.now() - readbackStart;
+        const undoFixer = new Fixer(paddedPixelBounds, paddedStageRect, FixerRenderTarget.Dry, undoPixels);
+        const redoFixer = new Fixer(paddedPixelBounds, paddedStageRect, FixerRenderTarget.Dry, redoPixels);
+        const historyMs = performance.now() - historyStart;
+
+        this.context.deleteRenderTarget(sourceRenderTarget);
+        this.context.deleteRenderTarget(redoRenderTarget);
+
+        return { undoFixer, redoFixer, historyMs, readbackMs };
     }
 
     private buildSolidPixels(width: number, height: number, color: Color): Uint8Array {

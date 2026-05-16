@@ -27,6 +27,11 @@ export interface CanvasDelegate {
 
 export interface CanvasFloodFillResult {
     fixerGroup: FixerGroup | null;
+    historyPromise?: Promise<{
+        fixerGroup: FixerGroup | null;
+        historyMs: number;
+        readbackMs: number;
+    }>;
     metrics: {
         mode: 'fast-empty' | 'flood';
         iterations: number;
@@ -39,8 +44,7 @@ export interface CanvasFloodFillResult {
         sourceCopyMs: number;
         postProcessMs: number;
         historyMs: number;
-        undoReadMs: number;
-        redoReadMs: number;
+        readbackMs: number;
         dryMs: number;
         updateMs: number;
         totalMs: number;
@@ -374,11 +378,20 @@ export class Canvas implements LineDriverDelegate {
         fixerGroup.undoFixer = result.undoFixer;
         fixerGroup.redoFixer = result.redoFixer;
         const hasHistory = !!(fixerGroup.undoFixer && fixerGroup.redoFixer);
-        if (hasHistory) this.hasContent = true;
+        if (hasHistory || result.historyPromise) this.hasContent = true;
         this.age++;
 
         return {
             fixerGroup: hasHistory ? fixerGroup : null,
+            historyPromise: result.historyPromise?.then((history) => {
+                if (!history.undoFixer || !history.redoFixer) {
+                    return { fixerGroup: null, historyMs: history.historyMs, readbackMs: history.readbackMs };
+                }
+                const group = new FixerGroup();
+                group.undoFixer = history.undoFixer;
+                group.redoFixer = history.redoFixer;
+                return { fixerGroup: group, historyMs: history.historyMs, readbackMs: history.readbackMs };
+            }),
             metrics: {
                 ...result.metrics,
                 dryMs,

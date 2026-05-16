@@ -33,6 +33,7 @@ export class DrawingScreen implements CanvasDelegate {
     private stylusEventCount: number = 0;
     private undoStack: FixerGroup[] = [];
     private redoStack: FixerGroup[] = [];
+    private pendingFillHistoryCount = 0;
     private loopPaused = false;
 
     private categories: BrushCategory[] = [];
@@ -171,8 +172,7 @@ export class DrawingScreen implements CanvasDelegate {
     didReleaseDrawingWithFixerGroup(_canvas: Canvas, fixerGroup: FixerGroup): void {
         this.undoStack.push(fixerGroup);
         this.redoStack = [];
-        this.undoBtnEl.disabled = false;
-        this.redoBtnEl.disabled = true;
+        this.updateUndoRedoButtons();
     }
 
     didDryCanvas(_canvas: Canvas): void {}
@@ -566,13 +566,17 @@ export class DrawingScreen implements CanvasDelegate {
 
         this.undoStack.push(group);
         this.redoStack = [];
-        this.undoBtnEl.disabled = false;
-        this.redoBtnEl.disabled = true;
+        this.updateUndoRedoButtons();
     }
 
     private undo(): void {
         if (this.undoStack.length === 0) return;
+        if (this.pendingFillHistoryCount > 0) return;
         const group = this.undoStack.pop()!;
+        if (!this.hasAnyFixer(group)) {
+            this.updateUndoRedoButtons();
+            return;
+        }
 
         if (group.undoFixerLiquid) {
             this.canvas?.fix(group.undoFixerLiquid, true);
@@ -581,13 +585,16 @@ export class DrawingScreen implements CanvasDelegate {
         }
 
         this.redoStack.push(group);
-        this.undoBtnEl.disabled = this.undoStack.length === 0;
-        this.redoBtnEl.disabled = false;
+        this.updateUndoRedoButtons();
     }
 
     private redo(): void {
         if (this.redoStack.length === 0) return;
         const group = this.redoStack.pop()!;
+        if (!this.hasAnyRedoFixer(group)) {
+            this.updateUndoRedoButtons();
+            return;
+        }
 
         if (group.redoFixerLiquid) {
             this.canvas?.fix(group.redoFixerLiquid, true);
@@ -596,8 +603,23 @@ export class DrawingScreen implements CanvasDelegate {
         }
 
         this.undoStack.push(group);
-        this.redoBtnEl.disabled = this.redoStack.length === 0;
-        this.undoBtnEl.disabled = false;
+        this.updateUndoRedoButtons();
+    }
+
+    private updateUndoRedoButtons(): void {
+        if (!this.undoBtnEl || !this.redoBtnEl) return;
+        const undoTop = this.undoStack[this.undoStack.length - 1];
+        const redoTop = this.redoStack[this.redoStack.length - 1];
+        this.undoBtnEl.disabled = this.pendingFillHistoryCount > 0 || !this.hasAnyFixer(undoTop);
+        this.redoBtnEl.disabled = !this.hasAnyRedoFixer(redoTop);
+    }
+
+    private hasAnyFixer(group?: FixerGroup): boolean {
+        return !!(group?.undoFixer || group?.undoFixerLiquid);
+    }
+
+    private hasAnyRedoFixer(group?: FixerGroup): boolean {
+        return !!(group?.redoFixer || group?.redoFixerLiquid);
     }
 
     // ---- Color ----
@@ -710,16 +732,40 @@ export class DrawingScreen implements CanvasDelegate {
             const result = await this.canvas.floodFill(seed, this.currentColor.clone(), tolerance, edgeThreshold, this.fillTuningMode);
             if (!result) return;
             console.debug(
-                `[FloodFill] ${result.metrics.mode} tuning=${result.metrics.tuningMode} total=${result.metrics.totalMs.toFixed(1)}ms dry=${result.metrics.dryMs.toFixed(1)}ms source=${result.metrics.sourceCopyMs.toFixed(1)}ms gpu=${result.metrics.gpuMs.toFixed(1)}ms post=${result.metrics.postProcessMs.toFixed(1)}ms history=${result.metrics.historyMs.toFixed(1)}ms update=${result.metrics.updateMs.toFixed(1)}ms readback=${result.metrics.undoReadMs.toFixed(1)}ms iterations=${result.metrics.iterations} dispatch=${result.metrics.dispatchIterations} substeps=${result.metrics.substeps} tile=${result.metrics.tileSize} batch=${result.metrics.batchSize} bounds=${result.metrics.bounds.toString()}`
+                `[FloodFill] ${result.metrics.mode} tuning=${result.metrics.tuningMode} total=${result.metrics.totalMs.toFixed(1)}ms dry=${result.metrics.dryMs.toFixed(1)}ms source=${result.metrics.sourceCopyMs.toFixed(1)}ms gpu=${result.metrics.gpuMs.toFixed(1)}ms post=${result.metrics.postProcessMs.toFixed(1)}ms history=${result.metrics.historyMs.toFixed(1)}ms update=${result.metrics.updateMs.toFixed(1)}ms readback=${result.metrics.readbackMs.toFixed(1)}ms iterations=${result.metrics.iterations} dispatch=${result.metrics.dispatchIterations} substeps=${result.metrics.substeps} tile=${result.metrics.tileSize} batch=${result.metrics.batchSize} bounds=${result.metrics.bounds.toString()}`
             );
             this.updateFillStats(result.metrics);
             const fixerGroup = result.fixerGroup;
-            if (!fixerGroup) return;
-
-            this.undoStack.push(fixerGroup);
-            this.redoStack = [];
-            this.undoBtnEl.disabled = false;
-            this.redoBtnEl.disabled = true;
+            if (fixerGroup) {
+                this.undoStack.push(fixerGroup);
+                this.redoStack = [];
+                this.updateUndoRedoButtons();
+            } else if (result.historyPromise) {
+                const pendingGroup = new FixerGroup();
+                this.undoStack.push(pendingGroup);
+                this.redoStack = [];
+                this.pendingFillHistoryCount++;
+                this.updateUndoRedoButtons();
+                let historyReady = false;
+                result.historyPromise
+                    .then((history) => {
+                        if (history.fixerGroup) {
+                            pendingGroup.undoFixer = history.fixerGroup.undoFixer;
+                            pendingGroup.redoFixer = history.fixerGroup.redoFixer;
+                            historyReady = true;
+                            console.debug(`[FloodFill] history ready history=${history.historyMs.toFixed(1)}ms readback=${history.readbackMs.toFixed(1)}ms`);
+                        }
+                    })
+                    .catch((error) => console.error('Flood fill history failed', error))
+                    .finally(() => {
+                        if (!historyReady) {
+                            const idx = this.undoStack.indexOf(pendingGroup);
+                            if (idx >= 0) this.undoStack.splice(idx, 1);
+                        }
+                        this.pendingFillHistoryCount = Math.max(0, this.pendingFillHistoryCount - 1);
+                        this.updateUndoRedoButtons();
+                    });
+            }
         } catch (error) {
             console.error('Flood fill failed', error);
         } finally {
@@ -759,8 +805,7 @@ export class DrawingScreen implements CanvasDelegate {
         sourceCopyMs: number;
         postProcessMs: number;
         historyMs: number;
-        undoReadMs: number;
-        redoReadMs: number;
+        readbackMs: number;
         dryMs: number;
         updateMs: number;
         totalMs: number;
@@ -779,7 +824,7 @@ export class DrawingScreen implements CanvasDelegate {
             `history    ${metrics.historyMs.toFixed(1)} ms\n` +
             `update     ${metrics.updateMs.toFixed(1)} ms\n` +
             `iter       ${metrics.iterations} (${metrics.dispatchIterations} dispatch)\n` +
-            `readback   ${metrics.undoReadMs.toFixed(1)} ms\n` +
+            `readback   ${metrics.readbackMs.toFixed(1)} ms\n` +
             `tile/sub   ${metrics.tileSize}/${metrics.substeps}\n` +
             `batch      ${metrics.batchSize}\n` +
             `bounds     ${bounds}`;
