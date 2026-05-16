@@ -8,7 +8,8 @@
     "dev:https": "HTTPS=1 HOST=0.0.0.0 webpack serve --mode development",
     "cert:dev": "node scripts/create-dev-cert.js",
     "build": "webpack --mode production",
-    "deploy": "npm run build && gh-pages -d dist --repo git@github-alvitavo:alvitavo/ubrush-demo.git"
+    "deploy": "npm run build && gh-pages -d dist --repo git@github-alvitavo:alvitavo/ubrush-demo.git",
+    "deploy:webgpu": "npm run build && gh-pages -d dist --dest webgpu --add --repo git@github-alvitavo:alvitavo/ubrush-demo.git"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.69",
