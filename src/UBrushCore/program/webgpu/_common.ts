@@ -48,6 +48,10 @@ export function blendStateFor(blend: RenderObjectBlend): GPUBlendState | undefin
 // Build the ortho matrix used by all quad-blit programs. Matches the column-
 // major layout that the WebGL2 programs uploaded directly via uniformMatrix4fv.
 export function orthoMatrix(canvasRect: Rect): Float32Array {
+    return writeOrthoMatrix(new Float32Array(16), canvasRect);
+}
+
+export function writeOrthoMatrix(out: Float32Array, canvasRect: Rect): Float32Array {
 
     const left = canvasRect.minX;
     const right = canvasRect.maxX;
@@ -63,41 +67,43 @@ export function orthoMatrix(canvasRect: Rect): Float32Array {
     const fan = farZ + nearZ;
     const fsn = farZ - nearZ;
 
-    return new Float32Array([
-        2.0 / rsl, 0.0, 0.0, 0.0,
-        0.0, 2.0 / tsb, 0.0, 0.0,
-        0.0, 0.0, -2.0 / fsn, 0.0,
-        -ral / rsl, -tab / tsb, -fan / fsn, 1.0,
-    ]);
+    out[0] = 2.0 / rsl; out[1] = 0.0;       out[2] = 0.0;        out[3] = 0.0;
+    out[4] = 0.0;       out[5] = 2.0 / tsb; out[6] = 0.0;        out[7] = 0.0;
+    out[8] = 0.0;       out[9] = 0.0;       out[10] = -2.0 / fsn; out[11] = 0.0;
+    out[12] = -ral / rsl; out[13] = -tab / tsb; out[14] = -fan / fsn; out[15] = 1.0;
+    return out;
 
 }
 
 // Build the 4 corner positions for a TriangleStrip quad, optionally transformed.
 export function quadPositions(targetRect: Rect, transform: AffineTransform): Float32Array {
+    return writeQuadPositions(new Float32Array(8), targetRect, transform);
+}
+
+export function writeQuadPositions(out: Float32Array, targetRect: Rect, transform: AffineTransform): Float32Array {
 
     const x1 = targetRect.minX;
     const x2 = targetRect.maxX;
     const y1 = targetRect.minY;
     const y2 = targetRect.maxY;
 
-    let p1 = new Point(x1, y1);
-    let p2 = new Point(x2, y1);
-    let p3 = new Point(x1, y2);
-    let p4 = new Point(x2, y2);
-
-    if (!transform.isIdentity()) {
-        p1 = transform.applyToPoint(p1);
-        p2 = transform.applyToPoint(p2);
-        p3 = transform.applyToPoint(p3);
-        p4 = transform.applyToPoint(p4);
+    if (transform.isIdentity()) {
+        out[0] = x1; out[1] = y1;
+        out[2] = x2; out[3] = y1;
+        out[4] = x1; out[5] = y2;
+        out[6] = x2; out[7] = y2;
+        return out;
     }
 
-    return new Float32Array([
-        p1.x, p1.y,
-        p2.x, p2.y,
-        p3.x, p3.y,
-        p4.x, p4.y,
-    ]);
+    const p1 = transform.applyToPoint(new Point(x1, y1));
+    const p2 = transform.applyToPoint(new Point(x2, y1));
+    const p3 = transform.applyToPoint(new Point(x1, y2));
+    const p4 = transform.applyToPoint(new Point(x2, y2));
+    out[0] = p1.x; out[1] = p1.y;
+    out[2] = p2.x; out[3] = p2.y;
+    out[4] = p3.x; out[5] = p3.y;
+    out[6] = p4.x; out[7] = p4.y;
+    return out;
 
 }
 
@@ -112,6 +118,10 @@ export function quadPositions(targetRect: Rect, transform: AffineTransform): Flo
 // the same coordinate system inside the engine — only the composite step
 // needs the flip.
 export function quadTexCoords(sourceRect: Rect, canvasRect: Rect): Float32Array {
+    return writeQuadTexCoords(new Float32Array(8), sourceRect, canvasRect);
+}
+
+export function writeQuadTexCoords(out: Float32Array, sourceRect: Rect, canvasRect: Rect): Float32Array {
 
     let sx1 = sourceRect.origin.x;
     let sx2 = sourceRect.origin.x + sourceRect.size.width;
@@ -123,12 +133,11 @@ export function quadTexCoords(sourceRect: Rect, canvasRect: Rect): Float32Array 
     sy1 = (sy1 - canvasRect.origin.y) / canvasRect.size.height;
     sy2 = (sy2 - canvasRect.origin.y) / canvasRect.size.height;
 
-    return new Float32Array([
-        sx1, 1.0 - sy1,
-        sx2, 1.0 - sy1,
-        sx1, 1.0 - sy2,
-        sx2, 1.0 - sy2,
-    ]);
+    out[0] = sx1; out[1] = 1.0 - sy1;
+    out[2] = sx2; out[3] = 1.0 - sy1;
+    out[4] = sx1; out[5] = 1.0 - sy2;
+    out[6] = sx2; out[7] = 1.0 - sy2;
+    return out;
 
 }
 

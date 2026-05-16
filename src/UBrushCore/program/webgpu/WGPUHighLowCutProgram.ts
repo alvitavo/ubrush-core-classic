@@ -8,9 +8,9 @@ import { Common } from "../../common/Common";
 import { LayerBlendmode, EdgeStyle } from "../../common/IBrush";
 import { highLowCutWGSL } from "../wgsl/highLowCut.wgsl";
 import {
-    orthoMatrix,
-    quadPositions,
-    quadTexCoords,
+    writeOrthoMatrix,
+    writeQuadPositions,
+    writeQuadTexCoords,
     createLinearClampSampler,
     makeUniformBuffer,
 } from "./_common";
@@ -73,6 +73,9 @@ export class WGPUHighLowCutProgram {
         liquid: WGPUTexture;
         bindGroup: GPUBindGroup;
     };
+    private positions = new Float32Array(8);
+    private texCoords = new Float32Array(8);
+    private ortho = new Float32Array(16);
 
     constructor(context: WGPUContext) {
 
@@ -139,9 +142,9 @@ export class WGPUHighLowCutProgram {
             edgeStyle: EdgeStyle | string
         }): void {
 
-        const positions = quadPositions(param.targetRect, param.transform);
-        const texCoords = quadTexCoords(param.sourceRect, param.canvasRect);
-        const ortho = orthoMatrix(param.canvasRect);
+        const positions = writeQuadPositions(this.positions, param.targetRect, param.transform);
+        const texCoords = writeQuadTexCoords(this.texCoords, param.sourceRect, param.canvasRect);
+        const ortho = writeOrthoMatrix(this.ortho, param.canvasRect);
 
         const positionBuffer = this.writeVertexBuffer('position', positions);
         const texCoordBuffer = this.writeVertexBuffer('texCoord', texCoords);

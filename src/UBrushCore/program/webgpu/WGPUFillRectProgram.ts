@@ -7,9 +7,9 @@ import { RenderObjectBlend } from "../../gpu/RenderObject";
 import { fillRectWGSL } from "../wgsl/fillRect.wgsl";
 import {
     blendStateFor,
-    orthoMatrix,
-    quadPositions,
-    quadTexCoords,
+    writeOrthoMatrix,
+    writeQuadPositions,
+    writeQuadTexCoords,
     createLinearClampSampler,
     makeUniformBuffer,
 } from "./_common";
@@ -31,6 +31,9 @@ export class WGPUFillRectProgram {
     private texCoordBuffer?: GPUBuffer;
     private uniformBuffer?: GPUBuffer;
     private bindGroupCache?: { source: WGPUTexture; bindGroup: GPUBindGroup };
+    private positions = new Float32Array(8);
+    private texCoords = new Float32Array(8);
+    private ortho = new Float32Array(16);
 
     constructor(context: WGPUContext) {
 
@@ -77,9 +80,9 @@ export class WGPUFillRectProgram {
             blend: RenderObjectBlend
         }): void {
 
-        const positions = quadPositions(param.targetRect, param.transform);
-        const texCoords = quadTexCoords(param.sourceRect, param.canvasRect);
-        const ortho = orthoMatrix(param.canvasRect);
+        const positions = writeQuadPositions(this.positions, param.targetRect, param.transform);
+        const texCoords = writeQuadTexCoords(this.texCoords, param.sourceRect, param.canvasRect);
+        const ortho = writeOrthoMatrix(this.ortho, param.canvasRect);
 
         const positionBuffer = this.writeVertexBuffer('position', positions);
         const texCoordBuffer = this.writeVertexBuffer('texCoord', texCoords);
