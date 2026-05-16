@@ -34,6 +34,10 @@ export class WGPUSmudgingDrawDotProgram {
     private patternSampler: GPUSampler;
 
     private cornerBuffer: GPUBuffer;
+    private instanceBuffer?: GPUBuffer;
+    private instanceBufferBytes = 0;
+    private alphaUniform: GPUBuffer;
+    private colorUniform: GPUBuffer;
     private pipeline: GPURenderPipeline | null = null;
 
     constructor(context: WGPUContext) {
@@ -62,12 +66,25 @@ export class WGPUSmudgingDrawDotProgram {
         this.patternSampler = createLinearRepeatSampler(this.device);
 
         this.cornerBuffer = makeVertexBuffer(this.device, QUAD_CORNERS);
+        this.alphaUniform = makeUniformBuffer(this.device, UNIFORM_BYTES);
+        this.colorUniform = makeUniformBuffer(this.device, UNIFORM_BYTES);
+        const alphaBytes = new ArrayBuffer(UNIFORM_BYTES);
+        const colorBytes = new ArrayBuffer(UNIFORM_BYTES);
+        new Int32Array(alphaBytes, 0, 1)[0] = 0;
+        new Int32Array(colorBytes, 0, 1)[0] = 1;
+        this.device.queue.writeBuffer(this.alphaUniform, 0, alphaBytes);
+        this.device.queue.writeBuffer(this.colorUniform, 0, colorBytes);
 
     }
 
     public distroy(): void {
 
         this.cornerBuffer.destroy();
+        this.instanceBuffer?.destroy();
+        this.alphaUniform.destroy();
+        this.colorUniform.destroy();
+        this.instanceBuffer = undefined;
+        this.instanceBufferBytes = 0;
         this.pipeline = null;
 
     }
@@ -102,21 +119,12 @@ export class WGPUSmudgingDrawDotProgram {
         const tip = param.useDualTip ? param.dualTipTexture : param.tipTexture;
 
         const packed = packInstances(param);
-        const instanceBuffer = makeVertexBuffer(this.device, packed);
-
-        const alphaUniform = makeUniformBuffer(this.device, UNIFORM_BYTES);
-        const colorUniform = makeUniformBuffer(this.device, UNIFORM_BYTES);
-        const alphaBytes = new ArrayBuffer(UNIFORM_BYTES);
-        const colorBytes = new ArrayBuffer(UNIFORM_BYTES);
-        new Int32Array(alphaBytes, 0, 1)[0] = 0;
-        new Int32Array(colorBytes, 0, 1)[0] = 1;
-        this.device.queue.writeBuffer(alphaUniform, 0, alphaBytes);
-        this.device.queue.writeBuffer(colorUniform, 0, colorBytes);
+        const instanceBuffer = this.writeInstanceBuffer(packed);
 
         const alphaBindGroup = this.device.createBindGroup({
             layout: this.bindGroupLayout,
             entries: [
-                { binding: 0, resource: { buffer: alphaUniform } },
+                { binding: 0, resource: { buffer: this.alphaUniform } },
                 { binding: 1, resource: tip.getView() },
                 { binding: 2, resource: param.patternTexture.getView() },
                 { binding: 3, resource: param.smudging0CopyAlphaTexture.getView() },
@@ -129,7 +137,7 @@ export class WGPUSmudgingDrawDotProgram {
         const colorBindGroup = this.device.createBindGroup({
             layout: this.bindGroupLayout,
             entries: [
-                { binding: 0, resource: { buffer: colorUniform } },
+                { binding: 0, resource: { buffer: this.colorUniform } },
                 { binding: 1, resource: tip.getView() },
                 { binding: 2, resource: param.patternTexture.getView() },
                 { binding: 3, resource: param.smudging0CopyColorFramebuffer.getView() },
@@ -179,10 +187,19 @@ export class WGPUSmudgingDrawDotProgram {
 
         this.device.queue.submit([encoder.finish()]);
 
-        instanceBuffer.destroy();
-        alphaUniform.destroy();
-        colorUniform.destroy();
+    }
 
+    private writeInstanceBuffer(data: Float32Array): GPUBuffer {
+        if (!this.instanceBuffer || this.instanceBufferBytes < data.byteLength) {
+            this.instanceBuffer?.destroy();
+            this.instanceBufferBytes = Math.max(data.byteLength, this.instanceBufferBytes * 2, 4096);
+            this.instanceBuffer = this.device.createBuffer({
+                size: this.instanceBufferBytes,
+                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+            });
+        }
+        this.device.queue.writeBuffer(this.instanceBuffer, 0, data as BufferSource);
+        return this.instanceBuffer;
     }
 
     private getPipeline(format: GPUTextureFormat): GPURenderPipeline {

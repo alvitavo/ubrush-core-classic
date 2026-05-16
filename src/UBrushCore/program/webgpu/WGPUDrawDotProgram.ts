@@ -155,6 +155,8 @@ export class WGPUDrawDotProgram {
     private patternSampler: GPUSampler;
 
     private cornerBuffer: GPUBuffer;
+    private instanceBuffer?: GPUBuffer;
+    private instanceBufferBytes = 0;
     private pipelineCache: Map<string, GPURenderPipeline> = new Map();
 
     constructor(context: WGPUContext) {
@@ -188,6 +190,9 @@ export class WGPUDrawDotProgram {
     public distroy(): void {
 
         this.cornerBuffer.destroy();
+        this.instanceBuffer?.destroy();
+        this.instanceBuffer = undefined;
+        this.instanceBufferBytes = 0;
         this.pipelineCache.clear();
 
     }
@@ -219,7 +224,7 @@ export class WGPUDrawDotProgram {
         const tip = param.useDualTip ? param.dualTipTexture : param.tipTexture;
 
         const packed = packInstances(param);
-        const instanceBuffer = makeVertexBuffer(this.device, packed);
+        const instanceBuffer = this.writeInstanceBuffer(packed);
 
         const bindGroup = this.device.createBindGroup({
             layout: this.bindGroupLayout,
@@ -251,8 +256,19 @@ export class WGPUDrawDotProgram {
         pass.end();
         this.device.queue.submit([encoder.finish()]);
 
-        instanceBuffer.destroy();
+    }
 
+    private writeInstanceBuffer(data: Float32Array): GPUBuffer {
+        if (!this.instanceBuffer || this.instanceBufferBytes < data.byteLength) {
+            this.instanceBuffer?.destroy();
+            this.instanceBufferBytes = Math.max(data.byteLength, this.instanceBufferBytes * 2, 4096);
+            this.instanceBuffer = this.device.createBuffer({
+                size: this.instanceBufferBytes,
+                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+            });
+        }
+        this.device.queue.writeBuffer(this.instanceBuffer, 0, data as BufferSource);
+        return this.instanceBuffer;
     }
 
     private getPipeline(blend: RenderObjectBlend, format: GPUTextureFormat): GPURenderPipeline {

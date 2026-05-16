@@ -502,6 +502,8 @@ export class Canvas implements LineDriverDelegate {
 
     private flushDots(): Rect | null {
 
+        if (this.dots.length === 0) return null;
+
         if (!this.brush) {
             this.dots = [];
             return null;
