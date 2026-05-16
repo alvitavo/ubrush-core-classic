@@ -76,6 +76,7 @@ export class Canvas implements LineDriverDelegate {
     private alphaMaskRenderTarget?: WGPURenderTarget;
     private transform: AffineTransform = new AffineTransform();
     private hasContent: boolean = false;
+    private needsDry: boolean = false;
 
     constructor(context: WGPUContext, size: Size) {
 
@@ -278,6 +279,7 @@ export class Canvas implements LineDriverDelegate {
             this.updateCanvasInRect(changeRect);
             this.lineRect = Rect.union(this.lineRect ?? changeRect, changeRect);
             this.hasContent = true;
+            this.needsDry = true;
 
         }
 
@@ -298,6 +300,7 @@ export class Canvas implements LineDriverDelegate {
             this.updateCanvasInRect(changeRect);
             this.lineRect = Rect.union(this.lineRect ?? changeRect, changeRect);
             this.hasContent = true;
+            this.needsDry = true;
 
         }
 
@@ -366,7 +369,7 @@ export class Canvas implements LineDriverDelegate {
 
         const start = performance.now();
         const dryStart = performance.now();
-        this.engineDry();
+        if (this.needsDry) this.engineDry();
         const dryMs = performance.now() - dryStart;
 
         const result = await this.drawingEngine.floodFillDry(seed, color, tolerance, edgeThreshold, !this.hasContent, tuningMode);
@@ -418,6 +421,7 @@ export class Canvas implements LineDriverDelegate {
         if (!fixer) return;
 
         const changeRect = await this.drawingEngine.fix(fixer, toLiquidLayer);
+        if (toLiquidLayer) this.needsDry = true;
 
         if (changeRect) {
 
@@ -488,6 +492,7 @@ export class Canvas implements LineDriverDelegate {
         this.drawingEngine.clear();
         this.updateCanvas();
         this.hasContent = false;
+        this.needsDry = false;
         
         this.age ++;
 
@@ -547,6 +552,7 @@ export class Canvas implements LineDriverDelegate {
     private engineSetupWithRenderTarget(renderTarget: WGPURenderTarget): void {
 
         this.drawingEngine.setupWithRenderTarget(renderTarget);
+        this.needsDry = false;
 
         if (this.delegate?.didDryCanvas) {
 
@@ -559,6 +565,7 @@ export class Canvas implements LineDriverDelegate {
     private engineDry(): void {
 
         this.drawingEngine.dry();
+        this.needsDry = false;
 
         if (this.delegate?.didDryCanvas) {
 
