@@ -120,16 +120,40 @@ export class DotBuilder {
     }
 
     public prepareDot(param: {pt: Point, size: number, progressLength: number, level: number, stylus: Stylus}): void {
-        
+
+        this.prepareDotValues(
+            param.pt.x,
+            param.pt.y,
+            param.size,
+            param.progressLength,
+            param.level,
+            param.stylus.pressure,
+            param.stylus.altitudeAngle,
+            param.stylus.azimuthAngle,
+        );
+
+    }
+
+    public prepareDotValues(
+        x: number,
+        y: number,
+        size: number,
+        progressLength: number,
+        level: number,
+        pressure: number,
+        altitudeAngle: number,
+        azimuthAngle: number,
+    ): void {
+
         const dot: Dot = new Dot();
-        dot.prepareX = param.pt.x;
-        dot.prepareY = param.pt.y;
-        dot.prepareSize = param.size;
-        dot.prepareProgressLength = param.progressLength;
-        dot.prepareLevel = param.level;
-        dot.preparePressure = param.stylus.pressure;
-        dot.prepareAltitudeAngle = param.stylus.altitudeAngle;
-        dot.prepareAzimuthAngle = param.stylus.azimuthAngle;
+        dot.prepareX = x;
+        dot.prepareY = y;
+        dot.prepareSize = size;
+        dot.prepareProgressLength = progressLength;
+        dot.prepareLevel = level;
+        dot.preparePressure = pressure;
+        dot.prepareAltitudeAngle = altitudeAngle;
+        dot.prepareAzimuthAngle = azimuthAngle;
 
         this.dotBuffer.push(dot);
         this.testDotBuffer();

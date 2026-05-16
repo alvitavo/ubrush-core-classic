@@ -302,8 +302,6 @@ export class LineDriver {
         let scale: number;
         let actualSize: number;
 
-        let drawPoint: Point;
-
         size = Common.interpolate(this.brush.minSize, this.brush.maxSize, this.brushSize);
         const minSpacing: number = this.brush.minSpacing;
         const spacing: number = this.brush.spacing;
@@ -319,7 +317,8 @@ export class LineDriver {
 
             }
 
-            drawPoint = Common.interpolatePoint(this.actionPrevPt, pt, ratio);
+            const drawX: number = this.actionPrevPt.x + (pt.x - this.actionPrevPt.x) * ratio;
+            const drawY: number = this.actionPrevPt.y + (pt.y - this.actionPrevPt.y) * ratio;
 
             const currentLevel: number = (this.actionPrevLevel + (level - this.actionPrevLevel) * ratio);
             const currentLength: number = (this.progressLength + pointDistance * ratio);
@@ -346,17 +345,16 @@ export class LineDriver {
 
             }
 
-            const currentStylus: Stylus = new Stylus(currentPressure, currentAltitudeAngle, currentAzimuthAngle);
-
-            this.dotBuilder.prepareDot({
-
-                pt: drawPoint,
-                size: this.prevSize,
-                progressLength: currentLength,
-                level: currentLevel,
-                stylus: currentStylus
-
-            });
+            this.dotBuilder.prepareDotValues(
+                drawX,
+                drawY,
+                this.prevSize,
+                currentLength,
+                currentLevel,
+                currentPressure,
+                currentAltitudeAngle,
+                currentAzimuthAngle,
+            );
 
             // save current point
 
@@ -364,9 +362,9 @@ export class LineDriver {
 
                 progressLength: currentLength,
                 level: currentLevel,
-                pressure: currentStylus.pressure,
-                altitudeAngle: currentStylus.altitudeAngle,
-                azimuthAngle: currentStylus.azimuthAngle
+                pressure: currentPressure,
+                altitudeAngle: currentAltitudeAngle,
+                azimuthAngle: currentAzimuthAngle
 
             });
 
