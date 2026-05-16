@@ -67,6 +67,12 @@ export class WGPUHighLowCutProgram {
     private uniformBytes = new ArrayBuffer(UNIFORM_BYTES);
     private uniformF = new Float32Array(this.uniformBytes);
     private uniformI = new Int32Array(this.uniformBytes);
+    private bindGroupCache?: {
+        edge: WGPUTexture;
+        dry: WGPUTexture;
+        liquid: WGPUTexture;
+        bindGroup: GPUBindGroup;
+    };
 
     constructor(context: WGPUContext) {
 
@@ -111,6 +117,7 @@ export class WGPUHighLowCutProgram {
         this.positionBuffer = undefined;
         this.texCoordBuffer = undefined;
         this.uniformBuffer = undefined;
+        this.bindGroupCache = undefined;
         this.pipelineCache.clear();
 
     }
@@ -162,16 +169,7 @@ export class WGPUHighLowCutProgram {
         i[27] = 0;                                        // 27     : _pad1
         this.device.queue.writeBuffer(uniformBuffer, 0, this.uniformBytes);
 
-        const bindGroup = this.device.createBindGroup({
-            layout: this.bindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: uniformBuffer } },
-                { binding: 1, resource: wetTex.getView() },
-                { binding: 2, resource: param.drySource.getView() },
-                { binding: 3, resource: param.liquidSource.getView() },
-                { binding: 4, resource: this.sampler },
-            ],
-        });
+        const bindGroup = this.getBindGroup(wetTex, param.drySource, param.liquidSource);
 
         const view = renderTarget
             ? renderTarget.view
@@ -217,6 +215,23 @@ export class WGPUHighLowCutProgram {
             this.uniformBuffer = makeUniformBuffer(this.device, UNIFORM_BYTES);
         }
         return this.uniformBuffer;
+    }
+
+    private getBindGroup(edge: WGPUTexture, dry: WGPUTexture, liquid: WGPUTexture): GPUBindGroup {
+        const cached = this.bindGroupCache;
+        if (cached?.edge === edge && cached.dry === dry && cached.liquid === liquid) return cached.bindGroup;
+        const bindGroup = this.device.createBindGroup({
+            layout: this.bindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.getUniformBuffer() } },
+                { binding: 1, resource: edge.getView() },
+                { binding: 2, resource: dry.getView() },
+                { binding: 3, resource: liquid.getView() },
+                { binding: 4, resource: this.sampler },
+            ],
+        });
+        this.bindGroupCache = { edge, dry, liquid, bindGroup };
+        return bindGroup;
     }
 
     private getPipeline(format: GPUTextureFormat): GPURenderPipeline {
