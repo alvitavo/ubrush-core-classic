@@ -2,6 +2,7 @@
 // presentation context. Throws on missing WebGPU support — callers handle UX.
 
 export interface WGPUBootstrap {
+    adapter: GPUAdapter;
     device: GPUDevice;
     presentationContext: GPUCanvasContext;
     presentationFormat: GPUTextureFormat;
@@ -33,6 +34,6 @@ export async function bootstrapWebGPU(canvas: HTMLCanvasElement): Promise<WGPUBo
         alphaMode: "premultiplied",
     });
 
-    return { device, presentationContext, presentationFormat };
+    return { adapter, device, presentationContext, presentationFormat };
 
 }

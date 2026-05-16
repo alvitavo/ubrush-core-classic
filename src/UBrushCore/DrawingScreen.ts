@@ -61,6 +61,7 @@ export class DrawingScreen implements CanvasDelegate {
     private brushToolBtn!: HTMLButtonElement;
     private fillToolBtn!: HTMLButtonElement;
     private fillTuningSelectEl!: HTMLSelectElement;
+    private webGPUStatsEl!: HTMLElement;
     private fillStatsEl!: HTMLElement;
     private selectedSwatch: HTMLButtonElement | null = null;
 
@@ -290,6 +291,8 @@ export class DrawingScreen implements CanvasDelegate {
 
         sidebar.appendChild(this.buildToolSection());
 
+        sidebar.appendChild(this.buildWebGPUStatsSection());
+
         // Size slider
         sidebar.appendChild(sliderRow('Size', 0, 0.5, 0.001, this.currentSize, (v) => {
             this.currentSize = v;
@@ -404,6 +407,10 @@ export class DrawingScreen implements CanvasDelegate {
     // ---- WebGPU initialization ----
 
     private async initWebGPU(): Promise<void> {
+        this.updateWebGPUStats({
+            status: 'initializing',
+        });
+
         const w = window.innerWidth - SIDEBAR_W;
         const h = window.innerHeight;
         this.canvasWidth = w * 2;
@@ -417,8 +424,19 @@ export class DrawingScreen implements CanvasDelegate {
             bootstrap = await bootstrapWebGPU(this.glCanvas);
         } catch (e) {
             console.error('WebGPU init failed', e);
+            this.updateWebGPUStats({
+                status: 'failed',
+                error: e instanceof Error ? e.message : String(e),
+            });
             return;
         }
+
+        this.updateWebGPUStats({
+            status: 'ready',
+            adapter: bootstrap.adapter,
+            device: bootstrap.device,
+            format: bootstrap.presentationFormat,
+        });
 
         const size = new Size(w * 2, h * 2);
         const context = new WGPUContext(bootstrap.device, bootstrap.presentationContext, bootstrap.presentationFormat, size);
@@ -721,6 +739,66 @@ export class DrawingScreen implements CanvasDelegate {
             this.fillTuningMode = this.fillTuningSelectEl.value as FloodFillTuningMode;
         });
         return this.fillTuningSelectEl;
+    }
+
+    private buildWebGPUStatsSection(): HTMLElement {
+        const wrap = document.createElement('div');
+        const lbl = document.createElement('label');
+        lbl.textContent = 'WebGPU Stats';
+        lbl.style.cssText = `display:block; font-size:11px; color:#9a9a9a; margin-bottom:5px; font-weight:600; text-transform:uppercase; letter-spacing:.4px;`;
+        wrap.appendChild(lbl);
+
+        this.webGPUStatsEl = document.createElement('div');
+        this.webGPUStatsEl.style.cssText = `
+            min-height:86px; padding:8px;
+            background:#202020; border:1px solid #3f3f3f; border-radius:5px;
+            color:#8fa8bd; font-size:10px; line-height:1.45;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            white-space:pre-wrap; word-break:break-word;
+        `;
+        this.webGPUStatsEl.textContent = 'Waiting for init';
+        wrap.appendChild(this.webGPUStatsEl);
+        return wrap;
+    }
+
+    private updateWebGPUStats(info: {
+        status: 'initializing' | 'ready' | 'failed';
+        adapter?: GPUAdapter;
+        device?: GPUDevice;
+        format?: GPUTextureFormat;
+        error?: string;
+    }): void {
+        if (!this.webGPUStatsEl) return;
+
+        const adapterInfo = info.adapter ? (info.adapter as unknown as { info?: Record<string, unknown> }).info : undefined;
+        const vendor = this.statValue(adapterInfo?.vendor);
+        const architecture = this.statValue(adapterInfo?.architecture);
+        const device = this.statValue(adapterInfo?.device);
+        const description = this.statValue(adapterInfo?.description);
+        const features = info.adapter ? Array.from(info.adapter.features).slice(0, 8).join(', ') || 'none' : '-';
+        const maxTexture = info.device?.limits.maxTextureDimension2D ?? '-';
+        const maxStorageBuffer = info.device?.limits.maxStorageBufferBindingSize ?? '-';
+        const ua = navigator.userAgent.replace(/\s+/g, ' ');
+
+        this.webGPUStatsEl.textContent =
+            `status     ${info.status}\n` +
+            `secure     ${window.isSecureContext ? 'yes' : 'no'}\n` +
+            `navigator  ${navigator.gpu ? 'yes' : 'no'}\n` +
+            `format     ${info.format ?? '-'}\n` +
+            `vendor     ${vendor}\n` +
+            `arch       ${architecture}\n` +
+            `device     ${device}\n` +
+            `desc       ${description}\n` +
+            `maxTex2D   ${maxTexture}\n` +
+            `maxStorage ${maxStorageBuffer}\n` +
+            `features   ${features}\n` +
+            `error      ${info.error ?? '-'}\n` +
+            `ua         ${ua}`;
+    }
+
+    private statValue(value: unknown): string {
+        if (value === undefined || value === null || value === '') return '-';
+        return String(value);
     }
 
     private async applyFloodFill(seed: Point): Promise<void> {
