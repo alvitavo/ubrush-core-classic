@@ -66,6 +66,14 @@ export class WGPUMaskAndCutProgram {
     private uniformBytes = new ArrayBuffer(UNIFORM_BYTES);
     private uniformF = new Float32Array(this.uniformBytes);
     private uniformI = new Int32Array(this.uniformBytes);
+    private bindGroupCache?: {
+        edge: WGPUTexture;
+        maskEdge: WGPUTexture;
+        dry: WGPUTexture;
+        liquid: WGPUTexture;
+        mask: WGPUTexture;
+        bindGroup: GPUBindGroup;
+    };
 
     constructor(context: WGPUContext) {
 
@@ -112,6 +120,7 @@ export class WGPUMaskAndCutProgram {
         this.positionBuffer = undefined;
         this.texCoordBuffer = undefined;
         this.uniformBuffer = undefined;
+        this.bindGroupCache = undefined;
         this.pipelineCache.clear();
 
     }
@@ -160,18 +169,13 @@ export class WGPUMaskAndCutProgram {
         i[23] = 0;                                // 23     : _pad1
         this.device.queue.writeBuffer(uniformBuffer, 0, this.uniformBytes);
 
-        const bindGroup = this.device.createBindGroup({
-            layout: this.bindGroupLayout,
-            entries: [
-                { binding: 0, resource: { buffer: uniformBuffer } },
-                { binding: 1, resource: (edgeTex ?? fallback).getView() },
-                { binding: 2, resource: (maskEdgeTex ?? fallback).getView() },
-                { binding: 3, resource: param.drySource.getView() },
-                { binding: 4, resource: param.liquidSource.getView() },
-                { binding: 5, resource: param.maskSource.getView() },
-                { binding: 6, resource: this.sampler },
-            ],
-        });
+        const bindGroup = this.getBindGroup(
+            edgeTex ?? fallback,
+            maskEdgeTex ?? fallback,
+            param.drySource,
+            param.liquidSource,
+            param.maskSource,
+        );
 
         const view = renderTarget
             ? renderTarget.view
@@ -215,6 +219,31 @@ export class WGPUMaskAndCutProgram {
     private getUniformBuffer(): GPUBuffer {
         if (!this.uniformBuffer) this.uniformBuffer = makeUniformBuffer(this.device, UNIFORM_BYTES);
         return this.uniformBuffer;
+    }
+
+    private getBindGroup(edge: WGPUTexture, maskEdge: WGPUTexture, dry: WGPUTexture, liquid: WGPUTexture, mask: WGPUTexture): GPUBindGroup {
+        const cached = this.bindGroupCache;
+        if (cached?.edge === edge &&
+            cached.maskEdge === maskEdge &&
+            cached.dry === dry &&
+            cached.liquid === liquid &&
+            cached.mask === mask) {
+            return cached.bindGroup;
+        }
+        const bindGroup = this.device.createBindGroup({
+            layout: this.bindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.getUniformBuffer() } },
+                { binding: 1, resource: edge.getView() },
+                { binding: 2, resource: maskEdge.getView() },
+                { binding: 3, resource: dry.getView() },
+                { binding: 4, resource: liquid.getView() },
+                { binding: 5, resource: mask.getView() },
+                { binding: 6, resource: this.sampler },
+            ],
+        });
+        this.bindGroupCache = { edge, maskEdge, dry, liquid, mask, bindGroup };
+        return bindGroup;
     }
 
     private getPipeline(format: GPUTextureFormat): GPURenderPipeline {
