@@ -595,14 +595,6 @@ export class DrawingEngine {
         });
 
         const postProcessStart = performance.now();
-        this.context.clearRenderTarget(this.liquidRenderTarget, Color.clear());
-        this.context.clearRenderTarget(this.drawingRenderTarget, Color.clear());
-
-        if (this._useSecondaryMask) {
-            this.context.clearRenderTarget(this.maskLiquidRenderTarget!, Color.clear());
-            this.context.clearRenderTarget(this.maskDrawingRenderTarget!, Color.clear());
-        }
-
         if (this._useSmudging) {
             this._fill(this.smudging0CopyRenderTarget, this.dryRenderTarget.texture);
             this._fill(this.smudging1CopyRenderTarget, this.dryRenderTarget.texture);
