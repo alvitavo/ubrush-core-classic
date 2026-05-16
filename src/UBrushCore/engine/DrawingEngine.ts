@@ -643,12 +643,12 @@ export class DrawingEngine {
         const paddedPixelBounds = this.padPixelRect(pixelBounds, 2);
         const paddedStageRect = this.pixelRectToStageRect(paddedPixelBounds, 0);
         const historyStart = performance.now();
-        const undoReadStart = performance.now();
-        const undoPixels = await this.context.readPixels(sourceRenderTarget, paddedPixelBounds);
-        const undoReadMs = performance.now() - undoReadStart;
-        const redoReadStart = performance.now();
-        const redoPixels = await this.context.readPixels(this.dryRenderTarget, paddedPixelBounds);
-        const redoReadMs = performance.now() - redoReadStart;
+        const readbackStart = performance.now();
+        const [undoPixels, redoPixels] = await this.context.readPixelsBatch([
+            { renderTarget: sourceRenderTarget, pixelBounds: paddedPixelBounds },
+            { renderTarget: this.dryRenderTarget, pixelBounds: paddedPixelBounds },
+        ]);
+        const readbackMs = performance.now() - readbackStart;
         const undoFixer = new Fixer(paddedPixelBounds, paddedStageRect, FixerRenderTarget.Dry, undoPixels);
         const redoFixer = new Fixer(paddedPixelBounds, paddedStageRect, FixerRenderTarget.Dry, redoPixels);
         const historyMs = performance.now() - historyStart;
@@ -672,8 +672,8 @@ export class DrawingEngine {
                 sourceCopyMs,
                 postProcessMs,
                 historyMs,
-                undoReadMs,
-                redoReadMs
+                undoReadMs: readbackMs,
+                redoReadMs: 0
             }
         };
     }

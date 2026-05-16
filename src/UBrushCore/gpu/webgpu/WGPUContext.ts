@@ -4,6 +4,26 @@ import { Color } from "../../common/Color";
 import { WGPUTexture } from "./WGPUTexture";
 import { WGPURenderTarget } from "./WGPURenderTarget";
 
+interface ReadPixelsRequest {
+    renderTarget: WGPURenderTarget;
+    pixelBounds: Rect;
+}
+
+interface PreparedReadPixelsRequest {
+    out: Uint8Array;
+    buffer?: GPUBuffer;
+    reqW: number;
+    reqH: number;
+    cw: number;
+    ch: number;
+    unpaddedBytesPerRow: number;
+    paddedBytesPerRow: number;
+    dstRow0: number;
+    dstX: number;
+    texture: GPUTexture;
+    origin: { x: number; y: number };
+}
+
 // Counterpart to gpu/UBrushContext.ts for the WebGPU backend.
 //
 // Differences from the WebGL2 context:
@@ -85,6 +105,11 @@ export class WGPUContext {
     }
 
     public async readPixels(renderTarget: WGPURenderTarget, pixelBounds: Rect): Promise<Uint8Array> {
+        const [pixels] = await this.readPixelsBatch([{ renderTarget, pixelBounds }]);
+        return pixels;
+    }
+
+    public async readPixelsBatch(requests: ReadPixelsRequest[]): Promise<Uint8Array[]> {
 
         // Engine code throughout the codebase passes pixelBounds with a
         // framebuffer y-up convention (y=0 = bottom of the framebuffer — the
@@ -97,11 +122,71 @@ export class WGPUContext {
         // correctly when the caller re-uploads via loadFromRGBA and draws
         // through fillRectProgram (e.g. fixer apply path).
 
+        const prepared = requests.map((request) => this.prepareReadPixels(request.renderTarget, request.pixelBounds));
+        const encoder = this.device.createCommandEncoder();
+
+        for (const item of prepared) {
+            if (!item.buffer) continue;
+            encoder.copyTextureToBuffer(
+                {
+                    texture: item.texture,
+                    origin: item.origin,
+                },
+                {
+                    buffer: item.buffer,
+                    bytesPerRow: item.paddedBytesPerRow,
+                    rowsPerImage: item.ch,
+                },
+                { width: item.cw, height: item.ch, depthOrArrayLayers: 1 },
+            );
+        }
+
+        this.device.queue.submit([encoder.finish()]);
+
+        await Promise.all(prepared.map((item) => item.buffer?.mapAsync(GPUMapMode.READ) ?? Promise.resolve()));
+
+        for (const item of prepared) {
+            if (!item.buffer) continue;
+            const mapped = new Uint8Array(item.buffer.getMappedRange());
+
+            for (let r = 0; r < item.ch; r++) {
+                const outRow = item.dstRow0 + r;
+                if (outRow < 0 || outRow >= item.reqH) continue;
+                const dstStart = (outRow * item.reqW + item.dstX) * 4;
+                item.out.set(
+                    mapped.subarray(r * item.paddedBytesPerRow, r * item.paddedBytesPerRow + item.unpaddedBytesPerRow),
+                    dstStart,
+                );
+            }
+
+            item.buffer.unmap();
+            item.buffer.destroy();
+        }
+
+        return prepared.map((item) => item.out);
+
+    }
+
+    private prepareReadPixels(renderTarget: WGPURenderTarget, pixelBounds: Rect): PreparedReadPixelsRequest {
         const reqW = pixelBounds.size.width;
         const reqH = pixelBounds.size.height;
         const out = new Uint8Array(reqW * reqH * 4);
 
-        if (reqW === 0 || reqH === 0) return out;
+        const empty = {
+            out,
+            reqW,
+            reqH,
+            cw: 0,
+            ch: 0,
+            unpaddedBytesPerRow: 0,
+            paddedBytesPerRow: 0,
+            dstRow0: 0,
+            dstX: 0,
+            texture: renderTarget.gpuTexture,
+            origin: { x: 0, y: 0 },
+        };
+
+        if (reqW === 0 || reqH === 0) return empty;
 
         const tw = renderTarget.size.width;
         const th = renderTarget.size.height;
@@ -125,7 +210,7 @@ export class WGPUContext {
         const cw = Math.max(0, sxR - sxL);
         const ch = Math.max(0, sxB - sxT);
 
-        if (cw === 0 || ch === 0) return out; // entirely outside the texture
+        if (cw === 0 || ch === 0) return empty; // entirely outside the texture
 
         // bytesPerRow must be a multiple of 256 for copyTextureToBuffer.
         const unpaddedBytesPerRow = cw * 4;
@@ -136,24 +221,6 @@ export class WGPUContext {
             usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
         });
 
-        const encoder = this.device.createCommandEncoder();
-        encoder.copyTextureToBuffer(
-            {
-                texture: renderTarget.gpuTexture,
-                origin: { x: sxL, y: sxT },
-            },
-            {
-                buffer,
-                bytesPerRow: paddedBytesPerRow,
-                rowsPerImage: ch,
-            },
-            { width: cw, height: ch, depthOrArrayLayers: 1 },
-        );
-        this.device.queue.submit([encoder.finish()]);
-
-        await buffer.mapAsync(GPUMapMode.READ);
-        const mapped = new Uint8Array(buffer.getMappedRange());
-
         // Place clamped region into out. `out` is sized [reqW × reqH] and
         // laid out with row 0 = top of the requested region (texture y-down
         // convention). The clamped region's top edge in texture y is sxT,
@@ -162,20 +229,20 @@ export class WGPUContext {
         const dstRow0 = sxT - texTop;
         const dstX = sxL - callerL;
 
-        for (let r = 0; r < ch; r++) {
-            const outRow = dstRow0 + r;
-            if (outRow < 0 || outRow >= reqH) continue;
-            const dstStart = (outRow * reqW + dstX) * 4;
-            out.set(
-                mapped.subarray(r * paddedBytesPerRow, r * paddedBytesPerRow + unpaddedBytesPerRow),
-                dstStart,
-            );
-        }
-
-        buffer.unmap();
-        buffer.destroy();
-
-        return out;
+        return {
+            out,
+            buffer,
+            reqW,
+            reqH,
+            cw,
+            ch,
+            unpaddedBytesPerRow,
+            paddedBytesPerRow,
+            dstRow0,
+            dstX,
+            texture: renderTarget.gpuTexture,
+            origin: { x: sxL, y: sxT },
+        };
 
     }
 
