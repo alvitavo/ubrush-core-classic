@@ -124,6 +124,10 @@ export function packInstances(param: DotInstancePackParam, out: Float32Array): F
 
 }
 
+export function textureVersions(...textures: WGPUTexture[]): string {
+    return textures.map((texture) => texture.getVersion()).join(':');
+}
+
 export const INSTANCE_VERTEX_LAYOUT: GPUVertexBufferLayout = {
     arrayStride: INSTANCE_STRIDE_BYTES,
     stepMode: "instance",
@@ -168,6 +172,7 @@ export class WGPUDrawDotProgram {
         pattern: WGPUTexture;
         smudging0: WGPUTexture;
         smudging: WGPUTexture;
+        versions: string;
         bindGroup: GPUBindGroup;
     };
     private pipelineCache: Map<string, GPURenderPipeline> = new Map();
@@ -265,11 +270,13 @@ export class WGPUDrawDotProgram {
 
     private getBindGroup(tip: WGPUTexture, pattern: WGPUTexture, smudging0: WGPUTexture, smudging: WGPUTexture): GPUBindGroup {
         const cached = this.bindGroupCache;
+        const versions = textureVersions(tip, pattern, smudging0, smudging);
         if (cached &&
             cached.tip === tip &&
             cached.pattern === pattern &&
             cached.smudging0 === smudging0 &&
-            cached.smudging === smudging) {
+            cached.smudging === smudging &&
+            cached.versions === versions) {
             return cached.bindGroup;
         }
 
@@ -284,7 +291,7 @@ export class WGPUDrawDotProgram {
                 { binding: 5, resource: this.patternSampler },
             ],
         });
-        this.bindGroupCache = { tip, pattern, smudging0, smudging, bindGroup };
+        this.bindGroupCache = { tip, pattern, smudging0, smudging, versions, bindGroup };
         return bindGroup;
     }
 

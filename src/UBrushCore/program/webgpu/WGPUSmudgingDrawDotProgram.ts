@@ -15,6 +15,7 @@ import {
     DotInstancePackParam,
     packInstances,
     packedInstanceFloatCount,
+    textureVersions,
     INSTANCE_VERTEX_LAYOUT,
     CORNER_VERTEX_LAYOUT,
 } from "./WGPUDrawDotProgram";
@@ -48,6 +49,7 @@ export class WGPUSmudgingDrawDotProgram {
         smudging0Color: WGPUTexture;
         smudgingAlpha: WGPUTexture;
         smudgingColor: WGPUTexture;
+        versions: string;
         alphaBindGroup: GPUBindGroup;
         colorBindGroup: GPUBindGroup;
     };
@@ -196,13 +198,15 @@ export class WGPUSmudgingDrawDotProgram {
         smudgingColor: WGPUTexture,
     ): { alphaBindGroup: GPUBindGroup; colorBindGroup: GPUBindGroup } {
         const cached = this.bindGroupCache;
+        const versions = textureVersions(tip, pattern, smudging0Alpha, smudging0Color, smudgingAlpha, smudgingColor);
         if (cached &&
             cached.tip === tip &&
             cached.pattern === pattern &&
             cached.smudging0Alpha === smudging0Alpha &&
             cached.smudging0Color === smudging0Color &&
             cached.smudgingAlpha === smudgingAlpha &&
-            cached.smudgingColor === smudgingColor) {
+            cached.smudgingColor === smudgingColor &&
+            cached.versions === versions) {
             return cached;
         }
 
@@ -232,6 +236,7 @@ export class WGPUSmudgingDrawDotProgram {
         });
         this.bindGroupCache = {
             tip, pattern, smudging0Alpha, smudging0Color, smudgingAlpha, smudgingColor,
+            versions,
             alphaBindGroup, colorBindGroup,
         };
         return this.bindGroupCache;

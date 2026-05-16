@@ -12,6 +12,7 @@ export class WGPUTexture {
     private texture: GPUTexture;
     private view: GPUTextureView;
     private owned: boolean;
+    private version: number = 0;
 
     public width: number = 1;
     public height: number = 1;
@@ -51,6 +52,12 @@ export class WGPUTexture {
     public getView(): GPUTextureView {
 
         return this.view;
+
+    }
+
+    public getVersion(): number {
+
+        return this.version;
 
     }
 
@@ -107,6 +114,7 @@ export class WGPUTexture {
         this.texture = this.createBacking(width, height);
         this.view = this.texture.createView();
         this.owned = true;
+        this.version++;
         this.width = width;
         this.height = height;
 
