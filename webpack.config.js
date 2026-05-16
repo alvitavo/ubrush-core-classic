@@ -6,6 +6,36 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 const BRUSHES_DIR = path.resolve(__dirname, 'brushes');
 const BRUSHES_ORIGINAL_DIR = path.resolve(__dirname, 'brushes_original');
 const FAVORITES_FILE = path.resolve(__dirname, 'favorites.json');
+const DEV_CERT_DIR = path.resolve(__dirname, '.cert');
+const DEV_CERT_KEY = path.join(DEV_CERT_DIR, 'dev.key');
+const DEV_CERT_CRT = path.join(DEV_CERT_DIR, 'dev.crt');
+const USE_HTTPS = process.env.HTTPS === '1';
+
+function devServerConfig() {
+  const config = {
+    static: {
+      directory: path.join(__dirname, 'dist')
+    },
+    host: process.env.HOST || 'localhost',
+    compress: true,
+    port: Number(process.env.PORT || (USE_HTTPS ? 3443 : 3000)),
+    allowedHosts: 'all',
+  };
+
+  if (USE_HTTPS) {
+    config.server = {
+      type: 'https',
+      options: fs.existsSync(DEV_CERT_KEY) && fs.existsSync(DEV_CERT_CRT)
+        ? {
+            key: fs.readFileSync(DEV_CERT_KEY),
+            cert: fs.readFileSync(DEV_CERT_CRT),
+          }
+        : {},
+    };
+  }
+
+  return config;
+}
 
 module.exports = {
   entry: {
@@ -58,11 +88,7 @@ module.exports = {
     })
   ],
   devServer: {
-    static: {
-      directory: path.join(__dirname, 'dist')
-    },
-    compress: true,
-    port: 3000,
+    ...devServerConfig(),
     setupMiddlewares: (middlewares, devServer) => {
       const app = devServer.app;
 
