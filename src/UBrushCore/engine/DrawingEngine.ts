@@ -737,6 +737,18 @@ export class DrawingEngine {
         );
     }
 
+    public async activeMergedFixer(rect: Rect): Promise<Fixer | null> {
+        const partRectByPixel = this.stageRectToPixelRect(rect);
+        if (partRectByPixel.size.width === 0.0 || partRectByPixel.size.height === 0.0) return null;
+
+        const tempRenderTarget = this.context.createRenderTarget(this.size);
+        this.printToRenderTarget(tempRenderTarget, rect, new AffineTransform());
+        const patchPixels = await this.context.readPixels(tempRenderTarget, partRectByPixel);
+        this.context.deleteRenderTarget(tempRenderTarget);
+
+        return new Fixer(partRectByPixel, rect, FixerRenderTarget.Dry, patchPixels);
+    }
+
     private async _buildFixer(fixerRenderTarget: FixerRenderTarget, rect: Rect, withMask: boolean): Promise<Fixer | null> {
         const partRectByPixel = this.stageRectToPixelRect(rect);
         if (partRectByPixel.size.width === 0.0 || partRectByPixel.size.height === 0.0) return null;

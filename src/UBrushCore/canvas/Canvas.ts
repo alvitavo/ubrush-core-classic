@@ -342,9 +342,45 @@ export class Canvas implements LineDriverDelegate {
         const rect = Common.stageRect();
 
         if (this.autoDry) {
-            fixerGroup.undoFixer = (await this.fixer(rect)) || undefined;
+            fixerGroup.undoFixer = (await this.drawingEngine.activeMergedFixer(rect)) || undefined;
         } else {
             fixerGroup.undoFixerLiquid = (await this.drawingEngine.activeDrawingFixer(rect)) || undefined;
+        }
+
+        return fixerGroup;
+    }
+
+    public async prepareActiveLineForStraightening(strokeGroup: FixerGroup): Promise<FixerGroup> {
+        const straightenGroup = new FixerGroup();
+        const rect = Common.stageRect();
+
+        if (this.autoDry) {
+            const curveFixer = (await this.drawingEngine.activeMergedFixer(rect)) || undefined;
+            strokeGroup.redoFixer = curveFixer;
+            straightenGroup.undoFixer = curveFixer;
+            return straightenGroup;
+        }
+
+        this.drawingEngine.releaseDrawing();
+        const curveFixer = (await this.liquidFixer(rect)) || undefined;
+        strokeGroup.redoFixerLiquid = curveFixer;
+        straightenGroup.undoFixerLiquid = curveFixer;
+
+        if (strokeGroup.undoFixerLiquid) {
+            await this.fix(strokeGroup.undoFixerLiquid, true);
+        }
+
+        return straightenGroup;
+    }
+
+    public async captureLineStartForStraightening(): Promise<FixerGroup> {
+        const fixerGroup = new FixerGroup();
+        const rect = Common.stageRect();
+
+        if (this.autoDry) {
+            fixerGroup.undoFixer = (await this.fixer(rect)) || undefined;
+        } else {
+            fixerGroup.undoFixerLiquid = (await this.liquidFixer(rect)) || undefined;
         }
 
         return fixerGroup;

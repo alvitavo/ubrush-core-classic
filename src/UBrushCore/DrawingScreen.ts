@@ -39,6 +39,7 @@ export class DrawingScreen implements CanvasDelegate {
     private straightLineToken = 0;
     private straightLineStartPos: Point | null = null;
     private straightLineStartStylus: Stylus | null = null;
+    private straightLineStrokeGroup: FixerGroup | null = null;
     private straightLineUndoGroup: FixerGroup | null = null;
     private straightLinePreviewActive = false;
     private straightLineActivating = false;
@@ -514,6 +515,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.straightLinePreviewActive = false;
         this.straightLineActivating = false;
         this.straightLineActivationPromise = null;
+        this.straightLineStrokeGroup = null;
         this.straightLineUndoGroup = null;
 
         if (this.currentTool === 'fill') {
@@ -528,6 +530,7 @@ export class DrawingScreen implements CanvasDelegate {
             this.lastStylus.altitudeAngle,
             this.lastStylus.azimuthAngle
         );
+        this.straightLineStrokeGroup = (await this.canvas?.captureLineStartForStraightening()) ?? null;
         this.canvas?.moveTo(this.lastPos, this.lastStylus);
         this.startStraightLineTimer();
 
@@ -578,6 +581,9 @@ export class DrawingScreen implements CanvasDelegate {
             );
             const fixerGroup = await this.canvas.commitStraightenedLine(this.straightLineUndoGroup);
             if (this.hasAnyFixer(fixerGroup) && this.hasAnyRedoFixer(fixerGroup)) {
+                if (this.straightLineStrokeGroup && this.hasAnyFixer(this.straightLineStrokeGroup) && this.hasAnyRedoFixer(this.straightLineStrokeGroup)) {
+                    this.undoStack.push(this.straightLineStrokeGroup);
+                }
                 this.undoStack.push(fixerGroup);
                 this.redoStack = [];
                 this.updateUndoRedoButtons();
@@ -589,6 +595,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.straightLinePreviewActive = false;
         this.straightLineActivating = false;
         this.straightLineActivationPromise = null;
+        this.straightLineStrokeGroup = null;
         this.straightLineUndoGroup = null;
         this.straightLineStartPos = null;
         this.straightLineStartStylus = null;
@@ -618,7 +625,9 @@ export class DrawingScreen implements CanvasDelegate {
 
         this.straightLineActivating = true;
         try {
-            const undoGroup = await this.canvas.captureActiveLineForStraightening();
+            const strokeGroup = this.straightLineStrokeGroup ?? await this.canvas.captureLineStartForStraightening();
+            const undoGroup = await this.canvas.prepareActiveLineForStraightening(strokeGroup);
+            this.straightLineStrokeGroup = strokeGroup;
             if (token !== this.straightLineToken || !this.straightLineStartPos || !this.straightLineStartStylus) return;
 
             this.straightLineUndoGroup = undoGroup;
