@@ -35,6 +35,11 @@ interface ShapeAssistHandles {
 
 type ShapeAssistHandleKey = keyof ShapeAssistHandles;
 
+interface ShapeAssistSnapshot {
+    mode: ShapeAssistMode;
+    handles: ShapeAssistHandles;
+}
+
 export class DrawingScreen implements CanvasDelegate {
     readonly element: HTMLElement;
 
@@ -64,6 +69,9 @@ export class DrawingScreen implements CanvasDelegate {
     private shapeAssistRibbonEl: HTMLElement | null = null;
     private shapeAssistHandlesEl: HTMLElement | null = null;
     private shapeAssistDragKey: ShapeAssistHandleKey | null = null;
+    private shapeAssistDragStartSnapshot: ShapeAssistSnapshot | null = null;
+    private shapeAssistUndoStack: ShapeAssistSnapshot[] = [];
+    private shapeAssistRedoStack: ShapeAssistSnapshot[] = [];
     private straightLineStrokeGroup: FixerGroup | null = null;
     private straightLineUndoGroup: FixerGroup | null = null;
     private straightLinePreviewActive = false;
@@ -799,6 +807,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.shapeAssistHandles = this.createShapeAssistHandles(mode);
         this.updateShapeAssistRibbon();
         this.renderShapeAssistPreview();
+        this.pushShapeAssistSnapshot();
     }
 
     private chooseShapeAssistMode(samples: StrokeSample[]): ShapeAssistMode {
@@ -912,6 +921,7 @@ export class DrawingScreen implements CanvasDelegate {
 
         this.updateShapeAssistRibbon();
         this.updateShapeAssistHandles();
+        this.resetShapeAssistEditHistory();
         document.addEventListener('mousedown', this.onShapeAssistDocumentMouseDown, true);
     }
 
@@ -922,6 +932,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.shapeAssistRibbonEl = null;
         this.shapeAssistHandlesEl = null;
         this.shapeAssistDragKey = null;
+        this.shapeAssistDragStartSnapshot = null;
     }
 
     private shapeAssistButton(label: string, onClick: () => void): HTMLButtonElement {
@@ -974,6 +985,7 @@ export class DrawingScreen implements CanvasDelegate {
         e.preventDefault();
         e.stopPropagation();
         this.shapeAssistDragKey = key;
+        this.shapeAssistDragStartSnapshot = this.currentShapeAssistSnapshot();
         document.addEventListener('mousemove', this.onShapeAssistHandleMove);
         document.addEventListener('mouseup', this.onShapeAssistHandleUp);
     }
@@ -989,9 +1001,15 @@ export class DrawingScreen implements CanvasDelegate {
     };
 
     private onShapeAssistHandleUp = (): void => {
+        const before = this.shapeAssistDragStartSnapshot;
+        const after = this.currentShapeAssistSnapshot();
         this.shapeAssistDragKey = null;
+        this.shapeAssistDragStartSnapshot = null;
         document.removeEventListener('mousemove', this.onShapeAssistHandleMove);
         document.removeEventListener('mouseup', this.onShapeAssistHandleUp);
+        if (before && after && !this.shapeAssistSnapshotsEqual(before, after)) {
+            this.pushShapeAssistSnapshot(after);
+        }
     };
 
     private onShapeAssistDocumentMouseDown = (e: MouseEvent): void => {
@@ -999,6 +1017,7 @@ export class DrawingScreen implements CanvasDelegate {
         const target = e.target as Node | null;
         if (!target) return;
         if (this.shapeAssistRibbonEl?.contains(target) || this.shapeAssistHandlesEl?.contains(target)) return;
+        if (this.undoBtnEl?.contains(target) || this.redoBtnEl?.contains(target)) return;
         if (target === this.glCanvas) return;
         void this.commitShapeAssistContext();
     };
@@ -1020,6 +1039,82 @@ export class DrawingScreen implements CanvasDelegate {
         this.resetShapeAssistState();
     }
 
+    private resetShapeAssistEditHistory(): void {
+        this.shapeAssistUndoStack = [];
+        this.shapeAssistRedoStack = [];
+        const snapshot = this.currentShapeAssistSnapshot();
+        if (snapshot) this.shapeAssistUndoStack.push(snapshot);
+        this.updateUndoRedoButtons();
+    }
+
+    private pushShapeAssistSnapshot(snapshot: ShapeAssistSnapshot | null = this.currentShapeAssistSnapshot()): void {
+        if (!snapshot) return;
+        const current = this.shapeAssistUndoStack[this.shapeAssistUndoStack.length - 1];
+        if (current && this.shapeAssistSnapshotsEqual(current, snapshot)) return;
+        this.shapeAssistUndoStack.push(this.cloneShapeAssistSnapshot(snapshot));
+        this.shapeAssistRedoStack = [];
+        this.updateUndoRedoButtons();
+    }
+
+    private undoShapeAssistEdit(): void {
+        if (this.shapeAssistUndoStack.length <= 1) return;
+        const current = this.shapeAssistUndoStack.pop()!;
+        this.shapeAssistRedoStack.push(current);
+        this.applyShapeAssistSnapshot(this.shapeAssistUndoStack[this.shapeAssistUndoStack.length - 1]);
+        this.updateUndoRedoButtons();
+    }
+
+    private redoShapeAssistEdit(): void {
+        const next = this.shapeAssistRedoStack.pop();
+        if (!next) return;
+        this.shapeAssistUndoStack.push(next);
+        this.applyShapeAssistSnapshot(next);
+        this.updateUndoRedoButtons();
+    }
+
+    private currentShapeAssistSnapshot(): ShapeAssistSnapshot | null {
+        if (!this.shapeAssistHandles) return null;
+        return {
+            mode: this.shapeAssistMode,
+            handles: this.cloneShapeAssistHandles(this.shapeAssistHandles)
+        };
+    }
+
+    private applyShapeAssistSnapshot(snapshot: ShapeAssistSnapshot): void {
+        this.shapeAssistMode = snapshot.mode;
+        this.shapeAssistHandles = this.cloneShapeAssistHandles(snapshot.handles);
+        this.updateShapeAssistRibbon();
+        this.renderShapeAssistPreview();
+    }
+
+    private cloneShapeAssistSnapshot(snapshot: ShapeAssistSnapshot): ShapeAssistSnapshot {
+        return {
+            mode: snapshot.mode,
+            handles: this.cloneShapeAssistHandles(snapshot.handles)
+        };
+    }
+
+    private cloneShapeAssistHandles(handles: ShapeAssistHandles): ShapeAssistHandles {
+        return {
+            start: handles.start.clone(),
+            control1: handles.control1.clone(),
+            control2: handles.control2.clone(),
+            end: handles.end.clone()
+        };
+    }
+
+    private shapeAssistSnapshotsEqual(a: ShapeAssistSnapshot, b: ShapeAssistSnapshot): boolean {
+        return a.mode === b.mode
+            && this.pointsAlmostEqual(a.handles.start, b.handles.start)
+            && this.pointsAlmostEqual(a.handles.control1, b.handles.control1)
+            && this.pointsAlmostEqual(a.handles.control2, b.handles.control2)
+            && this.pointsAlmostEqual(a.handles.end, b.handles.end);
+    }
+
+    private pointsAlmostEqual(a: Point, b: Point): boolean {
+        return Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01;
+    }
+
     private resetShapeAssistState(): void {
         this.hideShapeAssistUI();
         this.straightLinePreviewActive = false;
@@ -1029,6 +1124,9 @@ export class DrawingScreen implements CanvasDelegate {
         this.straightLineSamples = [];
         this.shapeAssistCurveSamples = [];
         this.shapeAssistHandles = null;
+        this.shapeAssistDragStartSnapshot = null;
+        this.shapeAssistUndoStack = [];
+        this.shapeAssistRedoStack = [];
         this.straightLineStrokeGroup = null;
         this.straightLineUndoGroup = null;
         this.straightLineStartPos = null;
@@ -1103,6 +1201,10 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private undo(): void {
+        if (this.shapeAssistEditingContext) {
+            this.undoShapeAssistEdit();
+            return;
+        }
         if (this.undoStack.length === 0) return;
         if (this.pendingFillHistoryCount > 0) return;
         const group = this.undoStack.pop()!;
@@ -1122,6 +1224,10 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private redo(): void {
+        if (this.shapeAssistEditingContext) {
+            this.redoShapeAssistEdit();
+            return;
+        }
         if (this.redoStack.length === 0) return;
         const group = this.redoStack.pop()!;
         if (!this.hasAnyRedoFixer(group)) {
@@ -1141,6 +1247,11 @@ export class DrawingScreen implements CanvasDelegate {
 
     private updateUndoRedoButtons(): void {
         if (!this.undoBtnEl || !this.redoBtnEl) return;
+        if (this.shapeAssistEditingContext) {
+            this.undoBtnEl.disabled = this.shapeAssistUndoStack.length <= 1;
+            this.redoBtnEl.disabled = this.shapeAssistRedoStack.length === 0;
+            return;
+        }
         const undoTop = this.undoStack[this.undoStack.length - 1];
         const redoTop = this.redoStack[this.redoStack.length - 1];
         this.undoBtnEl.disabled = this.pendingFillHistoryCount > 0 || !this.hasAnyFixer(undoTop);
