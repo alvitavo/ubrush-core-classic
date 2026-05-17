@@ -24,7 +24,7 @@ interface StrokeSample {
     stylus: Stylus;
 }
 
-type ShapeAssistMode = 'line' | 'bezier' | 'fit' | 'ellipse';
+type ShapeAssistMode = 'line' | 'bezier' | 'fit' | 'polyline' | 'ellipse' | 'circle';
 
 interface ShapeAssistHandles {
     start: Point;
@@ -34,7 +34,7 @@ interface ShapeAssistHandles {
     anchors: Point[];
 }
 
-type ShapeAssistHandleKey = 'start' | 'control1' | 'control2' | 'end' | `anchor:${number}`;
+type ShapeAssistHandleKey = 'start' | 'control1' | 'control2' | 'end' | 'ellipseCenter' | `anchor:${number}`;
 
 interface ShapeAssistSnapshot {
     mode: ShapeAssistMode;
@@ -735,7 +735,8 @@ export class DrawingScreen implements CanvasDelegate {
 
     private buildShapeAssistSamples(mode: ShapeAssistMode, count: number): StrokeSample[] {
         if (!this.shapeAssistHandles || !this.straightLineStartStylus) return [];
-        if (mode === 'ellipse') return this.buildEllipseSamples(count);
+        if (mode === 'ellipse' || mode === 'circle') return this.buildEllipseSamples(count);
+        if (mode === 'polyline') return this.buildPolylineSamples(count);
         if (mode === 'fit') return this.buildFitSamples(count);
         if (mode === 'bezier') return this.buildBezierSamples(count);
         return this.buildLineSamples(count);
@@ -794,21 +795,45 @@ export class DrawingScreen implements CanvasDelegate {
         });
     }
 
+    private buildPolylineSamples(count: number): StrokeSample[] {
+        const handles = this.shapeAssistHandles!;
+        const points = [handles.start, ...handles.anchors, handles.end];
+        const startStylus = this.straightLineStartStylus!;
+        const endStylus = this.lastStylus;
+        const sampleCount = Math.max(points.length, count);
+        const lastIndex = sampleCount - 1;
+
+        if (points.length <= 2) return this.buildLineSamples(sampleCount);
+
+        const lengths: number[] = [];
+        let totalLength = 0;
+        for (let i = 1; i < points.length; i++) {
+            totalLength += Common.distance(points[i - 1], points[i]);
+            lengths.push(totalLength);
+        }
+        if (totalLength <= 0.001) return this.buildLineSamples(sampleCount);
+
+        return Array.from({ length: sampleCount }, (_, index) => {
+            const t = index / lastIndex;
+            const targetLength = totalLength * t;
+            let segmentIndex = lengths.findIndex((length) => length >= targetLength);
+            if (segmentIndex < 0) segmentIndex = lengths.length - 1;
+            const segmentStartLength = segmentIndex === 0 ? 0 : lengths[segmentIndex - 1];
+            const segmentLength = Math.max(0.0001, lengths[segmentIndex] - segmentStartLength);
+            const localT = Math.max(0, Math.min(1, (targetLength - segmentStartLength) / segmentLength));
+            return {
+                point: Common.interpolatePoint(points[segmentIndex], points[segmentIndex + 1], localT),
+                stylus: this.interpolateStylus(startStylus, endStylus, t)
+            };
+        });
+    }
+
     private buildEllipseSamples(count: number): StrokeSample[] {
         const handles = this.shapeAssistHandles!;
         const anchors = handles.anchors.length >= 4
             ? handles.anchors
             : this.createEllipseAnchorsFromBounds(this.pointsBounds(this.shapeAssistCurveSamples.map((sample) => sample.point)));
-        const left = anchors[0];
-        const right = anchors[1];
-        const top = anchors[2];
-        const bottom = anchors[3];
-        const center = new Point(
-            (left.x + right.x + top.x + bottom.x) * 0.25,
-            (left.y + right.y + top.y + bottom.y) * 0.25
-        );
-        const rx = Math.max(1, Common.distance(left, right) * 0.5);
-        const ry = Math.max(1, Common.distance(top, bottom) * 0.5);
+        const axis = this.ellipseAxesFromAnchors(anchors);
         const sampleCount = Math.max(48, count);
         const startStylus = this.straightLineStartStylus!;
         const endStylus = this.lastStylus;
@@ -817,15 +842,19 @@ export class DrawingScreen implements CanvasDelegate {
             const t = index / sampleCount;
             const a = t * Math.PI * 2;
             return {
-                point: new Point(center.x + Math.cos(a) * rx, center.y + Math.sin(a) * ry),
+                point: new Point(
+                    axis.center.x + Math.cos(a) * axis.axisA.x + Math.sin(a) * axis.axisB.x,
+                    axis.center.y + Math.cos(a) * axis.axisA.y + Math.sin(a) * axis.axisB.y
+                ),
                 stylus: this.interpolateStylus(startStylus, endStylus, t)
             };
         });
     }
 
     private createShapeAssistHandles(mode: ShapeAssistMode): ShapeAssistHandles {
-        const start = this.straightLineStartPos!.clone();
-        const end = this.lastPos.clone();
+        const polylinePoints = mode === 'polyline' ? this.extractPolylinePoints(this.shapeAssistCurveSamples) : null;
+        const start = polylinePoints?.[0].clone() ?? this.straightLineStartPos!.clone();
+        const end = polylinePoints?.[polylinePoints.length - 1].clone() ?? this.lastPos.clone();
         const bounds = this.pointsBounds(this.shapeAssistCurveSamples.map((sample) => sample.point));
         const chord = Math.max(1, Common.distance(start, end));
         const startTangent = mode === 'bezier' ? this.strokeTangent(this.shapeAssistCurveSamples, true) : this.unitPoint(start, end);
@@ -838,8 +867,12 @@ export class DrawingScreen implements CanvasDelegate {
             end,
             anchors: mode === 'fit'
                 ? this.extractFitAnchors(this.shapeAssistCurveSamples)
+                : mode === 'polyline' && polylinePoints
+                    ? polylinePoints.slice(1, -1).map((point) => point.clone())
                 : mode === 'ellipse'
                     ? this.createEllipseAnchorsFromBounds(bounds)
+                    : mode === 'circle'
+                        ? this.createCircleAnchorsFromBounds(bounds)
                     : []
         };
     }
@@ -860,20 +893,41 @@ export class DrawingScreen implements CanvasDelegate {
 
     private selectShapeAssistMode(mode: ShapeAssistMode): void {
         if (this.shapeAssistMode === mode) return;
+        const previousMode = this.shapeAssistMode;
+        const previousHandles = this.shapeAssistHandles ? this.cloneShapeAssistHandles(this.shapeAssistHandles) : null;
         this.shapeAssistMode = mode;
         this.shapeAssistHandles = this.createShapeAssistHandles(mode);
+        this.reuseEllipseGeometryForMode(previousMode, previousHandles, mode);
         this.updateShapeAssistRibbon();
         this.renderShapeAssistPreview();
         this.pushShapeAssistSnapshot();
+    }
+
+    private reuseEllipseGeometryForMode(previousMode: ShapeAssistMode, previousHandles: ShapeAssistHandles | null, mode: ShapeAssistMode): void {
+        if (!previousHandles || previousHandles.anchors.length < 4 || !this.shapeAssistHandles) return;
+        if ((previousMode !== 'ellipse' && previousMode !== 'circle') || (mode !== 'ellipse' && mode !== 'circle')) return;
+
+        const { center, axisA, axisB } = this.ellipseAxesFromAnchors(previousHandles.anchors);
+        if (mode === 'ellipse') {
+            this.shapeAssistHandles.anchors = previousHandles.anchors.map((anchor) => anchor.clone());
+            return;
+        }
+
+        const radius = Math.max(1, (this.pointLength(axisA) + this.pointLength(axisB)) * 0.5);
+        const nextAxisA = this.pointWithLength(axisA, radius);
+        const nextAxisB = this.orientedPerpendicular(nextAxisA, axisB, radius);
+        this.setEllipseAnchors(center, nextAxisA, nextAxisB);
     }
 
     private chooseShapeAssistMode(samples: StrokeSample[]): ShapeAssistMode {
         if (samples.length < 3) return 'line';
         const pathLength = this.strokePathLength(samples);
         if (pathLength <= 0) return 'line';
-        if (this.isClosedStroke(samples, pathLength)) return 'ellipse';
         const chord = Common.distance(samples[0].point, samples[samples.length - 1].point);
-        return chord / pathLength > 0.94 ? 'line' : 'fit';
+        if (chord / pathLength > 0.94) return 'line';
+        if (this.extractPolylinePoints(samples)) return 'polyline';
+        if (this.isClosedStroke(samples, pathLength)) return 'ellipse';
+        return 'fit';
     }
 
     private isClosedStroke(samples: StrokeSample[], pathLength: number): boolean {
@@ -892,6 +946,103 @@ export class DrawingScreen implements CanvasDelegate {
             length += Common.distance(samples[i - 1].point, samples[i].point);
         }
         return length;
+    }
+
+    private extractPolylinePoints(samples: StrokeSample[]): Point[] | null {
+        if (samples.length < 4) return null;
+
+        const points = samples.map((sample) => sample.point);
+        const bounds = this.pointsBounds(points);
+        const diagonal = Math.hypot(bounds.size.width, bounds.size.height);
+        if (diagonal <= 1) return null;
+
+        const pathLength = this.strokePathLength(samples);
+        const closed = this.isClosedStroke(samples, pathLength);
+        const tolerance = Math.max(6, diagonal * 0.035);
+        const simplified = closed
+            ? this.simplifyClosedPoints(points, tolerance)
+            : this.simplifyPoints(points, tolerance);
+        const segmentCount = Math.max(0, simplified.length - 1);
+
+        if (closed && segmentCount < 3) return null;
+        if (!closed && segmentCount < 2) return null;
+        if (segmentCount > 6) return null;
+        if (this.polylineCornerCount(simplified, closed) < (closed ? 3 : 1)) return null;
+
+        const error = this.polylineFitError(points, simplified);
+        if (error.max > tolerance * 2.2 || error.average > tolerance * 0.85) return null;
+
+        return simplified.map((point) => point.clone());
+    }
+
+    private simplifyClosedPoints(points: Point[], tolerance: number): Point[] {
+        if (points.length <= 3) return points.map((point) => point.clone());
+
+        const openPoints = points.slice();
+        if (Common.distance(openPoints[0], openPoints[openPoints.length - 1]) <= tolerance * 2) {
+            openPoints.pop();
+        }
+        if (openPoints.length <= 3) return [...openPoints.map((point) => point.clone()), openPoints[0].clone()];
+
+        const first = openPoints[0];
+        let splitIndex = 1;
+        let splitDistance = -1;
+        for (let i = 1; i < openPoints.length; i++) {
+            const distance = Common.distance(first, openPoints[i]);
+            if (distance > splitDistance) {
+                splitDistance = distance;
+                splitIndex = i;
+            }
+        }
+
+        const loop = [...openPoints, first];
+        const firstArc = this.simplifyPoints(loop.slice(0, splitIndex + 1), tolerance);
+        const secondArc = this.simplifyPoints(loop.slice(splitIndex), tolerance);
+        return firstArc.concat(secondArc.slice(1));
+    }
+
+    private polylineFitError(points: Point[], polyline: Point[]): { max: number; average: number } {
+        let max = 0;
+        let total = 0;
+        for (const point of points) {
+            const distance = this.pointPolylineDistance(point, polyline);
+            max = Math.max(max, distance);
+            total += distance;
+        }
+        return { max, average: total / Math.max(1, points.length) };
+    }
+
+    private pointPolylineDistance(point: Point, polyline: Point[]): number {
+        let best = Infinity;
+        for (let i = 1; i < polyline.length; i++) {
+            best = Math.min(best, this.pointSegmentDistance(point, polyline[i - 1], polyline[i]));
+        }
+        return best;
+    }
+
+    private polylineCornerCount(points: Point[], closed: boolean): number {
+        const end = closed ? points.length - 1 : points.length;
+        let count = 0;
+        for (let i = closed ? 0 : 1; i < (closed ? end : points.length - 1); i++) {
+            const prev = points[(i - 1 + end) % end];
+            const current = points[i];
+            const next = points[(i + 1) % end];
+            const angle = this.turnAngle(prev, current, next);
+            if (angle > 0.38) count++;
+        }
+        return count;
+    }
+
+    private turnAngle(prev: Point, current: Point, next: Point): number {
+        const ax = current.x - prev.x;
+        const ay = current.y - prev.y;
+        const bx = next.x - current.x;
+        const by = next.y - current.y;
+        const al = Math.hypot(ax, ay);
+        const bl = Math.hypot(bx, by);
+        if (al <= 0.001 || bl <= 0.001) return 0;
+        const dot = Math.max(-1, Math.min(1, (ax * bx + ay * by) / (al * bl)));
+        return Math.acos(dot);
     }
 
     private extractFitAnchors(samples: StrokeSample[]): Point[] {
@@ -937,6 +1088,10 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private pointLineDistance(point: Point, start: Point, end: Point): number {
+        return this.pointSegmentDistance(point, start, end);
+    }
+
+    private pointSegmentDistance(point: Point, start: Point, end: Point): number {
         const dx = end.x - start.x;
         const dy = end.y - start.y;
         const lengthSq = dx * dx + dy * dy;
@@ -969,6 +1124,134 @@ export class DrawingScreen implements CanvasDelegate {
             new Point(cx, bounds.origin.y + bounds.size.height),
             new Point(cx, bounds.origin.y)
         ];
+    }
+
+    private createCircleAnchorsFromBounds(bounds: Rect): Point[] {
+        const cx = bounds.origin.x + bounds.size.width * 0.5;
+        const cy = bounds.origin.y + bounds.size.height * 0.5;
+        const radius = Math.max(1, Math.max(bounds.size.width, bounds.size.height) * 0.5);
+        return [
+            new Point(cx - radius, cy),
+            new Point(cx + radius, cy),
+            new Point(cx, cy + radius),
+            new Point(cx, cy - radius)
+        ];
+    }
+
+    private ellipseAxesFromAnchors(anchors: Point[]): { center: Point; axisA: Point; axisB: Point } {
+        const a0 = anchors[0];
+        const a1 = anchors[1];
+        const b0 = anchors[2];
+        const b1 = anchors[3];
+        const center = new Point(
+            (a0.x + a1.x + b0.x + b1.x) * 0.25,
+            (a0.y + a1.y + b0.y + b1.y) * 0.25
+        );
+
+        let axisA = new Point((a1.x - a0.x) * 0.5, (a1.y - a0.y) * 0.5);
+        let axisB = new Point((b0.x - b1.x) * 0.5, (b0.y - b1.y) * 0.5);
+        if (Math.hypot(axisA.x, axisA.y) < 1) axisA = new Point(1, 0);
+        if (Math.hypot(axisB.x, axisB.y) < 1) axisB = this.perpendicularPoint(axisA, 1);
+
+        return { center, axisA, axisB };
+    }
+
+    private updateEllipseAnchor(index: number, point: Point): void {
+        const handles = this.shapeAssistHandles!;
+        if (handles.anchors.length < 4) {
+            handles.anchors = this.createEllipseAnchorsFromBounds(this.pointsBounds(this.shapeAssistCurveSamples.map((sample) => sample.point)));
+        }
+
+        const anchors = handles.anchors;
+        const { center, axisA, axisB } = this.ellipseAxesFromAnchors(anchors);
+        const radiusA = Math.max(1, Math.hypot(axisA.x, axisA.y));
+        const radiusB = Math.max(1, Math.hypot(axisB.x, axisB.y));
+
+        if (index === 0 || index === 1) {
+            const sign = index === 0 ? -1 : 1;
+            const dragged = new Point((point.x - center.x) * sign, (point.y - center.y) * sign);
+            const nextAxisA = this.pointLength(dragged) >= 1 ? dragged : this.pointWithLength(axisA, radiusA);
+            const nextAxisB = this.orientedPerpendicular(nextAxisA, axisB, radiusB);
+            this.setEllipseAnchors(center, nextAxisA, nextAxisB);
+            return;
+        }
+
+        if (index === 2 || index === 3) {
+            const sign = index === 2 ? 1 : -1;
+            const dragged = new Point((point.x - center.x) * sign, (point.y - center.y) * sign);
+            const nextAxisB = this.pointLength(dragged) >= 1 ? dragged : this.pointWithLength(axisB, radiusB);
+            const nextAxisA = this.orientedPerpendicular(nextAxisB, axisA, radiusA, true);
+            this.setEllipseAnchors(center, nextAxisA, nextAxisB);
+            return;
+        }
+
+        anchors[index] = point;
+    }
+
+    private updateCircleAnchor(index: number, point: Point): void {
+        const handles = this.shapeAssistHandles!;
+        if (handles.anchors.length < 4) {
+            handles.anchors = this.createCircleAnchorsFromBounds(this.pointsBounds(this.shapeAssistCurveSamples.map((sample) => sample.point)));
+        }
+
+        const anchors = handles.anchors;
+        const { center, axisA, axisB } = this.ellipseAxesFromAnchors(anchors);
+        const fallbackRadius = Math.max(1, (this.pointLength(axisA) + this.pointLength(axisB)) * 0.5);
+
+        if (index === 0 || index === 1) {
+            const sign = index === 0 ? -1 : 1;
+            const dragged = new Point((point.x - center.x) * sign, (point.y - center.y) * sign);
+            const radius = Math.max(1, this.pointLength(dragged));
+            const nextAxisA = radius > 1 ? this.pointWithLength(dragged, radius) : this.pointWithLength(axisA, fallbackRadius);
+            const nextAxisB = this.orientedPerpendicular(nextAxisA, axisB, radius);
+            this.setEllipseAnchors(center, nextAxisA, nextAxisB);
+            return;
+        }
+
+        if (index === 2 || index === 3) {
+            const sign = index === 2 ? 1 : -1;
+            const dragged = new Point((point.x - center.x) * sign, (point.y - center.y) * sign);
+            const radius = Math.max(1, this.pointLength(dragged));
+            const nextAxisB = radius > 1 ? this.pointWithLength(dragged, radius) : this.pointWithLength(axisB, fallbackRadius);
+            const nextAxisA = this.orientedPerpendicular(nextAxisB, axisA, radius, true);
+            this.setEllipseAnchors(center, nextAxisA, nextAxisB);
+            return;
+        }
+
+        anchors[index] = point;
+    }
+
+    private setEllipseAnchors(center: Point, axisA: Point, axisB: Point): void {
+        const handles = this.shapeAssistHandles!;
+        handles.anchors = [
+            new Point(center.x - axisA.x, center.y - axisA.y),
+            new Point(center.x + axisA.x, center.y + axisA.y),
+            new Point(center.x + axisB.x, center.y + axisB.y),
+            new Point(center.x - axisB.x, center.y - axisB.y)
+        ];
+    }
+
+    private orientedPerpendicular(axis: Point, previousAxis: Point, length: number, clockwise = false): Point {
+        let perpendicular = this.perpendicularPoint(axis, length);
+        if (clockwise) perpendicular = new Point(-perpendicular.x, -perpendicular.y);
+        if (perpendicular.x * previousAxis.x + perpendicular.y * previousAxis.y < 0) {
+            perpendicular = new Point(-perpendicular.x, -perpendicular.y);
+        }
+        return perpendicular;
+    }
+
+    private perpendicularPoint(point: Point, length: number): Point {
+        const currentLength = Math.max(0.0001, this.pointLength(point));
+        return new Point((-point.y / currentLength) * length, (point.x / currentLength) * length);
+    }
+
+    private pointWithLength(point: Point, length: number): Point {
+        const currentLength = Math.max(0.0001, this.pointLength(point));
+        return new Point((point.x / currentLength) * length, (point.y / currentLength) * length);
+    }
+
+    private pointLength(point: Point): number {
+        return Math.hypot(point.x, point.y);
     }
 
     private strokeTangent(samples: StrokeSample[], fromStart: boolean): Point {
@@ -1071,14 +1354,20 @@ export class DrawingScreen implements CanvasDelegate {
         smoothBtn.dataset.mode = 'bezier';
         const fitBtn = this.shapeAssistButton('Fit', () => this.selectShapeAssistMode('fit'));
         fitBtn.dataset.mode = 'fit';
+        const polylineBtn = this.shapeAssistButton('Polyline', () => this.selectShapeAssistMode('polyline'));
+        polylineBtn.dataset.mode = 'polyline';
         const ellipseBtn = this.shapeAssistButton('Ellipse', () => this.selectShapeAssistMode('ellipse'));
         ellipseBtn.dataset.mode = 'ellipse';
+        const circleBtn = this.shapeAssistButton('Circle', () => this.selectShapeAssistMode('circle'));
+        circleBtn.dataset.mode = 'circle';
         const doneBtn = this.shapeAssistButton('Done', () => void this.commitShapeAssistContext());
         doneBtn.style.marginLeft = '6px';
         ribbon.appendChild(lineBtn);
         ribbon.appendChild(smoothBtn);
         ribbon.appendChild(fitBtn);
+        ribbon.appendChild(polylineBtn);
         ribbon.appendChild(ellipseBtn);
+        ribbon.appendChild(circleBtn);
         ribbon.appendChild(doneBtn);
         this.canvasContainer.appendChild(ribbon);
         this.shapeAssistRibbonEl = ribbon;
@@ -1134,8 +1423,10 @@ export class DrawingScreen implements CanvasDelegate {
             ? ['start', 'end']
             : this.shapeAssistMode === 'bezier'
                 ? ['start', 'control1', 'control2', 'end']
-                : this.shapeAssistMode === 'ellipse'
-                    ? this.shapeAssistHandles.anchors.map((_, index) => `anchor:${index}` as ShapeAssistHandleKey)
+                : this.shapeAssistMode === 'ellipse' || this.shapeAssistMode === 'circle'
+                    ? ['ellipseCenter', ...this.shapeAssistHandles.anchors.map((_, index) => `anchor:${index}` as ShapeAssistHandleKey)]
+                    : this.shapeAssistMode === 'polyline' && this.polylineHandlesAreClosed()
+                        ? ['start', ...this.shapeAssistHandles.anchors.map((_, index) => `anchor:${index}` as ShapeAssistHandleKey)]
                     : ['start', ...this.shapeAssistHandles.anchors.map((_, index) => `anchor:${index}` as ShapeAssistHandleKey), 'end'];
 
         for (const key of keys) {
@@ -1144,10 +1435,11 @@ export class DrawingScreen implements CanvasDelegate {
             const handle = document.createElement('div');
             const isControl = key === 'control1' || key === 'control2';
             const isAnchor = key.startsWith('anchor:');
+            const isCenter = key === 'ellipseCenter';
             handle.style.cssText = `
-                position:absolute; left:${pos.x}px; top:${pos.y}px; width:13px; height:13px;
-                margin-left:-6.5px; margin-top:-6.5px; border-radius:50%;
-                background:${isControl ? '#f1b84a' : isAnchor ? '#5ad18d' : '#4a90d9'};
+                position:absolute; left:${pos.x}px; top:${pos.y}px; width:${isCenter ? 15 : 13}px; height:${isCenter ? 15 : 13}px;
+                margin-left:${isCenter ? -7.5 : -6.5}px; margin-top:${isCenter ? -7.5 : -6.5}px; border-radius:50%;
+                background:${isCenter ? '#f05a7e' : isControl ? '#f1b84a' : isAnchor ? '#5ad18d' : '#4a90d9'};
                 border:2px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,.3);
                 pointer-events:auto; cursor:grab;
             `;
@@ -1189,6 +1481,9 @@ export class DrawingScreen implements CanvasDelegate {
 
     private shapeAssistPointForHandle(key: ShapeAssistHandleKey): Point {
         const handles = this.shapeAssistHandles!;
+        if (key === 'ellipseCenter') {
+            return this.ellipseAxesFromAnchors(handles.anchors).center;
+        }
         if (key.startsWith('anchor:')) {
             const index = Number(key.slice('anchor:'.length));
             return handles.anchors[index];
@@ -1198,12 +1493,37 @@ export class DrawingScreen implements CanvasDelegate {
 
     private setShapeAssistHandlePoint(key: ShapeAssistHandleKey, point: Point): void {
         const handles = this.shapeAssistHandles!;
+        if (key === 'ellipseCenter') {
+            const currentCenter = this.ellipseAxesFromAnchors(handles.anchors).center;
+            const dx = point.x - currentCenter.x;
+            const dy = point.y - currentCenter.y;
+            handles.anchors = handles.anchors.map((anchor) => new Point(anchor.x + dx, anchor.y + dy));
+            return;
+        }
         if (key.startsWith('anchor:')) {
             const index = Number(key.slice('anchor:'.length));
+            if (this.shapeAssistMode === 'circle') {
+                this.updateCircleAnchor(index, point);
+                return;
+            }
+            if (this.shapeAssistMode === 'ellipse') {
+                this.updateEllipseAnchor(index, point);
+                return;
+            }
             handles.anchors[index] = point;
             return;
         }
+        const keepPolylineClosed = this.shapeAssistMode === 'polyline' && key === 'start' && this.polylineHandlesAreClosed();
         handles[key] = point;
+        if (keepPolylineClosed) {
+            handles.end = point.clone();
+        }
+    }
+
+    private polylineHandlesAreClosed(): boolean {
+        return this.shapeAssistMode === 'polyline'
+            && !!this.shapeAssistHandles
+            && Common.distance(this.shapeAssistHandles.start, this.shapeAssistHandles.end) < 0.01;
     }
 
     private onShapeAssistDocumentMouseDown = (e: MouseEvent): void => {
