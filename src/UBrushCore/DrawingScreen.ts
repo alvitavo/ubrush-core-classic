@@ -41,6 +41,8 @@ type ShapeAssistHandleKey = 'start' | 'control1' | 'control2' | 'end' | 'ellipse
 interface ShapeAssistSnapshot {
     mode: ShapeAssistMode;
     handles: ShapeAssistHandles;
+    size: number;
+    opacity: number;
 }
 
 interface FloodFillSnapshot {
@@ -122,6 +124,12 @@ export class DrawingScreen implements CanvasDelegate {
     private undoBtnEl!: HTMLButtonElement;
     private redoBtnEl!: HTMLButtonElement;
     private colorInputEl!: HTMLInputElement;
+    private sizeSliderEl!: HTMLInputElement;
+    private sizeValueEl!: HTMLElement;
+    private sizeSliderWrapEl!: HTMLElement;
+    private opacitySliderEl!: HTMLInputElement;
+    private opacityValueEl!: HTMLElement;
+    private opacitySliderWrapEl!: HTMLElement;
     private brushToolBtn!: HTMLButtonElement;
     private fillToolBtn!: HTMLButtonElement;
     private webGPUStatsEl!: HTMLElement;
@@ -353,19 +361,8 @@ export class DrawingScreen implements CanvasDelegate {
 
         sidebar.appendChild(this.buildToolSection());
 
-        // Size slider
-        sidebar.appendChild(sliderRow('Size', 0, 0.5, 0.001, this.currentSize, (v) => {
-            this.currentSize = v;
-            this.canvas?.lineDriver.setBrushSize(v);
-            this.saveState();
-        }));
-
-        // Opacity slider
-        sidebar.appendChild(sliderRow('Opacity', 0, 1, 0.05, this.currentOpacity, (v) => {
-            this.currentOpacity = v;
-            this.canvas?.lineDriver.setBrushOpacity(v);
-            this.saveState();
-        }));
+        sidebar.appendChild(this.buildBrushSizeSlider());
+        sidebar.appendChild(this.buildBrushOpacitySlider());
 
         // Divider
         sidebar.appendChild(divider());
@@ -1659,6 +1656,7 @@ export class DrawingScreen implements CanvasDelegate {
         const target = e.target as Node | null;
         if (!target) return;
         if (this.shapeAssistRibbonEl?.contains(target) || this.shapeAssistHandlesEl?.contains(target)) return;
+        if (this.sizeSliderWrapEl?.contains(target) || this.opacitySliderWrapEl?.contains(target)) return;
         if (this.undoBtnEl?.contains(target) || this.redoBtnEl?.contains(target)) return;
         if (target === this.glCanvas) return;
         void this.commitShapeAssistContext();
@@ -1718,13 +1716,17 @@ export class DrawingScreen implements CanvasDelegate {
         if (!this.shapeAssistHandles) return null;
         return {
             mode: this.shapeAssistMode,
-            handles: this.cloneShapeAssistHandles(this.shapeAssistHandles)
+            handles: this.cloneShapeAssistHandles(this.shapeAssistHandles),
+            size: this.currentSize,
+            opacity: this.currentOpacity
         };
     }
 
     private applyShapeAssistSnapshot(snapshot: ShapeAssistSnapshot): void {
         this.shapeAssistMode = snapshot.mode;
         this.shapeAssistHandles = this.cloneShapeAssistHandles(snapshot.handles);
+        this.applyBrushSize(snapshot.size, false, false);
+        this.applyBrushOpacity(snapshot.opacity, false, false);
         this.updateShapeAssistRibbon();
         this.renderShapeAssistPreview();
     }
@@ -1732,7 +1734,9 @@ export class DrawingScreen implements CanvasDelegate {
     private cloneShapeAssistSnapshot(snapshot: ShapeAssistSnapshot): ShapeAssistSnapshot {
         return {
             mode: snapshot.mode,
-            handles: this.cloneShapeAssistHandles(snapshot.handles)
+            handles: this.cloneShapeAssistHandles(snapshot.handles),
+            size: snapshot.size,
+            opacity: snapshot.opacity
         };
     }
 
@@ -1748,6 +1752,8 @@ export class DrawingScreen implements CanvasDelegate {
 
     private shapeAssistSnapshotsEqual(a: ShapeAssistSnapshot, b: ShapeAssistSnapshot): boolean {
         return a.mode === b.mode
+            && Math.abs(a.size - b.size) < 0.0001
+            && Math.abs(a.opacity - b.opacity) < 0.0001
             && this.pointsAlmostEqual(a.handles.start, b.handles.start)
             && this.pointsAlmostEqual(a.handles.control1, b.handles.control1)
             && this.pointsAlmostEqual(a.handles.control2, b.handles.control2)
@@ -1978,6 +1984,84 @@ export class DrawingScreen implements CanvasDelegate {
 
         this.updateToolButtons();
         return wrap;
+    }
+
+    private buildBrushSizeSlider(): HTMLElement {
+        const { wrap, input, valueEl } = this.brushControlSlider('Size', 0, 0.5, 0.001, this.currentSize, 2);
+        this.sizeSliderWrapEl = wrap;
+        this.sizeSliderEl = input;
+        this.sizeValueEl = valueEl;
+        input.addEventListener('input', () => this.applyBrushSize(Number(input.value), true));
+        input.addEventListener('change', () => this.pushShapeAssistSnapshotForBrushControl());
+        return wrap;
+    }
+
+    private buildBrushOpacitySlider(): HTMLElement {
+        const { wrap, input, valueEl } = this.brushControlSlider('Opacity', 0, 1, 0.05, this.currentOpacity, 2);
+        this.opacitySliderWrapEl = wrap;
+        this.opacitySliderEl = input;
+        this.opacityValueEl = valueEl;
+        input.addEventListener('input', () => this.applyBrushOpacity(Number(input.value), true));
+        input.addEventListener('change', () => this.pushShapeAssistSnapshotForBrushControl());
+        return wrap;
+    }
+
+    private brushControlSlider(labelText: string, min: number, max: number, step: number, initial: number, decimals: number): { wrap: HTMLElement; input: HTMLInputElement; valueEl: HTMLElement } {
+        const wrap = document.createElement('div');
+        const header = document.createElement('div');
+        header.style.cssText = `display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;`;
+        const lbl = document.createElement('span');
+        lbl.textContent = labelText;
+        lbl.style.cssText = `font-size:11px; color:#9a9a9a; font-weight:600; text-transform:uppercase; letter-spacing:.4px;`;
+        const valueEl = document.createElement('span');
+        valueEl.style.cssText = `font-size:11px; color:#7a9fc0;`;
+        valueEl.textContent = initial.toFixed(decimals);
+        header.appendChild(lbl);
+        header.appendChild(valueEl);
+        wrap.appendChild(header);
+
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = String(min);
+        input.max = String(max);
+        input.step = String(step);
+        input.value = String(initial);
+        input.style.cssText = `width:100%; accent-color:#4a90d9; cursor:pointer;`;
+        wrap.appendChild(input);
+        return { wrap, input, valueEl };
+    }
+
+    private applyBrushSize(value: number, fromUser: boolean = false, refreshPreview: boolean = true): void {
+        this.currentSize = value;
+        this.canvas?.lineDriver.setBrushSize(value);
+        this.updateBrushControlSliders();
+        if (refreshPreview && this.shapeAssistEditingContext) {
+            this.renderShapeAssistPreview(true);
+        }
+        if (fromUser) this.saveState();
+    }
+
+    private applyBrushOpacity(value: number, fromUser: boolean = false, refreshPreview: boolean = true): void {
+        this.currentOpacity = value;
+        this.canvas?.lineDriver.setBrushOpacity(value);
+        this.updateBrushControlSliders();
+        if (refreshPreview && this.shapeAssistEditingContext) {
+            this.renderShapeAssistPreview(true);
+        }
+        if (fromUser) this.saveState();
+    }
+
+    private updateBrushControlSliders(): void {
+        if (this.sizeSliderEl) this.sizeSliderEl.value = String(this.currentSize);
+        if (this.sizeValueEl) this.sizeValueEl.textContent = this.currentSize.toFixed(2);
+        if (this.opacitySliderEl) this.opacitySliderEl.value = String(this.currentOpacity);
+        if (this.opacityValueEl) this.opacityValueEl.textContent = this.currentOpacity.toFixed(2);
+    }
+
+    private pushShapeAssistSnapshotForBrushControl(): void {
+        if (this.shapeAssistEditingContext) {
+            this.pushShapeAssistSnapshot();
+        }
     }
 
     private toolButton(text: string, onClick: () => void): HTMLButtonElement {
