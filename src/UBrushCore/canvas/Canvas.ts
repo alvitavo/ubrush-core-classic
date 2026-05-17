@@ -294,6 +294,23 @@ export class Canvas implements LineDriverDelegate {
     }
 
     public replaceActiveLineWithStraightLine(start: Point, end: Point, startStylus: Stylus, endStylus: Stylus, options: { disableSmudging?: boolean } = {}): void {
+        const distance = Common.distance(start, end);
+        const steps = Math.max(1, Math.ceil(distance / 8));
+        const samples: Array<{ point: Point; stylus: Stylus }> = [{ point: start, stylus: startStylus }];
+        for (let i = 1; i <= steps; i++) {
+            const t = i / steps;
+            samples.push({
+                point: Common.interpolatePoint(start, end, t),
+                stylus: this.interpolateStylus(startStylus, endStylus, t)
+            });
+        }
+
+        this.replaceActiveLineWithPath(samples, options);
+    }
+
+    public replaceActiveLineWithPath(samples: Array<{ point: Point; stylus: Stylus }>, options: { disableSmudging?: boolean } = {}): void {
+        if (samples.length === 0) return;
+
         const previousLineRect = this.lineRect;
         const previousUseSmudging = this.drawingEngine.useSmudging;
 
@@ -306,18 +323,15 @@ export class Canvas implements LineDriverDelegate {
 
         let changeRect: Rect | null = null;
         try {
-            this.lineDriver.moveTo(start, startStylus);
+            const first = samples[0];
+            this.lineDriver.moveTo(first.point, first.stylus);
 
-            const distance = Common.distance(start, end);
-            const steps = Math.max(1, Math.ceil(distance / 8));
-            for (let i = 1; i <= steps; i++) {
-                const t = i / steps;
-                this.lineDriver.lineTo(
-                    Common.interpolatePoint(start, end, t),
-                    this.interpolateStylus(startStylus, endStylus, t)
-                );
+            for (let i = 1; i < samples.length; i++) {
+                this.lineDriver.lineTo(samples[i].point, samples[i].stylus);
             }
-            this.lineDriver.endLine(end, endStylus);
+
+            const last = samples[samples.length - 1];
+            this.lineDriver.endLine(last.point, last.stylus);
 
             changeRect = this.flushDots();
         } finally {
