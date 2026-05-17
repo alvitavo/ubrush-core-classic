@@ -24,7 +24,7 @@ interface StrokeSample {
     stylus: Stylus;
 }
 
-type ShapeAssistMode = 'line' | 'bezier' | 'fit';
+type ShapeAssistMode = 'line' | 'bezier' | 'fit' | 'ellipse';
 
 interface ShapeAssistHandles {
     start: Point;
@@ -735,6 +735,7 @@ export class DrawingScreen implements CanvasDelegate {
 
     private buildShapeAssistSamples(mode: ShapeAssistMode, count: number): StrokeSample[] {
         if (!this.shapeAssistHandles || !this.straightLineStartStylus) return [];
+        if (mode === 'ellipse') return this.buildEllipseSamples(count);
         if (mode === 'fit') return this.buildFitSamples(count);
         if (mode === 'bezier') return this.buildBezierSamples(count);
         return this.buildLineSamples(count);
@@ -793,9 +794,39 @@ export class DrawingScreen implements CanvasDelegate {
         });
     }
 
+    private buildEllipseSamples(count: number): StrokeSample[] {
+        const handles = this.shapeAssistHandles!;
+        const anchors = handles.anchors.length >= 4
+            ? handles.anchors
+            : this.createEllipseAnchorsFromBounds(this.pointsBounds(this.shapeAssistCurveSamples.map((sample) => sample.point)));
+        const left = anchors[0];
+        const right = anchors[1];
+        const top = anchors[2];
+        const bottom = anchors[3];
+        const center = new Point(
+            (left.x + right.x + top.x + bottom.x) * 0.25,
+            (left.y + right.y + top.y + bottom.y) * 0.25
+        );
+        const rx = Math.max(1, Common.distance(left, right) * 0.5);
+        const ry = Math.max(1, Common.distance(top, bottom) * 0.5);
+        const sampleCount = Math.max(48, count);
+        const startStylus = this.straightLineStartStylus!;
+        const endStylus = this.lastStylus;
+
+        return Array.from({ length: sampleCount + 1 }, (_, index) => {
+            const t = index / sampleCount;
+            const a = t * Math.PI * 2;
+            return {
+                point: new Point(center.x + Math.cos(a) * rx, center.y + Math.sin(a) * ry),
+                stylus: this.interpolateStylus(startStylus, endStylus, t)
+            };
+        });
+    }
+
     private createShapeAssistHandles(mode: ShapeAssistMode): ShapeAssistHandles {
         const start = this.straightLineStartPos!.clone();
         const end = this.lastPos.clone();
+        const bounds = this.pointsBounds(this.shapeAssistCurveSamples.map((sample) => sample.point));
         const chord = Math.max(1, Common.distance(start, end));
         const startTangent = mode === 'bezier' ? this.strokeTangent(this.shapeAssistCurveSamples, true) : this.unitPoint(start, end);
         const endTangent = mode === 'bezier' ? this.strokeTangent(this.shapeAssistCurveSamples, false) : this.unitPoint(start, end);
@@ -805,7 +836,11 @@ export class DrawingScreen implements CanvasDelegate {
             control1: new Point(start.x + startTangent.x * chord * 0.35, start.y + startTangent.y * chord * 0.35),
             control2: new Point(end.x - endTangent.x * chord * 0.35, end.y - endTangent.y * chord * 0.35),
             end,
-            anchors: mode === 'fit' ? this.extractFitAnchors(this.shapeAssistCurveSamples) : []
+            anchors: mode === 'fit'
+                ? this.extractFitAnchors(this.shapeAssistCurveSamples)
+                : mode === 'ellipse'
+                    ? this.createEllipseAnchorsFromBounds(bounds)
+                    : []
         };
     }
 
@@ -836,8 +871,19 @@ export class DrawingScreen implements CanvasDelegate {
         if (samples.length < 3) return 'line';
         const pathLength = this.strokePathLength(samples);
         if (pathLength <= 0) return 'line';
+        if (this.isClosedStroke(samples, pathLength)) return 'ellipse';
         const chord = Common.distance(samples[0].point, samples[samples.length - 1].point);
         return chord / pathLength > 0.94 ? 'line' : 'fit';
+    }
+
+    private isClosedStroke(samples: StrokeSample[], pathLength: number): boolean {
+        if (samples.length < 8) return false;
+        const points = samples.map((sample) => sample.point);
+        const bounds = this.pointsBounds(points);
+        const diagonal = Math.hypot(bounds.size.width, bounds.size.height);
+        if (diagonal <= 1) return false;
+        const closeDistance = Common.distance(samples[0].point, samples[samples.length - 1].point);
+        return closeDistance <= diagonal * 0.2 && pathLength >= diagonal * 1.8;
     }
 
     private strokePathLength(samples: StrokeSample[]): number {
@@ -912,6 +958,17 @@ export class DrawingScreen implements CanvasDelegate {
             maxY = Math.max(maxY, point.y);
         }
         return new Rect(minX, minY, maxX - minX, maxY - minY);
+    }
+
+    private createEllipseAnchorsFromBounds(bounds: Rect): Point[] {
+        const cx = bounds.origin.x + bounds.size.width * 0.5;
+        const cy = bounds.origin.y + bounds.size.height * 0.5;
+        return [
+            new Point(bounds.origin.x, cy),
+            new Point(bounds.origin.x + bounds.size.width, cy),
+            new Point(cx, bounds.origin.y + bounds.size.height),
+            new Point(cx, bounds.origin.y)
+        ];
     }
 
     private strokeTangent(samples: StrokeSample[], fromStart: boolean): Point {
@@ -1014,11 +1071,14 @@ export class DrawingScreen implements CanvasDelegate {
         smoothBtn.dataset.mode = 'bezier';
         const fitBtn = this.shapeAssistButton('Fit', () => this.selectShapeAssistMode('fit'));
         fitBtn.dataset.mode = 'fit';
+        const ellipseBtn = this.shapeAssistButton('Ellipse', () => this.selectShapeAssistMode('ellipse'));
+        ellipseBtn.dataset.mode = 'ellipse';
         const doneBtn = this.shapeAssistButton('Done', () => void this.commitShapeAssistContext());
         doneBtn.style.marginLeft = '6px';
         ribbon.appendChild(lineBtn);
         ribbon.appendChild(smoothBtn);
         ribbon.appendChild(fitBtn);
+        ribbon.appendChild(ellipseBtn);
         ribbon.appendChild(doneBtn);
         this.canvasContainer.appendChild(ribbon);
         this.shapeAssistRibbonEl = ribbon;
@@ -1074,7 +1134,9 @@ export class DrawingScreen implements CanvasDelegate {
             ? ['start', 'end']
             : this.shapeAssistMode === 'bezier'
                 ? ['start', 'control1', 'control2', 'end']
-                : ['start', ...this.shapeAssistHandles.anchors.map((_, index) => `anchor:${index}` as ShapeAssistHandleKey), 'end'];
+                : this.shapeAssistMode === 'ellipse'
+                    ? this.shapeAssistHandles.anchors.map((_, index) => `anchor:${index}` as ShapeAssistHandleKey)
+                    : ['start', ...this.shapeAssistHandles.anchors.map((_, index) => `anchor:${index}` as ShapeAssistHandleKey), 'end'];
 
         for (const key of keys) {
             const point = this.shapeAssistPointForHandle(key);
