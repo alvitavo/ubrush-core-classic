@@ -832,7 +832,7 @@ export class DrawingScreen implements CanvasDelegate {
         const handles = this.shapeAssistHandles!;
         const anchors = handles.anchors.length >= 4
             ? handles.anchors
-            : this.createEllipseAnchorsFromBounds(this.pointsBounds(this.shapeAssistCurveSamples.map((sample) => sample.point)));
+            : this.createEllipseAnchorsFromSamples(this.shapeAssistCurveSamples);
         const axis = this.ellipseAxesFromAnchors(anchors);
         const sampleCount = Math.max(48, count);
         const startStylus = this.straightLineStartStylus!;
@@ -870,7 +870,7 @@ export class DrawingScreen implements CanvasDelegate {
                 : mode === 'polyline' && polylinePoints
                     ? polylinePoints.slice(1, -1).map((point) => point.clone())
                 : mode === 'ellipse'
-                    ? this.createEllipseAnchorsFromBounds(bounds)
+                    ? this.createEllipseAnchorsFromSamples(this.shapeAssistCurveSamples)
                     : mode === 'circle'
                         ? this.createCircleAnchorsFromBounds(bounds)
                     : []
@@ -906,6 +906,7 @@ export class DrawingScreen implements CanvasDelegate {
     private reuseEllipseGeometryForMode(previousMode: ShapeAssistMode, previousHandles: ShapeAssistHandles | null, mode: ShapeAssistMode): void {
         if (!previousHandles || previousHandles.anchors.length < 4 || !this.shapeAssistHandles) return;
         if ((previousMode !== 'ellipse' && previousMode !== 'circle') || (mode !== 'ellipse' && mode !== 'circle')) return;
+        if (previousMode === 'circle' && mode === 'ellipse') return;
 
         const { center, axisA, axisB } = this.ellipseAxesFromAnchors(previousHandles.anchors);
         if (mode === 'ellipse') {
@@ -1123,6 +1124,79 @@ export class DrawingScreen implements CanvasDelegate {
             new Point(bounds.origin.x + bounds.size.width, cy),
             new Point(cx, bounds.origin.y + bounds.size.height),
             new Point(cx, bounds.origin.y)
+        ];
+    }
+
+    private createEllipseAnchorsFromSamples(samples: StrokeSample[]): Point[] {
+        const points = samples.map((sample) => sample.point);
+        if (points.length < 2) return this.createEllipseAnchorsFromBounds(this.pointsBounds(points));
+
+        let meanX = 0;
+        let meanY = 0;
+        for (const point of points) {
+            meanX += point.x;
+            meanY += point.y;
+        }
+        meanX /= points.length;
+        meanY /= points.length;
+
+        let xx = 0;
+        let xy = 0;
+        let yy = 0;
+        for (const point of points) {
+            const dx = point.x - meanX;
+            const dy = point.y - meanY;
+            xx += dx * dx;
+            xy += dx * dy;
+            yy += dy * dy;
+        }
+
+        const axisConfidence = Math.hypot(xx - yy, 2 * xy) / Math.max(0.0001, xx + yy);
+        if (axisConfidence < 0.18) {
+            return this.createEllipseAnchorsFromBounds(this.pointsBounds(points));
+        }
+
+        const angle = Math.abs(xy) <= 0.0001 && Math.abs(xx - yy) <= 0.0001
+            ? 0
+            : 0.5 * Math.atan2(2 * xy, xx - yy);
+        let axisAUnit = new Point(Math.cos(angle), Math.sin(angle));
+        let axisBUnit = new Point(-axisAUnit.y, axisAUnit.x);
+        let minA = Infinity;
+        let maxA = -Infinity;
+        let minB = Infinity;
+        let maxB = -Infinity;
+        for (const point of points) {
+            const dx = point.x - meanX;
+            const dy = point.y - meanY;
+            const a = dx * axisAUnit.x + dy * axisAUnit.y;
+            const b = dx * axisBUnit.x + dy * axisBUnit.y;
+            minA = Math.min(minA, a);
+            maxA = Math.max(maxA, a);
+            minB = Math.min(minB, b);
+            maxB = Math.max(maxB, b);
+        }
+
+        let radiusA = Math.max(1, (maxA - minA) * 0.5);
+        let radiusB = Math.max(1, (maxB - minB) * 0.5);
+        const centerOffsetA = (minA + maxA) * 0.5;
+        const centerOffsetB = (minB + maxB) * 0.5;
+        const center = new Point(
+            meanX + axisAUnit.x * centerOffsetA + axisBUnit.x * centerOffsetB,
+            meanY + axisAUnit.y * centerOffsetA + axisBUnit.y * centerOffsetB
+        );
+
+        if (radiusB > radiusA) {
+            [radiusA, radiusB] = [radiusB, radiusA];
+            [axisAUnit, axisBUnit] = [axisBUnit, new Point(-axisAUnit.x, -axisAUnit.y)];
+        }
+
+        const axisA = new Point(axisAUnit.x * radiusA, axisAUnit.y * radiusA);
+        const axisB = new Point(axisBUnit.x * radiusB, axisBUnit.y * radiusB);
+        return [
+            new Point(center.x - axisA.x, center.y - axisA.y),
+            new Point(center.x + axisA.x, center.y + axisA.y),
+            new Point(center.x + axisB.x, center.y + axisB.y),
+            new Point(center.x - axisB.x, center.y - axisB.y)
         ];
     }
 
