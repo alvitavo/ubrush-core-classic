@@ -19,6 +19,7 @@ import { FloodFillTuningMode } from '../UBrushCore/program/webgpu/WGPUFloodFillP
 
 const SIDEBAR_W = 220;
 const STRAIGHTEN_MORPH_MS = 180;
+const SHAPE_ASSIST_EDIT_MORPH_MS = 90;
 
 interface StrokeSample {
     point: Point;
@@ -77,6 +78,8 @@ export class DrawingScreen implements CanvasDelegate {
     private shapeAssistHandlesEl: HTMLElement | null = null;
     private shapeAssistDragKey: ShapeAssistHandleKey | null = null;
     private shapeAssistDragStartSnapshot: ShapeAssistSnapshot | null = null;
+    private shapeAssistPreviewAnimationToken = 0;
+    private shapeAssistRenderedSamples: StrokeSample[] = [];
     private shapeAssistUndoStack: ShapeAssistSnapshot[] = [];
     private shapeAssistRedoStack: ShapeAssistSnapshot[] = [];
     private straightLineStrokeGroup: FixerGroup | null = null;
@@ -561,6 +564,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.straightLineActivating = false;
         this.straightLineActivationPromise = null;
         this.straightLineSamples = [];
+        this.shapeAssistRenderedSamples = [];
         this.shapeAssistCurveSamples = [];
         this.shapeAssistMode = 'line';
         this.shapeAssistHandles = null;
@@ -616,6 +620,7 @@ export class DrawingScreen implements CanvasDelegate {
                 stylus: this.cloneStylus(this.lastStylus)
             });
             this.canvas?.lineTo(this.lastPos, this.lastStylus);
+            this.restartStraightLineTimer();
         }
     };
 
@@ -650,6 +655,11 @@ export class DrawingScreen implements CanvasDelegate {
         this.straightLineTimer = window.setTimeout(() => {
             this.straightLineActivationPromise = this.activateStraightLinePreview(token);
         }, 3000);
+    }
+
+    private restartStraightLineTimer(): void {
+        this.clearStraightLineTimer();
+        this.startStraightLineTimer();
     }
 
     private clearStraightLineTimer(): void {
@@ -721,11 +731,48 @@ export class DrawingScreen implements CanvasDelegate {
         });
     }
 
-    private renderShapeAssistPreview(): void {
+    private renderShapeAssistPreview(animated: boolean = false): void {
         if (!this.canvas || !this.shapeAssistHandles) return;
-        const samples = this.buildShapeAssistSamples(this.shapeAssistMode, Math.max(2, this.shapeAssistCurveSamples.length));
-        this.canvas.replaceActiveLineWithPath(samples, { disableSmudging: this.canvas.brushUsesSmudging() });
+        const targetSamples = this.buildShapeAssistSamples(this.shapeAssistMode, Math.max(2, this.shapeAssistCurveSamples.length));
         this.updateShapeAssistHandles();
+
+        if (!animated || this.shapeAssistRenderedSamples.length < 2) {
+            this.shapeAssistPreviewAnimationToken++;
+            this.applyShapeAssistPreviewSamples(targetSamples);
+            return;
+        }
+
+        this.animateShapeAssistPreview(targetSamples);
+    }
+
+    private applyShapeAssistPreviewSamples(samples: StrokeSample[]): void {
+        if (!this.canvas) return;
+        this.canvas.replaceActiveLineWithPath(samples, { disableSmudging: this.canvas.brushUsesSmudging() });
+        this.shapeAssistRenderedSamples = this.cloneStrokeSamples(samples);
+    }
+
+    private animateShapeAssistPreview(targetSamples: StrokeSample[]): void {
+        if (!this.canvas) return;
+        const token = ++this.shapeAssistPreviewAnimationToken;
+        const sourceSamples = this.cloneStrokeSamples(this.shapeAssistRenderedSamples);
+        const startedAt = performance.now();
+
+        const frame = (now: number) => {
+            if (token !== this.shapeAssistPreviewAnimationToken || !this.canvas) return;
+
+            const rawT = Math.min(1, (now - startedAt) / SHAPE_ASSIST_EDIT_MORPH_MS);
+            const t = rawT * rawT * (3 - 2 * rawT);
+            const samples = this.buildMorphSamples(sourceSamples, targetSamples, t);
+            this.applyShapeAssistPreviewSamples(samples);
+
+            if (rawT >= 1) {
+                this.applyShapeAssistPreviewSamples(targetSamples);
+            } else {
+                requestAnimationFrame(frame);
+            }
+        };
+
+        requestAnimationFrame(frame);
     }
 
     private buildMorphSamples(curveSamples: StrokeSample[], targetSamples: StrokeSample[], t: number): StrokeSample[] {
@@ -906,7 +953,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.shapeAssistHandles = this.createShapeAssistHandles(mode);
         this.reuseEllipseGeometryForMode(previousMode, previousHandles, mode);
         this.updateShapeAssistRibbon();
-        this.renderShapeAssistPreview();
+        this.renderShapeAssistPreview(true);
         this.pushShapeAssistSnapshot();
     }
 
@@ -1545,7 +1592,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.setShapeAssistHandlePoint(this.shapeAssistDragKey, point);
         if (this.shapeAssistDragKey === 'end') this.lastPos = point.clone();
         if (this.shapeAssistDragKey === 'start') this.straightLineStartPos = point.clone();
-        this.renderShapeAssistPreview();
+        this.renderShapeAssistPreview(true);
     };
 
     private onShapeAssistHandleUp = (): void => {
@@ -1725,6 +1772,8 @@ export class DrawingScreen implements CanvasDelegate {
         this.straightLineActivationPromise = null;
         this.straightLineSamples = [];
         this.shapeAssistCurveSamples = [];
+        this.shapeAssistPreviewAnimationToken++;
+        this.shapeAssistRenderedSamples = [];
         this.shapeAssistHandles = null;
         this.shapeAssistDragStartSnapshot = null;
         this.shapeAssistUndoStack = [];
