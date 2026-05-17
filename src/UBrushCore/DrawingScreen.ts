@@ -2099,7 +2099,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.updateUndoRedoButtons();
         const run = (async () => {
             try {
-                await this.canvas!.fix(this.floodFillBaselineFixer!, false);
+                await this.canvas!.fix(this.floodFillBaselineFixer!, false, false);
                 if (token !== this.floodFillPreviewToken || !this.floodFillEditingContext) return;
 
                 const result = await this.canvas!.floodFill(
@@ -2112,6 +2112,7 @@ export class DrawingScreen implements CanvasDelegate {
                 if (token !== this.floodFillPreviewToken || !this.floodFillEditingContext) return;
                 if (!result) return;
 
+                this.canvas!.updateCanvas();
                 this.floodFillPreviewResult = result;
                 this.updateFillStats(result.metrics);
             } catch (error) {
@@ -2198,7 +2199,7 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private fillEdgeSensitivityToEngineValue(value: number): number {
-        return Math.max(0.02, (101 - value) / 100 * 1.5);
+        return Math.max(0.02, ((value + 1) / 100) * 1.5);
     }
 
     private showFloodFillUI(): void {

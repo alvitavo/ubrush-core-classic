@@ -547,14 +547,14 @@ export class Canvas implements LineDriverDelegate {
     // - (UIImage *)imageWithStageRect:(CGRect)stageRect;
     // - (UIImage *)imageWithPixelRect:(CGRect)pixelRect;
 
-    public async fix(fixer: Fixer, toLiquidLayer: boolean): Promise<void> {
+    public async fix(fixer: Fixer, toLiquidLayer: boolean, update: boolean = true): Promise<void> {
 
         if (!fixer) return;
 
         const changeRect = await this.drawingEngine.fix(fixer, toLiquidLayer);
         if (toLiquidLayer) this.needsDry = true;
 
-        if (changeRect) {
+        if (update && changeRect) {
 
             this.updateCanvasInRect(changeRect);
 
