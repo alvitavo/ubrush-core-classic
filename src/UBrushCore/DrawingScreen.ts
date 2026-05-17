@@ -2205,8 +2205,11 @@ export class DrawingScreen implements CanvasDelegate {
                             console.debug(`[FloodFill] history ready history=${history.historyMs.toFixed(1)}ms readback=${history.readbackMs.toFixed(1)}ms`);
                         }
                     })
-                    .catch((error) => console.error('Flood fill history failed', error))
-                    .finally(() => {
+                    .then(
+                        () => undefined,
+                        (error) => console.error('Flood fill history failed', error)
+                    )
+                    .then(() => {
                         if (!historyReady) {
                             const idx = this.undoStack.indexOf(pendingGroup);
                             if (idx >= 0) this.undoStack.splice(idx, 1);
@@ -2280,9 +2283,15 @@ export class DrawingScreen implements CanvasDelegate {
             }
         })();
 
-        const previewPromise = run.finally(() => {
-            if (this.floodFillPreviewPromise === previewPromise) this.floodFillPreviewPromise = null;
-        });
+        const previewPromise = run.then(
+            () => {
+                if (this.floodFillPreviewPromise === previewPromise) this.floodFillPreviewPromise = null;
+            },
+            (error) => {
+                if (this.floodFillPreviewPromise === previewPromise) this.floodFillPreviewPromise = null;
+                throw error;
+            }
+        );
         this.floodFillPreviewPromise = previewPromise;
         return this.floodFillPreviewPromise;
     }
@@ -2334,8 +2343,11 @@ export class DrawingScreen implements CanvasDelegate {
                     console.debug(`[FloodFill] history ready history=${history.historyMs.toFixed(1)}ms readback=${history.readbackMs.toFixed(1)}ms`);
                 }
             })
-            .catch((error) => console.error('Flood fill history failed', error))
-            .finally(() => {
+            .then(
+                () => undefined,
+                (error) => console.error('Flood fill history failed', error)
+            )
+            .then(() => {
                 if (!historyReady) {
                     const idx = this.undoStack.indexOf(pendingGroup);
                     if (idx >= 0) this.undoStack.splice(idx, 1);
