@@ -238,21 +238,61 @@ fn maskAt(p : vec2u) -> u32 {
     return mask[pixelIndex(p)];
 }
 
-fn edgeWeight(p : vec2u) -> f32 {
-    let maxP = params.size - vec2u(1u, 1u);
-    var insideCount = 0.0;
-    var total = 0.0;
+fn colorDistance(a : vec4f, b : vec4f) -> f32 {
+    let d = a - b;
+    return sqrt(dot(d, d));
+}
 
-    for (var oy : i32 = -1; oy <= 1; oy = oy + 1) {
-        for (var ox : i32 = -1; ox <= 1; ox = ox + 1) {
+fn maskCoverage(p : vec2u) -> f32 {
+    let maxP = params.size - vec2u(1u, 1u);
+    var covered = 0.0;
+    var totalWeight = 0.0;
+
+    for (var oy : i32 = -2; oy <= 2; oy = oy + 1) {
+        for (var ox : i32 = -2; ox <= 2; ox = ox + 1) {
             let nx = clamp(i32(p.x) + ox, 0, i32(maxP.x));
             let ny = clamp(i32(p.y) + oy, 0, i32(maxP.y));
-            insideCount = insideCount + select(0.0, 1.0, maskAt(vec2u(u32(nx), u32(ny))) != 0u);
-            total = total + 1.0;
+            let d = f32(abs(ox) + abs(oy));
+            let weight = select(0.35, select(0.65, 1.0, d <= 1.0), d <= 3.0);
+            covered = covered + weight * select(0.0, 1.0, maskAt(vec2u(u32(nx), u32(ny))) != 0u);
+            totalWeight = totalWeight + weight;
         }
     }
 
-    return clamp(insideCount / total, 0.0, 1.0);
+    return clamp(covered / totalWeight, 0.0, 1.0);
+}
+
+fn compositeOver(back : vec4f, frontRgb : vec3f, frontAlpha : f32) -> vec4f {
+    let alpha = clamp(frontAlpha, 0.0, 1.0);
+    let outAlpha = alpha + back.a * (1.0 - alpha);
+    if (outAlpha <= 0.0001) {
+        return vec4f(0.0);
+    }
+
+    let outRgb = (frontRgb * alpha + back.rgb * back.a * (1.0 - alpha)) / outAlpha;
+    return vec4f(outRgb, outAlpha);
+}
+
+fn compositeBehind(front : vec4f, backRgb : vec3f, backAlpha : f32) -> vec4f {
+    let alpha = clamp(backAlpha, 0.0, 1.0);
+    let outAlpha = front.a + alpha * (1.0 - front.a);
+    if (outAlpha <= 0.0001) {
+        return vec4f(0.0);
+    }
+
+    let outRgb = (front.rgb * front.a + backRgb * alpha * (1.0 - front.a)) / outAlpha;
+    return vec4f(outRgb, outAlpha);
+}
+
+fn fillPixel(src : vec4f, seedColor : vec4f, coverage : f32) -> vec4f {
+    let feather = smoothstep(0.08, 0.82, coverage);
+    let fillAlpha = params.fillColor.a * feather;
+
+    if (seedColor.a < 0.2) {
+        return compositeBehind(src, params.fillColor.rgb, fillAlpha);
+    }
+
+    return compositeOver(src, params.fillColor.rgb, fillAlpha);
 }
 
 @compute @workgroup_size(${TILE_SIZE}, ${TILE_SIZE})
@@ -269,7 +309,22 @@ fn main(
     }
 
     let src = textureLoad(sourceTex, vec2i(p), 0);
+    let seedColor = textureLoad(sourceTex, vec2i(params.seed), 0);
+    let coverage = maskCoverage(p);
     if (maskAt(p) == 0u) {
+        let edgeAlpha = smoothstep(0.03, 0.35, coverage);
+        let closeToSeed = colorDistance(src, seedColor) <= params.tolerance + params.edgeThreshold;
+        if (edgeAlpha > 0.001 && closeToSeed && seedColor.a < 0.2) {
+            let outColor = fillPixel(src, seedColor, coverage * 0.55);
+            textureStore(targetTex, vec2i(p), outColor);
+            atomicMin(&bounds.minX, p.x);
+            atomicMin(&bounds.minY, p.y);
+            atomicMax(&bounds.maxX, p.x);
+            atomicMax(&bounds.maxY, p.y);
+            atomicAdd(&bounds.count, 1u);
+            return;
+        }
+
         textureStore(targetTex, vec2i(p), src);
         return;
     }
@@ -280,9 +335,6 @@ fn main(
     atomicMax(&bounds.maxY, p.y);
     atomicAdd(&bounds.count, 1u);
 
-    let feather = edgeWeight(p);
-    let alpha = params.fillColor.a * smoothstep(0.05, 0.95, feather);
-    let outColor = mix(src, vec4f(params.fillColor.rgb, 1.0), alpha);
-    textureStore(targetTex, vec2i(p), vec4f(outColor.rgb, max(src.a, alpha)));
+    textureStore(targetTex, vec2i(p), fillPixel(src, seedColor, max(coverage, 0.55)));
 }
 `;
