@@ -24,16 +24,17 @@ interface StrokeSample {
     stylus: Stylus;
 }
 
-type ShapeAssistMode = 'line' | 'bezier';
+type ShapeAssistMode = 'line' | 'bezier' | 'fit';
 
 interface ShapeAssistHandles {
     start: Point;
     control1: Point;
     control2: Point;
     end: Point;
+    anchors: Point[];
 }
 
-type ShapeAssistHandleKey = keyof ShapeAssistHandles;
+type ShapeAssistHandleKey = 'start' | 'control1' | 'control2' | 'end' | `anchor:${number}`;
 
 interface ShapeAssistSnapshot {
     mode: ShapeAssistMode;
@@ -734,6 +735,7 @@ export class DrawingScreen implements CanvasDelegate {
 
     private buildShapeAssistSamples(mode: ShapeAssistMode, count: number): StrokeSample[] {
         if (!this.shapeAssistHandles || !this.straightLineStartStylus) return [];
+        if (mode === 'fit') return this.buildFitSamples(count);
         if (mode === 'bezier') return this.buildBezierSamples(count);
         return this.buildLineSamples(count);
     }
@@ -772,6 +774,25 @@ export class DrawingScreen implements CanvasDelegate {
         });
     }
 
+    private buildFitSamples(count: number): StrokeSample[] {
+        const handles = this.shapeAssistHandles!;
+        const points = [handles.start, ...handles.anchors, handles.end];
+        const startStylus = this.straightLineStartStylus!;
+        const endStylus = this.lastStylus;
+        const sampleCount = Math.max(2, count);
+        const lastIndex = sampleCount - 1;
+
+        if (points.length <= 2) return this.buildLineSamples(sampleCount);
+
+        return Array.from({ length: sampleCount }, (_, index) => {
+            const t = index / lastIndex;
+            return {
+                point: this.catmullRomPoint(points, t),
+                stylus: this.interpolateStylus(startStylus, endStylus, t)
+            };
+        });
+    }
+
     private createShapeAssistHandles(mode: ShapeAssistMode): ShapeAssistHandles {
         const start = this.straightLineStartPos!.clone();
         const end = this.lastPos.clone();
@@ -783,7 +804,8 @@ export class DrawingScreen implements CanvasDelegate {
             start,
             control1: new Point(start.x + startTangent.x * chord * 0.35, start.y + startTangent.y * chord * 0.35),
             control2: new Point(end.x - endTangent.x * chord * 0.35, end.y - endTangent.y * chord * 0.35),
-            end
+            end,
+            anchors: mode === 'fit' ? this.extractFitAnchors(this.shapeAssistCurveSamples) : []
         };
     }
 
@@ -815,7 +837,7 @@ export class DrawingScreen implements CanvasDelegate {
         const pathLength = this.strokePathLength(samples);
         if (pathLength <= 0) return 'line';
         const chord = Common.distance(samples[0].point, samples[samples.length - 1].point);
-        return chord / pathLength > 0.94 ? 'line' : 'bezier';
+        return chord / pathLength > 0.94 ? 'line' : 'fit';
     }
 
     private strokePathLength(samples: StrokeSample[]): number {
@@ -824,6 +846,72 @@ export class DrawingScreen implements CanvasDelegate {
             length += Common.distance(samples[i - 1].point, samples[i].point);
         }
         return length;
+    }
+
+    private extractFitAnchors(samples: StrokeSample[]): Point[] {
+        if (samples.length < 3) return [];
+        const points = samples.map((sample) => sample.point);
+        const bbox = this.pointsBounds(points);
+        const tolerance = Math.max(6, Math.hypot(bbox.size.width, bbox.size.height) * 0.045);
+        const simplified = this.simplifyPoints(points, tolerance);
+        const interior = simplified.slice(1, -1);
+        const maxAnchors = 4;
+
+        if (interior.length <= maxAnchors) return interior.map((point) => point.clone());
+
+        return Array.from({ length: maxAnchors }, (_, index) => {
+            const sourceIndex = Math.round(((index + 1) / (maxAnchors + 1)) * (interior.length - 1));
+            return interior[sourceIndex].clone();
+        });
+    }
+
+    private simplifyPoints(points: Point[], tolerance: number): Point[] {
+        if (points.length <= 2) return points.map((point) => point.clone());
+
+        let bestIndex = -1;
+        let bestDistance = -1;
+        const first = points[0];
+        const last = points[points.length - 1];
+
+        for (let i = 1; i < points.length - 1; i++) {
+            const distance = this.pointLineDistance(points[i], first, last);
+            if (distance > bestDistance) {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+
+        if (bestDistance <= tolerance || bestIndex < 0) {
+            return [first.clone(), last.clone()];
+        }
+
+        const left = this.simplifyPoints(points.slice(0, bestIndex + 1), tolerance);
+        const right = this.simplifyPoints(points.slice(bestIndex), tolerance);
+        return left.slice(0, -1).concat(right);
+    }
+
+    private pointLineDistance(point: Point, start: Point, end: Point): number {
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const lengthSq = dx * dx + dy * dy;
+        if (lengthSq <= 0.0001) return Common.distance(point, start);
+        const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSq));
+        const projection = new Point(start.x + dx * t, start.y + dy * t);
+        return Common.distance(point, projection);
+    }
+
+    private pointsBounds(points: Point[]): Rect {
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const point of points) {
+            minX = Math.min(minX, point.x);
+            minY = Math.min(minY, point.y);
+            maxX = Math.max(maxX, point.x);
+            maxY = Math.max(maxY, point.y);
+        }
+        return new Rect(minX, minY, maxX - minX, maxY - minY);
     }
 
     private strokeTangent(samples: StrokeSample[], fromStart: boolean): Point {
@@ -862,6 +950,24 @@ export class DrawingScreen implements CanvasDelegate {
         return new Point(
             p0.x * sss + p1.x * 3 * ss * t + p2.x * 3 * s * tt + p3.x * ttt,
             p0.y * sss + p1.y * 3 * ss * t + p2.y * 3 * s * tt + p3.y * ttt
+        );
+    }
+
+    private catmullRomPoint(points: Point[], t: number): Point {
+        const segmentCount = Math.max(1, points.length - 1);
+        const scaled = Math.min(segmentCount - 0.000001, Math.max(0, t) * segmentCount);
+        const i = Math.floor(scaled);
+        const localT = scaled - i;
+        const p0 = points[Math.max(0, i - 1)];
+        const p1 = points[i];
+        const p2 = points[Math.min(points.length - 1, i + 1)];
+        const p3 = points[Math.min(points.length - 1, i + 2)];
+        const tt = localT * localT;
+        const ttt = tt * localT;
+
+        return new Point(
+            0.5 * ((2 * p1.x) + (-p0.x + p2.x) * localT + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * tt + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * ttt),
+            0.5 * ((2 * p1.y) + (-p0.y + p2.y) * localT + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * tt + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * ttt)
         );
     }
 
@@ -904,12 +1010,15 @@ export class DrawingScreen implements CanvasDelegate {
 
         const lineBtn = this.shapeAssistButton('Line', () => this.selectShapeAssistMode('line'));
         lineBtn.dataset.mode = 'line';
-        const curveBtn = this.shapeAssistButton('Curve', () => this.selectShapeAssistMode('bezier'));
-        curveBtn.dataset.mode = 'bezier';
+        const smoothBtn = this.shapeAssistButton('Smooth', () => this.selectShapeAssistMode('bezier'));
+        smoothBtn.dataset.mode = 'bezier';
+        const fitBtn = this.shapeAssistButton('Fit', () => this.selectShapeAssistMode('fit'));
+        fitBtn.dataset.mode = 'fit';
         const doneBtn = this.shapeAssistButton('Done', () => void this.commitShapeAssistContext());
         doneBtn.style.marginLeft = '6px';
         ribbon.appendChild(lineBtn);
-        ribbon.appendChild(curveBtn);
+        ribbon.appendChild(smoothBtn);
+        ribbon.appendChild(fitBtn);
         ribbon.appendChild(doneBtn);
         this.canvasContainer.appendChild(ribbon);
         this.shapeAssistRibbonEl = ribbon;
@@ -963,16 +1072,20 @@ export class DrawingScreen implements CanvasDelegate {
         this.shapeAssistHandlesEl.replaceChildren();
         const keys: ShapeAssistHandleKey[] = this.shapeAssistMode === 'line'
             ? ['start', 'end']
-            : ['start', 'control1', 'control2', 'end'];
+            : this.shapeAssistMode === 'bezier'
+                ? ['start', 'control1', 'control2', 'end']
+                : ['start', ...this.shapeAssistHandles.anchors.map((_, index) => `anchor:${index}` as ShapeAssistHandleKey), 'end'];
 
         for (const key of keys) {
-            const point = this.shapeAssistHandles[key];
+            const point = this.shapeAssistPointForHandle(key);
             const pos = this.canvasPointToContainer(point);
             const handle = document.createElement('div');
+            const isControl = key === 'control1' || key === 'control2';
+            const isAnchor = key.startsWith('anchor:');
             handle.style.cssText = `
                 position:absolute; left:${pos.x}px; top:${pos.y}px; width:13px; height:13px;
                 margin-left:-6.5px; margin-top:-6.5px; border-radius:50%;
-                background:${key === 'control1' || key === 'control2' ? '#f1b84a' : '#4a90d9'};
+                background:${isControl ? '#f1b84a' : isAnchor ? '#5ad18d' : '#4a90d9'};
                 border:2px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,.3);
                 pointer-events:auto; cursor:grab;
             `;
@@ -994,7 +1107,7 @@ export class DrawingScreen implements CanvasDelegate {
         if (!this.shapeAssistDragKey || !this.shapeAssistHandles) return;
         e.preventDefault();
         const point = this.clientPointToCanvasPoint(e.clientX, e.clientY);
-        this.shapeAssistHandles[this.shapeAssistDragKey] = point;
+        this.setShapeAssistHandlePoint(this.shapeAssistDragKey, point);
         if (this.shapeAssistDragKey === 'end') this.lastPos = point.clone();
         if (this.shapeAssistDragKey === 'start') this.straightLineStartPos = point.clone();
         this.renderShapeAssistPreview();
@@ -1011,6 +1124,25 @@ export class DrawingScreen implements CanvasDelegate {
             this.pushShapeAssistSnapshot(after);
         }
     };
+
+    private shapeAssistPointForHandle(key: ShapeAssistHandleKey): Point {
+        const handles = this.shapeAssistHandles!;
+        if (key.startsWith('anchor:')) {
+            const index = Number(key.slice('anchor:'.length));
+            return handles.anchors[index];
+        }
+        return handles[key];
+    }
+
+    private setShapeAssistHandlePoint(key: ShapeAssistHandleKey, point: Point): void {
+        const handles = this.shapeAssistHandles!;
+        if (key.startsWith('anchor:')) {
+            const index = Number(key.slice('anchor:'.length));
+            handles.anchors[index] = point;
+            return;
+        }
+        handles[key] = point;
+    }
 
     private onShapeAssistDocumentMouseDown = (e: MouseEvent): void => {
         if (!this.shapeAssistEditingContext) return;
@@ -1099,7 +1231,8 @@ export class DrawingScreen implements CanvasDelegate {
             start: handles.start.clone(),
             control1: handles.control1.clone(),
             control2: handles.control2.clone(),
-            end: handles.end.clone()
+            end: handles.end.clone(),
+            anchors: handles.anchors.map((anchor) => anchor.clone())
         };
     }
 
@@ -1108,7 +1241,13 @@ export class DrawingScreen implements CanvasDelegate {
             && this.pointsAlmostEqual(a.handles.start, b.handles.start)
             && this.pointsAlmostEqual(a.handles.control1, b.handles.control1)
             && this.pointsAlmostEqual(a.handles.control2, b.handles.control2)
-            && this.pointsAlmostEqual(a.handles.end, b.handles.end);
+            && this.pointsAlmostEqual(a.handles.end, b.handles.end)
+            && this.pointArraysAlmostEqual(a.handles.anchors, b.handles.anchors);
+    }
+
+    private pointArraysAlmostEqual(a: Point[], b: Point[]): boolean {
+        if (a.length !== b.length) return false;
+        return a.every((point, index) => this.pointsAlmostEqual(point, b[index]));
     }
 
     private pointsAlmostEqual(a: Point, b: Point): boolean {
