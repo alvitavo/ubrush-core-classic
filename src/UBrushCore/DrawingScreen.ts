@@ -1,7 +1,7 @@
 import { getFavoritesSync, isFavorite, setFavorite } from './favorites/FavoritesManager';
 import { WGPUContext } from '../UBrushCore/gpu/webgpu/WGPUContext';
 import { bootstrapWebGPU } from '../UBrushCore/gpu/webgpu/bootstrap';
-import { Canvas, CanvasDelegate } from '../UBrushCore/canvas/Canvas';
+import { Canvas, CanvasDelegate, CanvasFloodFillResult } from '../UBrushCore/canvas/Canvas';
 import { IBrush } from '../UBrushCore/common/IBrush';
 import { Size } from '../UBrushCore/common/Size';
 import { Point } from '../UBrushCore/common/Point';
@@ -12,6 +12,7 @@ import { AffineTransform } from '../UBrushCore/common/AffineTransform';
 import { RenderObjectBlend } from '../UBrushCore/gpu/RenderObject';
 import { Common } from '../UBrushCore/common/Common';
 import { Rect } from '../UBrushCore/common/Rect';
+import { Fixer } from '../UBrushCore/common/Fixer';
 import { FixerGroup } from '../UBrushCore/common/FixerGroup';
 import { BrushCategory } from './App';
 import { FloodFillTuningMode } from '../UBrushCore/program/webgpu/WGPUFloodFillProgram';
@@ -39,6 +40,11 @@ type ShapeAssistHandleKey = 'start' | 'control1' | 'control2' | 'end' | 'ellipse
 interface ShapeAssistSnapshot {
     mode: ShapeAssistMode;
     handles: ShapeAssistHandles;
+}
+
+interface FloodFillSnapshot {
+    tolerance: number;
+    edgeSensitivity: number;
 }
 
 export class DrawingScreen implements CanvasDelegate {
@@ -90,6 +96,18 @@ export class DrawingScreen implements CanvasDelegate {
     private fillEdgeSensitivity = 72;
     private fillTuningMode: FloodFillTuningMode = 'auto';
     private fillInProgress = false;
+    private floodFillEditingContext = false;
+    private floodFillRibbonEl: HTMLElement | null = null;
+    private floodFillToleranceInputEl: HTMLInputElement | null = null;
+    private floodFillEdgeInputEl: HTMLInputElement | null = null;
+    private floodFillSeed: Point | null = null;
+    private floodFillBaselineFixer: Fixer | null = null;
+    private floodFillPreviewResult: CanvasFloodFillResult | null = null;
+    private floodFillPreviewToken = 0;
+    private floodFillPreviewQueued = false;
+    private floodFillPreviewPromise: Promise<void> | null = null;
+    private floodFillUndoStack: FloodFillSnapshot[] = [];
+    private floodFillRedoStack: FloodFillSnapshot[] = [];
 
     private savedBrush: IBrush | null = null;
     private isInitialRestore = false;
@@ -103,9 +121,7 @@ export class DrawingScreen implements CanvasDelegate {
     private colorInputEl!: HTMLInputElement;
     private brushToolBtn!: HTMLButtonElement;
     private fillToolBtn!: HTMLButtonElement;
-    private fillTuningSelectEl!: HTMLSelectElement;
     private webGPUStatsEl!: HTMLElement;
-    private fillStatsEl!: HTMLElement;
     private selectedSwatch: HTMLButtonElement | null = null;
 
     private onEditBrush: () => void;
@@ -334,8 +350,6 @@ export class DrawingScreen implements CanvasDelegate {
 
         sidebar.appendChild(this.buildToolSection());
 
-        sidebar.appendChild(this.buildWebGPUStatsSection());
-
         // Size slider
         sidebar.appendChild(sliderRow('Size', 0, 0.5, 0.001, this.currentSize, (v) => {
             this.currentSize = v;
@@ -349,18 +363,6 @@ export class DrawingScreen implements CanvasDelegate {
             this.canvas?.lineDriver.setBrushOpacity(v);
             this.saveState();
         }));
-
-        sidebar.appendChild(sliderRow('Fill Tolerance', 0, 255, 1, this.fillTolerance, (v) => {
-            this.fillTolerance = v;
-        }, 0));
-
-        sidebar.appendChild(sliderRow('Edge Sensitivity', 0, 100, 1, this.fillEdgeSensitivity, (v) => {
-            this.fillEdgeSensitivity = v;
-        }, 0));
-
-        sidebar.appendChild(row('Fill Tuning', () => this.buildFillTuningSelect()));
-
-        sidebar.appendChild(this.buildFillStatsSection());
 
         // Divider
         sidebar.appendChild(divider());
@@ -386,6 +388,8 @@ export class DrawingScreen implements CanvasDelegate {
 
         // Edit Brush button
         sidebar.appendChild(actionBtn('Edit Brush', '#2a5aa0', () => this.onEditBrush()));
+
+        sidebar.appendChild(this.buildWebGPUStatsSection());
 
         // Divider
         sidebar.appendChild(divider());
@@ -546,6 +550,9 @@ export class DrawingScreen implements CanvasDelegate {
         if (this.shapeAssistEditingContext) {
             await this.commitShapeAssistContext();
         }
+        if (this.floodFillEditingContext) {
+            await this.commitFloodFillContext();
+        }
 
         this.stylusEventCount = 0;
         this.lastPos = this.eventPoint(e);
@@ -563,7 +570,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.straightLineUndoGroup = null;
 
         if (this.currentTool === 'fill') {
-            await this.applyFloodFill(this.lastPos);
+            await this.startFloodFillContext(this.lastPos);
             return;
         }
 
@@ -1800,6 +1807,10 @@ export class DrawingScreen implements CanvasDelegate {
             this.undoShapeAssistEdit();
             return;
         }
+        if (this.floodFillEditingContext) {
+            void this.undoFloodFillEdit();
+            return;
+        }
         if (this.undoStack.length === 0) return;
         if (this.pendingFillHistoryCount > 0) return;
         const group = this.undoStack.pop()!;
@@ -1821,6 +1832,10 @@ export class DrawingScreen implements CanvasDelegate {
     private redo(): void {
         if (this.shapeAssistEditingContext) {
             this.redoShapeAssistEdit();
+            return;
+        }
+        if (this.floodFillEditingContext) {
+            void this.redoFloodFillEdit();
             return;
         }
         if (this.redoStack.length === 0) return;
@@ -1845,6 +1860,11 @@ export class DrawingScreen implements CanvasDelegate {
         if (this.shapeAssistEditingContext) {
             this.undoBtnEl.disabled = this.shapeAssistUndoStack.length <= 1;
             this.redoBtnEl.disabled = this.shapeAssistRedoStack.length === 0;
+            return;
+        }
+        if (this.floodFillEditingContext) {
+            this.undoBtnEl.disabled = this.fillInProgress;
+            this.redoBtnEl.disabled = this.fillInProgress || this.floodFillRedoStack.length === 0;
             return;
         }
         const undoTop = this.undoStack[this.undoStack.length - 1];
@@ -1941,27 +1961,6 @@ export class DrawingScreen implements CanvasDelegate {
         if (this.glCanvas) this.glCanvas.style.cursor = this.currentTool === 'fill' ? 'cell' : 'crosshair';
     }
 
-    private buildFillTuningSelect(): HTMLSelectElement {
-        this.fillTuningSelectEl = document.createElement('select');
-        this.fillTuningSelectEl.style.cssText = inputCSS;
-        const options: Array<{ value: FloodFillTuningMode; label: string }> = [
-            { value: 'auto', label: 'Auto' },
-            { value: 'lowLatency', label: 'Low Latency' },
-            { value: 'throughput', label: 'Throughput' },
-        ];
-        for (const option of options) {
-            const opt = document.createElement('option');
-            opt.value = option.value;
-            opt.textContent = option.label;
-            this.fillTuningSelectEl.appendChild(opt);
-        }
-        this.fillTuningSelectEl.value = this.fillTuningMode;
-        this.fillTuningSelectEl.addEventListener('change', () => {
-            this.fillTuningMode = this.fillTuningSelectEl.value as FloodFillTuningMode;
-        });
-        return this.fillTuningSelectEl;
-    }
-
     private buildWebGPUStatsSection(): HTMLElement {
         const wrap = document.createElement('div');
         const lbl = document.createElement('label');
@@ -2026,8 +2025,8 @@ export class DrawingScreen implements CanvasDelegate {
         if (!this.canvas || this.fillInProgress) return;
         this.fillInProgress = true;
         try {
-            const tolerance = (this.fillTolerance / 255) * 2;
-            const edgeThreshold = Math.max(0.02, (101 - this.fillEdgeSensitivity) / 100 * 1.5);
+            const tolerance = this.fillToleranceToEngineValue(this.fillTolerance);
+            const edgeThreshold = this.fillEdgeSensitivityToEngineValue(this.fillEdgeSensitivity);
             const result = await this.canvas.floodFill(seed, this.currentColor.clone(), tolerance, edgeThreshold, this.fillTuningMode);
             if (!result) return;
             console.debug(
@@ -2072,24 +2071,287 @@ export class DrawingScreen implements CanvasDelegate {
         }
     }
 
-    private buildFillStatsSection(): HTMLElement {
-        const wrap = document.createElement('div');
-        const lbl = document.createElement('label');
-        lbl.textContent = 'Fill Stats';
-        lbl.style.cssText = `display:block; font-size:11px; color:#9a9a9a; margin-bottom:5px; font-weight:600; text-transform:uppercase; letter-spacing:.4px;`;
-        wrap.appendChild(lbl);
+    private async startFloodFillContext(seed: Point): Promise<void> {
+        if (!this.canvas || this.fillInProgress) return;
 
-        this.fillStatsEl = document.createElement('div');
-        this.fillStatsEl.style.cssText = `
-            min-height:72px; padding:8px;
-            background:#202020; border:1px solid #3f3f3f; border-radius:5px;
-            color:#8fa8bd; font-size:11px; line-height:1.45;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            white-space:pre-wrap;
+        this.floodFillSeed = seed.clone();
+        this.floodFillBaselineFixer = await this.canvas.fixer();
+        if (!this.floodFillBaselineFixer) return;
+
+        this.floodFillEditingContext = true;
+        this.floodFillPreviewResult = null;
+        this.floodFillPreviewQueued = false;
+        this.floodFillPreviewToken++;
+        this.showFloodFillUI();
+        this.resetFloodFillEditHistory();
+        await this.renderFloodFillPreview();
+    }
+
+    private async renderFloodFillPreview(): Promise<void> {
+        if (!this.canvas || !this.floodFillEditingContext || !this.floodFillSeed || !this.floodFillBaselineFixer) return;
+        if (this.fillInProgress) {
+            this.floodFillPreviewQueued = true;
+            return this.floodFillPreviewPromise ?? Promise.resolve();
+        }
+
+        const token = ++this.floodFillPreviewToken;
+        this.fillInProgress = true;
+        this.updateUndoRedoButtons();
+        const run = (async () => {
+            try {
+                await this.canvas!.fix(this.floodFillBaselineFixer!, false);
+                if (token !== this.floodFillPreviewToken || !this.floodFillEditingContext) return;
+
+                const result = await this.canvas!.floodFill(
+                    this.floodFillSeed!,
+                    this.currentColor.clone(),
+                    this.fillToleranceToEngineValue(this.fillTolerance),
+                    this.fillEdgeSensitivityToEngineValue(this.fillEdgeSensitivity),
+                    this.fillTuningMode
+                );
+                if (token !== this.floodFillPreviewToken || !this.floodFillEditingContext) return;
+                if (!result) return;
+
+                this.floodFillPreviewResult = result;
+                this.updateFillStats(result.metrics);
+            } catch (error) {
+                console.error('Flood fill preview failed', error);
+            } finally {
+                if (token === this.floodFillPreviewToken) {
+                    this.fillInProgress = false;
+                    this.updateUndoRedoButtons();
+                    if (this.floodFillPreviewQueued) {
+                        this.floodFillPreviewQueued = false;
+                        void this.renderFloodFillPreview();
+                    }
+                }
+            }
+        })();
+
+        const previewPromise = run.finally(() => {
+            if (this.floodFillPreviewPromise === previewPromise) this.floodFillPreviewPromise = null;
+        });
+        this.floodFillPreviewPromise = previewPromise;
+        return this.floodFillPreviewPromise;
+    }
+
+    private async commitFloodFillContext(): Promise<void> {
+        if (!this.floodFillEditingContext) return;
+
+        while (this.floodFillPreviewPromise) {
+            await this.floodFillPreviewPromise;
+        }
+        this.floodFillPreviewQueued = false;
+
+        const result = this.floodFillPreviewResult;
+        this.hideFloodFillUI();
+        this.floodFillEditingContext = false;
+        this.floodFillPreviewToken++;
+
+        if (result) {
+            this.pushFloodFillResultToHistory(result);
+        }
+
+        this.resetFloodFillState();
+        this.updateUndoRedoButtons();
+    }
+
+    private pushFloodFillResultToHistory(result: CanvasFloodFillResult): void {
+        const fixerGroup = result.fixerGroup;
+        if (fixerGroup) {
+            this.undoStack.push(fixerGroup);
+            this.redoStack = [];
+            this.updateUndoRedoButtons();
+            return;
+        }
+
+        if (!result.historyPromise) return;
+
+        const pendingGroup = new FixerGroup();
+        this.undoStack.push(pendingGroup);
+        this.redoStack = [];
+        this.pendingFillHistoryCount++;
+        this.updateUndoRedoButtons();
+        let historyReady = false;
+        result.historyPromise
+            .then((history) => {
+                if (history.fixerGroup) {
+                    pendingGroup.undoFixer = history.fixerGroup.undoFixer;
+                    pendingGroup.redoFixer = history.fixerGroup.redoFixer;
+                    historyReady = true;
+                    console.debug(`[FloodFill] history ready history=${history.historyMs.toFixed(1)}ms readback=${history.readbackMs.toFixed(1)}ms`);
+                }
+            })
+            .catch((error) => console.error('Flood fill history failed', error))
+            .finally(() => {
+                if (!historyReady) {
+                    const idx = this.undoStack.indexOf(pendingGroup);
+                    if (idx >= 0) this.undoStack.splice(idx, 1);
+                }
+                this.pendingFillHistoryCount = Math.max(0, this.pendingFillHistoryCount - 1);
+                this.updateUndoRedoButtons();
+            });
+    }
+
+    private fillToleranceToEngineValue(value: number): number {
+        return (value / 255) * 2;
+    }
+
+    private fillEdgeSensitivityToEngineValue(value: number): number {
+        return Math.max(0.02, (101 - value) / 100 * 1.5);
+    }
+
+    private showFloodFillUI(): void {
+        this.hideFloodFillUI();
+
+        const ribbon = document.createElement('div');
+        ribbon.style.cssText = `
+            position:absolute; left:50%; top:14px; transform:translateX(-50%);
+            display:flex; align-items:center; gap:10px; padding:7px 8px;
+            background:rgba(32,34,38,.94); border:1px solid rgba(255,255,255,.16);
+            border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.22); z-index:20;
+            pointer-events:auto; color:#e9edf2; font-size:12px; font-weight:600;
         `;
-        this.fillStatsEl.textContent = 'No fill yet';
-        wrap.appendChild(this.fillStatsEl);
-        return wrap;
+        ribbon.addEventListener('mousedown', (e) => e.stopPropagation());
+
+        this.floodFillToleranceInputEl = this.floodFillSlider('Tolerance', 0, 255, this.fillTolerance, (value) => {
+            this.fillTolerance = value;
+            void this.renderFloodFillPreview();
+        }, () => this.pushFloodFillSnapshot());
+        this.floodFillEdgeInputEl = this.floodFillSlider('Edge', 0, 100, this.fillEdgeSensitivity, (value) => {
+            this.fillEdgeSensitivity = value;
+            void this.renderFloodFillPreview();
+        }, () => this.pushFloodFillSnapshot());
+        const doneBtn = this.shapeAssistButton('Done', () => void this.commitFloodFillContext());
+        doneBtn.style.marginLeft = '2px';
+
+        ribbon.appendChild(this.floodFillToleranceInputEl.parentElement!);
+        ribbon.appendChild(this.floodFillEdgeInputEl.parentElement!);
+        ribbon.appendChild(doneBtn);
+        this.canvasContainer.appendChild(ribbon);
+        this.floodFillRibbonEl = ribbon;
+        document.addEventListener('mousedown', this.onFloodFillDocumentMouseDown, true);
+    }
+
+    private floodFillSlider(label: string, min: number, max: number, value: number, onInput: (value: number) => void, onCommit: () => void): HTMLInputElement {
+        const wrap = document.createElement('label');
+        wrap.style.cssText = `display:flex; align-items:center; gap:6px; white-space:nowrap;`;
+        const text = document.createElement('span');
+        text.textContent = label;
+        text.style.cssText = `color:#cfd6de;`;
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = String(min);
+        input.max = String(max);
+        input.step = '1';
+        input.value = String(value);
+        input.style.cssText = `width:138px;`;
+        input.addEventListener('input', () => onInput(Number(input.value)));
+        input.addEventListener('change', onCommit);
+        wrap.appendChild(text);
+        wrap.appendChild(input);
+        return input;
+    }
+
+    private hideFloodFillUI(): void {
+        document.removeEventListener('mousedown', this.onFloodFillDocumentMouseDown, true);
+        this.floodFillRibbonEl?.remove();
+        this.floodFillRibbonEl = null;
+        this.floodFillToleranceInputEl = null;
+        this.floodFillEdgeInputEl = null;
+    }
+
+    private onFloodFillDocumentMouseDown = (e: MouseEvent): void => {
+        if (!this.floodFillEditingContext) return;
+        const target = e.target as Node | null;
+        if (!target) return;
+        if (this.floodFillRibbonEl?.contains(target)) return;
+        if (this.undoBtnEl?.contains(target) || this.redoBtnEl?.contains(target)) return;
+        if (target === this.glCanvas) return;
+        void this.commitFloodFillContext();
+    };
+
+    private resetFloodFillEditHistory(): void {
+        this.floodFillUndoStack = [];
+        this.floodFillRedoStack = [];
+        this.pushFloodFillSnapshot();
+        this.updateUndoRedoButtons();
+    }
+
+    private pushFloodFillSnapshot(snapshot: FloodFillSnapshot = this.currentFloodFillSnapshot()): void {
+        const current = this.floodFillUndoStack[this.floodFillUndoStack.length - 1];
+        if (current && this.floodFillSnapshotsEqual(current, snapshot)) return;
+        this.floodFillUndoStack.push({ ...snapshot });
+        this.floodFillRedoStack = [];
+        this.updateUndoRedoButtons();
+    }
+
+    private async undoFloodFillEdit(): Promise<void> {
+        if (this.fillInProgress) return;
+        if (this.floodFillUndoStack.length <= 1) {
+            await this.cancelFloodFillContext();
+            return;
+        }
+        const current = this.floodFillUndoStack.pop()!;
+        this.floodFillRedoStack.push(current);
+        await this.applyFloodFillSnapshot(this.floodFillUndoStack[this.floodFillUndoStack.length - 1]);
+        this.updateUndoRedoButtons();
+    }
+
+    private async redoFloodFillEdit(): Promise<void> {
+        if (this.fillInProgress) return;
+        const next = this.floodFillRedoStack.pop();
+        if (!next) return;
+        this.floodFillUndoStack.push(next);
+        await this.applyFloodFillSnapshot(next);
+        this.updateUndoRedoButtons();
+    }
+
+    private currentFloodFillSnapshot(): FloodFillSnapshot {
+        return {
+            tolerance: this.fillTolerance,
+            edgeSensitivity: this.fillEdgeSensitivity
+        };
+    }
+
+    private async applyFloodFillSnapshot(snapshot: FloodFillSnapshot): Promise<void> {
+        this.fillTolerance = snapshot.tolerance;
+        this.fillEdgeSensitivity = snapshot.edgeSensitivity;
+        if (this.floodFillToleranceInputEl) this.floodFillToleranceInputEl.value = String(snapshot.tolerance);
+        if (this.floodFillEdgeInputEl) this.floodFillEdgeInputEl.value = String(snapshot.edgeSensitivity);
+        await this.renderFloodFillPreview();
+    }
+
+    private floodFillSnapshotsEqual(a: FloodFillSnapshot, b: FloodFillSnapshot): boolean {
+        return a.tolerance === b.tolerance && a.edgeSensitivity === b.edgeSensitivity;
+    }
+
+    private async cancelFloodFillContext(): Promise<void> {
+        if (!this.floodFillEditingContext) return;
+
+        while (this.floodFillPreviewPromise) {
+            await this.floodFillPreviewPromise;
+        }
+
+        this.floodFillPreviewQueued = false;
+        this.floodFillPreviewToken++;
+        if (this.canvas && this.floodFillBaselineFixer) {
+            await this.canvas.fix(this.floodFillBaselineFixer, false);
+        }
+        this.resetFloodFillState();
+        this.updateUndoRedoButtons();
+    }
+
+    private resetFloodFillState(): void {
+        this.hideFloodFillUI();
+        this.floodFillEditingContext = false;
+        this.floodFillSeed = null;
+        this.floodFillBaselineFixer = null;
+        this.floodFillPreviewResult = null;
+        this.floodFillPreviewQueued = false;
+        this.floodFillPreviewPromise = null;
+        this.floodFillUndoStack = [];
+        this.floodFillRedoStack = [];
     }
 
     private updateFillStats(metrics: {
@@ -2110,23 +2372,10 @@ export class DrawingScreen implements CanvasDelegate {
         totalMs: number;
         bounds: Rect;
     }): void {
-        if (!this.fillStatsEl) return;
         const bounds = `${metrics.bounds.size.width}x${metrics.bounds.size.height}`;
-        this.fillStatsEl.textContent =
-            `mode       ${metrics.mode}\n` +
-            `tuning     ${metrics.tuningMode}\n` +
-            `total      ${metrics.totalMs.toFixed(1)} ms\n` +
-            `dry        ${metrics.dryMs.toFixed(1)} ms\n` +
-            `source     ${metrics.sourceCopyMs.toFixed(1)} ms\n` +
-            `gpu        ${metrics.gpuMs.toFixed(1)} ms\n` +
-            `post       ${metrics.postProcessMs.toFixed(1)} ms\n` +
-            `history    ${metrics.historyMs.toFixed(1)} ms\n` +
-            `update     ${metrics.updateMs.toFixed(1)} ms\n` +
-            `iter       ${metrics.iterations} (${metrics.dispatchIterations} dispatch)\n` +
-            `readback   ${metrics.readbackMs.toFixed(1)} ms\n` +
-            `tile/sub   ${metrics.tileSize}/${metrics.substeps}\n` +
-            `batch      ${metrics.batchSize}\n` +
-            `bounds     ${bounds}`;
+        console.debug(
+            `[FloodFill] ${metrics.mode} tuning=${metrics.tuningMode} total=${metrics.totalMs.toFixed(1)}ms dry=${metrics.dryMs.toFixed(1)}ms source=${metrics.sourceCopyMs.toFixed(1)}ms gpu=${metrics.gpuMs.toFixed(1)}ms post=${metrics.postProcessMs.toFixed(1)}ms history=${metrics.historyMs.toFixed(1)}ms update=${metrics.updateMs.toFixed(1)}ms readback=${metrics.readbackMs.toFixed(1)}ms iterations=${metrics.iterations} dispatch=${metrics.dispatchIterations} substeps=${metrics.substeps} tile=${metrics.tileSize} batch=${metrics.batchSize} bounds=${bounds}`
+        );
     }
 
     private buildColorSection(): HTMLElement {

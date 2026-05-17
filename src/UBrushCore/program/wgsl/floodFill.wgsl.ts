@@ -285,7 +285,7 @@ fn compositeBehind(front : vec4f, backRgb : vec3f, backAlpha : f32) -> vec4f {
 }
 
 fn fillPixel(src : vec4f, seedColor : vec4f, coverage : f32) -> vec4f {
-    let feather = smoothstep(0.08, 0.82, coverage);
+    let feather = smoothstep(0.04, 0.96, coverage);
     let fillAlpha = params.fillColor.a * feather;
 
     if (seedColor.a < 0.2) {
@@ -315,7 +315,7 @@ fn main(
         let edgeAlpha = smoothstep(0.03, 0.35, coverage);
         let closeToSeed = colorDistance(src, seedColor) <= params.tolerance + params.edgeThreshold;
         if (edgeAlpha > 0.001 && closeToSeed && seedColor.a < 0.2) {
-            let outColor = fillPixel(src, seedColor, coverage * 0.55);
+            let outColor = fillPixel(src, seedColor, coverage * 0.8);
             textureStore(targetTex, vec2i(p), outColor);
             atomicMin(&bounds.minX, p.x);
             atomicMin(&bounds.minY, p.y);
@@ -335,6 +335,6 @@ fn main(
     atomicMax(&bounds.maxY, p.y);
     atomicAdd(&bounds.count, 1u);
 
-    textureStore(targetTex, vec2i(p), fillPixel(src, seedColor, max(coverage, 0.55)));
+    textureStore(targetTex, vec2i(p), fillPixel(src, seedColor, max(coverage, 0.32)));
 }
 `;
