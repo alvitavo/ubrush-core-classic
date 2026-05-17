@@ -35,6 +35,14 @@ export class DrawingScreen implements CanvasDelegate {
     private redoStack: FixerGroup[] = [];
     private pendingFillHistoryCount = 0;
     private loopPaused = false;
+    private straightLineTimer: number | null = null;
+    private straightLineToken = 0;
+    private straightLineStartPos: Point | null = null;
+    private straightLineStartStylus: Stylus | null = null;
+    private straightLineUndoGroup: FixerGroup | null = null;
+    private straightLinePreviewActive = false;
+    private straightLineActivating = false;
+    private straightLineActivationPromise: Promise<void> | null = null;
 
     private categories: BrushCategory[] = [];
     private currentCategoryIndex = 0;
@@ -502,6 +510,11 @@ export class DrawingScreen implements CanvasDelegate {
         e.preventDefault();
         this.stylusEventCount = 0;
         this.lastPos = this.eventPoint(e);
+        this.clearStraightLineTimer();
+        this.straightLinePreviewActive = false;
+        this.straightLineActivating = false;
+        this.straightLineActivationPromise = null;
+        this.straightLineUndoGroup = null;
 
         if (this.currentTool === 'fill') {
             await this.applyFloodFill(this.lastPos);
@@ -509,7 +522,14 @@ export class DrawingScreen implements CanvasDelegate {
         }
 
         this.lastStylus = this.eventStylus(e);
+        this.straightLineStartPos = this.lastPos.clone();
+        this.straightLineStartStylus = new Stylus(
+            this.lastStylus.pressure,
+            this.lastStylus.altitudeAngle,
+            this.lastStylus.azimuthAngle
+        );
         this.canvas?.moveTo(this.lastPos, this.lastStylus);
+        this.startStraightLineTimer();
 
         if (e instanceof MouseEvent) {
             document.addEventListener('mousemove', this.onPointerMove);
@@ -521,19 +541,101 @@ export class DrawingScreen implements CanvasDelegate {
     };
 
     private onPointerMove = (e: MouseEvent | TouchEvent): void => {
+        e.preventDefault();
         this.lastPos = this.eventPoint(e);
         this.lastStylus = this.eventStylus(e);
-        this.canvas?.lineTo(this.lastPos, this.lastStylus);
+        if (this.straightLinePreviewActive && this.straightLineStartPos && this.straightLineStartStylus) {
+            this.canvas?.replaceActiveLineWithStraightLine(
+                this.straightLineStartPos,
+                this.lastPos,
+                this.straightLineStartStylus,
+                this.lastStylus,
+                { disableSmudging: this.canvas.brushUsesSmudging() }
+            );
+            return;
+        }
+
+        if (!this.straightLineActivating) {
+            this.canvas?.lineTo(this.lastPos, this.lastStylus);
+        }
     };
 
-    private onPointerUp = (e: MouseEvent | TouchEvent): void => {
+    private onPointerUp = async (e: MouseEvent | TouchEvent): Promise<void> => {
         e.preventDefault();
-        this.canvas?.endLine(this.lastPos, this.lastStylus);
+        this.clearStraightLineTimer();
+
+        if (this.straightLineActivationPromise) {
+            await this.straightLineActivationPromise;
+        }
+
+        if (this.straightLinePreviewActive && this.straightLineUndoGroup && this.straightLineStartPos && this.straightLineStartStylus && this.canvas) {
+            this.canvas.replaceActiveLineWithStraightLine(
+                this.straightLineStartPos,
+                this.lastPos,
+                this.straightLineStartStylus,
+                this.lastStylus,
+                { disableSmudging: this.canvas.brushUsesSmudging() }
+            );
+            const fixerGroup = await this.canvas.commitStraightenedLine(this.straightLineUndoGroup);
+            if (this.hasAnyFixer(fixerGroup) && this.hasAnyRedoFixer(fixerGroup)) {
+                this.undoStack.push(fixerGroup);
+                this.redoStack = [];
+                this.updateUndoRedoButtons();
+            }
+        } else {
+            await this.canvas?.endLine(this.lastPos, this.lastStylus);
+        }
+
+        this.straightLinePreviewActive = false;
+        this.straightLineActivating = false;
+        this.straightLineActivationPromise = null;
+        this.straightLineUndoGroup = null;
+        this.straightLineStartPos = null;
+        this.straightLineStartStylus = null;
         document.removeEventListener('mousemove', this.onPointerMove);
         document.removeEventListener('mouseup', this.onPointerUp);
         document.removeEventListener('touchmove', this.onPointerMove);
         document.removeEventListener('touchend', this.onPointerUp);
     };
+
+    private startStraightLineTimer(): void {
+        const token = ++this.straightLineToken;
+        this.straightLineTimer = window.setTimeout(() => {
+            this.straightLineActivationPromise = this.activateStraightLinePreview(token);
+        }, 3000);
+    }
+
+    private clearStraightLineTimer(): void {
+        if (this.straightLineTimer === null) return;
+        window.clearTimeout(this.straightLineTimer);
+        this.straightLineTimer = null;
+    }
+
+    private async activateStraightLinePreview(token: number): Promise<void> {
+        if (!this.canvas || !this.straightLineStartPos || !this.straightLineStartStylus) return;
+        if (token !== this.straightLineToken || this.currentTool !== 'brush') return;
+        if (this.straightLinePreviewActive || this.straightLineActivating) return;
+
+        this.straightLineActivating = true;
+        try {
+            const undoGroup = await this.canvas.captureActiveLineForStraightening();
+            if (token !== this.straightLineToken || !this.straightLineStartPos || !this.straightLineStartStylus) return;
+
+            this.straightLineUndoGroup = undoGroup;
+            this.straightLinePreviewActive = true;
+            this.canvas.replaceActiveLineWithStraightLine(
+                this.straightLineStartPos,
+                this.lastPos,
+                this.straightLineStartStylus,
+                this.lastStylus,
+                { disableSmudging: this.canvas.brushUsesSmudging() }
+            );
+        } catch (error) {
+            console.error('Straight line preview failed', error);
+        } finally {
+            this.straightLineActivating = false;
+        }
+    }
 
     private eventPoint(e: MouseEvent | TouchEvent): Point {
         const rect = this.glCanvas.getBoundingClientRect();

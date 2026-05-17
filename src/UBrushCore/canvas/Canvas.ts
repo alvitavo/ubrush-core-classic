@@ -285,8 +285,89 @@ export class Canvas implements LineDriverDelegate {
 
     }
 
+    public brushUsesSmudging(): boolean {
+        return !!this.brush?.useSmudging;
+    }
+
     public setStrokeBatchingEnabled(value: boolean): void {
         this.strokeBatchingEnabled = value;
+    }
+
+    public replaceActiveLineWithStraightLine(start: Point, end: Point, startStylus: Stylus, endStylus: Stylus, options: { disableSmudging?: boolean } = {}): void {
+        const previousLineRect = this.lineRect;
+        const previousUseSmudging = this.drawingEngine.useSmudging;
+
+        this.dots = [];
+        this.drawingEngine.cancelDrawing();
+
+        if (options.disableSmudging) {
+            this.drawingEngine.useSmudging = false;
+        }
+
+        let changeRect: Rect | null = null;
+        try {
+            this.lineDriver.moveTo(start, startStylus);
+
+            const distance = Common.distance(start, end);
+            const steps = Math.max(1, Math.ceil(distance / 8));
+            for (let i = 1; i <= steps; i++) {
+                const t = i / steps;
+                this.lineDriver.lineTo(
+                    Common.interpolatePoint(start, end, t),
+                    this.interpolateStylus(startStylus, endStylus, t)
+                );
+            }
+            this.lineDriver.endLine(end, endStylus);
+
+            changeRect = this.flushDots();
+        } finally {
+            this.drawingEngine.useSmudging = previousUseSmudging;
+        }
+
+        const dirtyRect = changeRect
+            ? Rect.union(previousLineRect ?? changeRect, changeRect)
+            : previousLineRect;
+
+        this.lineRect = changeRect;
+
+        if (dirtyRect) {
+            this.updateCanvasInRect(dirtyRect);
+            this.hasContent = true;
+            this.needsDry = true;
+        }
+    }
+
+    public async captureActiveLineForStraightening(): Promise<FixerGroup> {
+        const fixerGroup = new FixerGroup();
+        const rect = Common.stageRect();
+
+        if (this.autoDry) {
+            fixerGroup.undoFixer = (await this.fixer(rect)) || undefined;
+        } else {
+            fixerGroup.undoFixerLiquid = (await this.drawingEngine.activeDrawingFixer(rect)) || undefined;
+        }
+
+        return fixerGroup;
+    }
+
+    public async commitStraightenedLine(fixerGroup: FixerGroup): Promise<FixerGroup> {
+        const rect = Common.stageRect();
+
+        if (this.autoDry) {
+            this.drawingEngine.releaseDrawing();
+            this.engineDry();
+            fixerGroup.redoFixer = (await this.fixer(rect)) || undefined;
+        } else {
+            this.drawingEngine.releaseDrawing();
+            fixerGroup.redoFixerLiquid = (await this.liquidFixer(rect)) || undefined;
+        }
+
+        this.lineRect = null;
+        this.hasContent = true;
+        this.needsDry = !this.autoDry;
+        this.age++;
+
+        return fixerGroup;
     }
 
     public async endLine(pt: Point, stylus: Stylus): Promise<void> {
@@ -583,6 +664,19 @@ export class Canvas implements LineDriverDelegate {
 
         this.dots.push(dot);
 
+    }
+
+    private interpolateStylus(a: Stylus, b: Stylus, t: number): Stylus {
+        const interpolate = (start: number, end: number): number => {
+            if (!Number.isFinite(start) || !Number.isFinite(end)) return end;
+            return start + (end - start) * t;
+        };
+
+        return new Stylus(
+            interpolate(a.pressure, b.pressure),
+            interpolate(a.altitudeAngle, b.altitudeAngle),
+            interpolate(a.azimuthAngle, b.azimuthAngle)
+        );
     }
 
 }

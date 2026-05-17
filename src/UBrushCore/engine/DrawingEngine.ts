@@ -724,17 +724,21 @@ export class DrawingEngine {
         return this._buildFixer(fixerRenderTarget, rect, this._useSecondaryMask);
     }
 
+    public async activeDrawingFixer(rect: Rect): Promise<Fixer | null> {
+        if (this._alphaSmudgingMode) {
+            return this._buildTextureFixer(FixerRenderTarget.Liquid, rect, this.liquidRenderTarget.texture);
+        }
+
+        return this._buildTextureFixer(
+            FixerRenderTarget.Liquid,
+            rect,
+            this.drawingRenderTarget.texture,
+            this._useSecondaryMask ? this.maskDrawingRenderTarget?.texture : undefined
+        );
+    }
+
     private async _buildFixer(fixerRenderTarget: FixerRenderTarget, rect: Rect, withMask: boolean): Promise<Fixer | null> {
-        const p1 = rect.origin.clone();
-        const p2 = new Point(p1.x + rect.size.width, p1.y + rect.size.height);
-
-        p1.x = Math.floor(((p1.x + 1.0) * 0.5) * this.size.width);
-        p1.y = Math.floor(((p1.y + 1.0) * 0.5) * this.size.height);
-        p2.x = Math.ceil(((p2.x + 1.0) * 0.5) * this.size.width);
-        p2.y = Math.ceil(((p2.y + 1.0) * 0.5) * this.size.height);
-
-        const partRectByPixel = new Rect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
-
+        const partRectByPixel = this.stageRectToPixelRect(rect);
         if (partRectByPixel.size.width === 0.0 || partRectByPixel.size.height === 0.0) return null;
 
         const canvasRect = new Rect(0, 0, this.size.width, this.size.height);
@@ -795,7 +799,56 @@ export class DrawingEngine {
             patchMaskPixels = await this.context.readPixels(tempRenderTarget, partRectByPixel);
         }
 
+        this.context.deleteRenderTarget(tempRenderTarget);
+
         return new Fixer(partRectByPixel, rect, fixerRenderTarget, patchPixels, patchMaskPixels);
+    }
+
+    private async _buildTextureFixer(fixerRenderTarget: FixerRenderTarget, rect: Rect, source: WGPUTexture, maskSource?: WGPUTexture): Promise<Fixer | null> {
+        const partRectByPixel = this.stageRectToPixelRect(rect);
+        if (partRectByPixel.size.width === 0.0 || partRectByPixel.size.height === 0.0) return null;
+
+        const canvasRect = new Rect(0, 0, this.size.width, this.size.height);
+        const tempRenderTarget = this.context.createRenderTarget(this.size);
+        WGPUProgramManager.getInstance().fillRectProgram.fill(tempRenderTarget, {
+            targetRect: partRectByPixel,
+            source,
+            sourceRect: partRectByPixel,
+            canvasRect,
+            transform: new AffineTransform(),
+            blend: RenderObjectBlend.None
+        });
+
+        const patchPixels = await this.context.readPixels(tempRenderTarget, partRectByPixel);
+
+        let patchMaskPixels: Uint8Array | undefined;
+        if (maskSource) {
+            WGPUProgramManager.getInstance().fillRectProgram.fill(tempRenderTarget, {
+                targetRect: partRectByPixel,
+                source: maskSource,
+                sourceRect: partRectByPixel,
+                canvasRect,
+                transform: new AffineTransform(),
+                blend: RenderObjectBlend.None
+            });
+            patchMaskPixels = await this.context.readPixels(tempRenderTarget, partRectByPixel);
+        }
+
+        this.context.deleteRenderTarget(tempRenderTarget);
+
+        return new Fixer(partRectByPixel, rect, fixerRenderTarget, patchPixels, patchMaskPixels);
+    }
+
+    private stageRectToPixelRect(rect: Rect): Rect {
+        const p1 = rect.origin.clone();
+        const p2 = new Point(p1.x + rect.size.width, p1.y + rect.size.height);
+
+        p1.x = Math.floor(((p1.x + 1.0) * 0.5) * this.size.width);
+        p1.y = Math.floor(((p1.y + 1.0) * 0.5) * this.size.height);
+        p2.x = Math.ceil(((p2.x + 1.0) * 0.5) * this.size.width);
+        p2.y = Math.ceil(((p2.y + 1.0) * 0.5) * this.size.height);
+
+        return new Rect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
     }
 
     // ---- fix ----
