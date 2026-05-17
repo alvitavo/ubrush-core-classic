@@ -3,6 +3,7 @@ import { Point } from "./Point";
 import { Size } from "./Size";
 
 export class Common {
+    private static randomState = (Date.now() ^ 0x9e3779b9) >>> 0;
     
     public static edgeLUT(style: string): Uint8Array | null {
         let lut: number[] | null = null;
@@ -52,10 +53,43 @@ export class Common {
 
     }
 
-    // TODO: seed
     public static random(): number {
 
-        return Math.random();
+        this.randomState = (this.randomState + 0x6d2b79f5) >>> 0;
+        let t = this.randomState;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+
+    }
+
+    public static setRandomSeed(seed: number): void {
+
+        this.randomState = seed >>> 0;
+
+    }
+
+    public static getRandomSeedState(): number {
+
+        return this.randomState >>> 0;
+
+    }
+
+    public static nextRandomSeed(): number {
+
+        return Math.floor(this.random() * 0xffffffff) >>> 0;
+
+    }
+
+    public static withRandomSeed<T>(seed: number, action: () => T): T {
+
+        const previous = this.getRandomSeedState();
+        this.setRandomSeed(seed);
+        try {
+            return action();
+        } finally {
+            this.setRandomSeed(previous);
+        }
 
     }
 

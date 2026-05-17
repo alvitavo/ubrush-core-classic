@@ -44,6 +44,7 @@ interface ShapeAssistSnapshot {
     handles: ShapeAssistHandles;
     size: number;
     opacity: number;
+    randomSeed: number;
 }
 
 interface FloodFillSnapshot {
@@ -85,6 +86,7 @@ export class DrawingScreen implements CanvasDelegate {
     private shapeAssistRenderedSamples: StrokeSample[] = [];
     private shapeAssistUndoStack: ShapeAssistSnapshot[] = [];
     private shapeAssistRedoStack: ShapeAssistSnapshot[] = [];
+    private shapeAssistRandomSeed = 0;
     private straightLineStrokeGroup: FixerGroup | null = null;
     private straightLineUndoGroup: FixerGroup | null = null;
     private straightLinePreviewActive = false;
@@ -564,6 +566,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.straightLineSamples = [];
         this.shapeAssistRenderedSamples = [];
         this.shapeAssistCurveSamples = [];
+        this.shapeAssistRandomSeed = 0;
         this.shapeAssistMode = 'line';
         this.shapeAssistHandles = null;
         this.shapeAssistEditingContext = false;
@@ -675,6 +678,7 @@ export class DrawingScreen implements CanvasDelegate {
         try {
             const curveSamples = this.cloneStrokeSamples(this.straightLineSamples);
             this.shapeAssistCurveSamples = curveSamples;
+            this.shapeAssistRandomSeed = Common.nextRandomSeed();
             this.shapeAssistMode = this.chooseShapeAssistMode(curveSamples);
             this.shapeAssistHandles = this.createShapeAssistHandles(this.shapeAssistMode);
             const strokeGroup = this.straightLineStrokeGroup ?? await this.canvas.captureLineStartForStraightening();
@@ -716,7 +720,11 @@ export class DrawingScreen implements CanvasDelegate {
                 const t = rawT * rawT * (3 - 2 * rawT);
                 const targetSamples = this.buildShapeAssistSamples(mode, curveSamples.length);
                 const samples = this.buildMorphSamples(curveSamples, targetSamples, t);
-                this.canvas.replaceActiveLineWithPath(samples, { disableSmudging, followAcceleration: 1 });
+                this.canvas.replaceActiveLineWithPath(samples, {
+                    disableSmudging,
+                    followAcceleration: 1,
+                    randomSeed: this.shapeAssistRandomSeed
+                });
 
                 if (rawT >= 1) {
                     resolve();
@@ -745,7 +753,11 @@ export class DrawingScreen implements CanvasDelegate {
 
     private applyShapeAssistPreviewSamples(samples: StrokeSample[]): void {
         if (!this.canvas) return;
-        this.canvas.replaceActiveLineWithPath(samples, { disableSmudging: this.canvas.brushUsesSmudging(), followAcceleration: 1 });
+        this.canvas.replaceActiveLineWithPath(samples, {
+            disableSmudging: this.canvas.brushUsesSmudging(),
+            followAcceleration: 1,
+            randomSeed: this.shapeAssistRandomSeed
+        });
         this.shapeAssistRenderedSamples = this.cloneStrokeSamples(samples);
     }
 
@@ -1719,13 +1731,15 @@ export class DrawingScreen implements CanvasDelegate {
             mode: this.shapeAssistMode,
             handles: this.cloneShapeAssistHandles(this.shapeAssistHandles),
             size: this.currentSize,
-            opacity: this.currentOpacity
+            opacity: this.currentOpacity,
+            randomSeed: this.shapeAssistRandomSeed
         };
     }
 
     private applyShapeAssistSnapshot(snapshot: ShapeAssistSnapshot): void {
         this.shapeAssistMode = snapshot.mode;
         this.shapeAssistHandles = this.cloneShapeAssistHandles(snapshot.handles);
+        this.shapeAssistRandomSeed = snapshot.randomSeed;
         this.applyBrushSize(snapshot.size, false, false);
         this.applyBrushOpacity(snapshot.opacity, false, false);
         this.updateShapeAssistRibbon();
@@ -1737,7 +1751,8 @@ export class DrawingScreen implements CanvasDelegate {
             mode: snapshot.mode,
             handles: this.cloneShapeAssistHandles(snapshot.handles),
             size: snapshot.size,
-            opacity: snapshot.opacity
+            opacity: snapshot.opacity,
+            randomSeed: snapshot.randomSeed
         };
     }
 
@@ -1755,6 +1770,7 @@ export class DrawingScreen implements CanvasDelegate {
         return a.mode === b.mode
             && Math.abs(a.size - b.size) < 0.0001
             && Math.abs(a.opacity - b.opacity) < 0.0001
+            && a.randomSeed === b.randomSeed
             && this.pointsAlmostEqual(a.handles.start, b.handles.start)
             && this.pointsAlmostEqual(a.handles.control1, b.handles.control1)
             && this.pointsAlmostEqual(a.handles.control2, b.handles.control2)
@@ -1779,6 +1795,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.straightLineActivationPromise = null;
         this.straightLineSamples = [];
         this.shapeAssistCurveSamples = [];
+        this.shapeAssistRandomSeed = 0;
         this.shapeAssistPreviewAnimationToken++;
         this.shapeAssistRenderedSamples = [];
         this.shapeAssistHandles = null;
