@@ -20,6 +20,7 @@ import { FloodFillTuningMode } from '../UBrushCore/program/webgpu/WGPUFloodFillP
 const SIDEBAR_W = 220;
 const STRAIGHTEN_MORPH_MS = 180;
 const SHAPE_ASSIST_EDIT_MORPH_MS = 90;
+const SHAPE_ASSIST_HOLD_MS = 1200;
 
 interface StrokeSample {
     point: Point;
@@ -651,7 +652,7 @@ export class DrawingScreen implements CanvasDelegate {
         const token = ++this.straightLineToken;
         this.straightLineTimer = window.setTimeout(() => {
             this.straightLineActivationPromise = this.activateStraightLinePreview(token);
-        }, 3000);
+        }, SHAPE_ASSIST_HOLD_MS);
     }
 
     private restartStraightLineTimer(): void {
@@ -715,7 +716,7 @@ export class DrawingScreen implements CanvasDelegate {
                 const t = rawT * rawT * (3 - 2 * rawT);
                 const targetSamples = this.buildShapeAssistSamples(mode, curveSamples.length);
                 const samples = this.buildMorphSamples(curveSamples, targetSamples, t);
-                this.canvas.replaceActiveLineWithPath(samples, { disableSmudging });
+                this.canvas.replaceActiveLineWithPath(samples, { disableSmudging, followAcceleration: 1 });
 
                 if (rawT >= 1) {
                     resolve();
@@ -744,7 +745,7 @@ export class DrawingScreen implements CanvasDelegate {
 
     private applyShapeAssistPreviewSamples(samples: StrokeSample[]): void {
         if (!this.canvas) return;
-        this.canvas.replaceActiveLineWithPath(samples, { disableSmudging: this.canvas.brushUsesSmudging() });
+        this.canvas.replaceActiveLineWithPath(samples, { disableSmudging: this.canvas.brushUsesSmudging(), followAcceleration: 1 });
         this.shapeAssistRenderedSamples = this.cloneStrokeSamples(samples);
     }
 
@@ -1589,7 +1590,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.setShapeAssistHandlePoint(this.shapeAssistDragKey, point);
         if (this.shapeAssistDragKey === 'end') this.lastPos = point.clone();
         if (this.shapeAssistDragKey === 'start') this.straightLineStartPos = point.clone();
-        this.renderShapeAssistPreview(true);
+        this.renderShapeAssistPreview();
     };
 
     private onShapeAssistHandleUp = (): void => {

@@ -82,6 +82,20 @@ export class LineDriver {
 
     }
 
+    public withFollowAcceleration<T>(value: number, action: () => T): T {
+
+        if (!this.brush) return action();
+
+        const previous = this.brush.followAcceleration;
+        this.brush.followAcceleration = value;
+        try {
+            return action();
+        } finally {
+            this.brush.followAcceleration = previous;
+        }
+
+    }
+
     // stroke level 1
 
     public moveTo(pt: Point, stylus: Stylus) {

@@ -308,7 +308,7 @@ export class Canvas implements LineDriverDelegate {
         this.replaceActiveLineWithPath(samples, options);
     }
 
-    public replaceActiveLineWithPath(samples: Array<{ point: Point; stylus: Stylus }>, options: { disableSmudging?: boolean } = {}): void {
+    public replaceActiveLineWithPath(samples: Array<{ point: Point; stylus: Stylus }>, options: { disableSmudging?: boolean; followAcceleration?: number } = {}): void {
         if (samples.length === 0) return;
 
         const previousLineRect = this.lineRect;
@@ -322,7 +322,7 @@ export class Canvas implements LineDriverDelegate {
         }
 
         let changeRect: Rect | null = null;
-        try {
+        const drawPath = () => {
             const first = samples[0];
             this.lineDriver.moveTo(first.point, first.stylus);
 
@@ -334,6 +334,14 @@ export class Canvas implements LineDriverDelegate {
             this.lineDriver.endLine(last.point, last.stylus);
 
             changeRect = this.flushDots();
+        };
+
+        try {
+            if (options.followAcceleration !== undefined) {
+                this.lineDriver.withFollowAcceleration(options.followAcceleration, drawPath);
+            } else {
+                drawPath();
+            }
         } finally {
             this.drawingEngine.useSmudging = previousUseSmudging;
         }
