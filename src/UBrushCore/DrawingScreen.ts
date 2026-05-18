@@ -63,6 +63,7 @@ export class DrawingScreen implements CanvasDelegate {
 
     private glCanvas!: HTMLCanvasElement;
     private canvasContainer!: HTMLElement;
+    private canvasFrameEl!: HTMLElement;
     private canvas?: Canvas;
     private canvasStack?: CanvasStack;
     private glContext?: WGPUContext;
@@ -304,6 +305,14 @@ export class DrawingScreen implements CanvasDelegate {
         this.glCanvas = document.createElement('canvas');
         this.glCanvas.style.cssText = `display: block; width: 100%; height: 100%; cursor: crosshair;`;
         this.canvasContainer.appendChild(this.glCanvas);
+
+        this.canvasFrameEl = document.createElement('div');
+        this.canvasFrameEl.style.cssText = `
+            position:absolute; left:0; top:0; width:100%; height:100%;
+            border:1px solid rgba(0,0,0,.35); box-shadow:0 2px 12px rgba(0,0,0,.18);
+            box-sizing:border-box; pointer-events:none; transform-origin:center center; z-index:2;
+        `;
+        this.canvasContainer.appendChild(this.canvasFrameEl);
 
         screen.appendChild(this.canvasContainer);
         return screen;
@@ -572,6 +581,7 @@ export class DrawingScreen implements CanvasDelegate {
 
         this.glContext.clearRenderTarget(null, new Color(0.72, 0.72, 0.72, 1));
         this.canvasStack.compositeIfNeeded();
+        this.updateCanvasFrame();
 
         WGPUProgramManager.getInstance().fillRectProgram.fill(
             null,
@@ -2313,6 +2323,15 @@ export class DrawingScreen implements CanvasDelegate {
             const rotation = Math.round(this.viewportRotation);
             this.viewportValueEl.textContent = `${Math.round(this.viewportScale * 100)}% / ${rotation}deg`;
         }
+        this.updateCanvasFrame();
+    }
+
+    private updateCanvasFrame(): void {
+        if (!this.canvasFrameEl || !this.glCanvas) return;
+        const rect = this.glCanvas.getBoundingClientRect();
+        const tx = (this.viewportPanX * rect.width) * 0.5;
+        const ty = (-this.viewportPanY * rect.height) * 0.5;
+        this.canvasFrameEl.style.transform = `translate(${tx}px, ${ty}px) rotate(${-this.viewportRotation}deg) scale(${this.viewportScale})`;
     }
 
     private onCanvasWheel = (e: WheelEvent): void => {
