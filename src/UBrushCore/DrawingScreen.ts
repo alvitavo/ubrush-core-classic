@@ -2311,10 +2311,37 @@ export class DrawingScreen implements CanvasDelegate {
     };
 
     private onDocumentKeyDown = (e: KeyboardEvent): void => {
-        if (e.code !== 'Space' || this.isTextEditingTarget(e.target)) return;
-        e.preventDefault();
-        this.spaceKeyDown = true;
-        if (!this.isViewportPanning) this.glCanvas.style.cursor = 'grab';
+        if (this.isTextEditingTarget(e.target)) return;
+        if (e.code === 'Space') {
+            e.preventDefault();
+            this.spaceKeyDown = true;
+            if (!this.isViewportPanning) this.glCanvas.style.cursor = 'grab';
+            return;
+        }
+        if (e.code === 'Digit0') {
+            e.preventDefault();
+            this.resetViewport();
+            return;
+        }
+        if (e.code === 'Minus') {
+            e.preventDefault();
+            this.zoomViewportAtCenter(1 / 1.2);
+            return;
+        }
+        if (e.code === 'Equal') {
+            e.preventDefault();
+            this.zoomViewportAtCenter(1.2);
+            return;
+        }
+        if (e.code === 'BracketLeft') {
+            e.preventDefault();
+            this.rotateViewportAtCenter(-15);
+            return;
+        }
+        if (e.code === 'BracketRight') {
+            e.preventDefault();
+            this.rotateViewportAtCenter(15);
+        }
     };
 
     private onDocumentKeyUp = (e: KeyboardEvent): void => {
