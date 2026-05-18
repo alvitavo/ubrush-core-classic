@@ -2533,7 +2533,7 @@ export class DrawingScreen implements CanvasDelegate {
 
     private historyTouchesLayer(entry: HistoryEntry, layerId: string): boolean {
         if (entry.kind === 'layer-order') {
-            return entry.before.includes(layerId) || entry.after.includes(layerId);
+            return entry.before.indexOf(layerId) >= 0 || entry.after.indexOf(layerId) >= 0;
         }
         return entry.layerId === layerId;
     }
