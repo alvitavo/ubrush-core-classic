@@ -2238,10 +2238,18 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private viewportTransform(): AffineTransform {
-        return new AffineTransform()
-            .translate(this.viewportPanX, this.viewportPanY)
-            .rotateDeg(this.viewportRotation)
-            .scale(this.viewportScale, this.viewportScale);
+        const aspect = this.canvasWidth / Math.max(1, this.canvasHeight);
+        const radians = this.viewportRotation * 0.017453292519943295;
+        const cos = Math.cos(radians) * this.viewportScale;
+        const sin = Math.sin(radians) * this.viewportScale;
+        return new AffineTransform(
+            cos,
+            sin * aspect,
+            -sin / aspect,
+            cos,
+            this.viewportPanX,
+            this.viewportPanY
+        );
     }
 
     private inverseViewportTransform(): AffineTransform {
@@ -2273,10 +2281,13 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private setViewportPanForAnchor(canvasStagePoint: Point, screenStagePoint: Point): void {
-        const projected = new AffineTransform()
-            .rotateDeg(this.viewportRotation)
-            .scale(this.viewportScale, this.viewportScale)
-            .applyToPoint(canvasStagePoint);
+        const previousPanX = this.viewportPanX;
+        const previousPanY = this.viewportPanY;
+        this.viewportPanX = 0;
+        this.viewportPanY = 0;
+        const projected = this.viewportTransform().applyToPoint(canvasStagePoint);
+        this.viewportPanX = previousPanX;
+        this.viewportPanY = previousPanY;
         this.viewportPanX = screenStagePoint.x - projected.x;
         this.viewportPanY = screenStagePoint.y - projected.y;
     }
