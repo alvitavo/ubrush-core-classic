@@ -69,6 +69,7 @@ export class DrawingScreen implements CanvasDelegate {
     private canvasWidth = 0;
     private canvasHeight = 0;
     private viewportScale = 1;
+    private viewportRotation = 0;
     private viewportPanX = 0;
     private viewportPanY = 0;
     private viewportValueEl!: HTMLElement;
@@ -2226,12 +2227,21 @@ export class DrawingScreen implements CanvasDelegate {
         controls.appendChild(this.layerMiniButton('+', 'Zoom in', () => this.zoomViewportAtCenter(1.2)));
         controls.appendChild(this.layerMiniButton('Reset', 'Reset view', () => this.resetViewport()));
         wrap.appendChild(controls);
+
+        const rotateControls = document.createElement('div');
+        rotateControls.style.cssText = `display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:5px;`;
+        rotateControls.appendChild(this.layerMiniButton('Rot -', 'Rotate view counterclockwise', () => this.rotateViewportAtCenter(-15)));
+        rotateControls.appendChild(this.layerMiniButton('Rot +', 'Rotate view clockwise', () => this.rotateViewportAtCenter(15)));
+        wrap.appendChild(rotateControls);
         this.updateViewportUI();
         return wrap;
     }
 
     private viewportTransform(): AffineTransform {
-        return new AffineTransform().translate(this.viewportPanX, this.viewportPanY).scale(this.viewportScale, this.viewportScale);
+        return new AffineTransform()
+            .translate(this.viewportPanX, this.viewportPanY)
+            .rotateDeg(this.viewportRotation)
+            .scale(this.viewportScale, this.viewportScale);
     }
 
     private inverseViewportTransform(): AffineTransform {
@@ -2245,14 +2255,42 @@ export class DrawingScreen implements CanvasDelegate {
     private zoomViewport(factor: number, screenStagePoint: Point): void {
         const before = this.inverseViewportTransform().applyToPoint(screenStagePoint);
         this.viewportScale = Math.max(0.1, Math.min(16, this.viewportScale * factor));
-        this.viewportPanX = screenStagePoint.x - before.x * this.viewportScale;
-        this.viewportPanY = screenStagePoint.y - before.y * this.viewportScale;
+        this.setViewportPanForAnchor(before, screenStagePoint);
         this.updateViewportUI();
         this.updateShapeAssistHandles();
     }
 
+    private rotateViewportAtCenter(deltaDegrees: number): void {
+        this.rotateViewport(deltaDegrees, new Point(0, 0));
+    }
+
+    private rotateViewport(deltaDegrees: number, screenStagePoint: Point): void {
+        const before = this.inverseViewportTransform().applyToPoint(screenStagePoint);
+        this.viewportRotation = this.normalizeViewportRotation(this.viewportRotation + deltaDegrees);
+        this.setViewportPanForAnchor(before, screenStagePoint);
+        this.updateViewportUI();
+        this.updateShapeAssistHandles();
+    }
+
+    private setViewportPanForAnchor(canvasStagePoint: Point, screenStagePoint: Point): void {
+        const projected = new AffineTransform()
+            .rotateDeg(this.viewportRotation)
+            .scale(this.viewportScale, this.viewportScale)
+            .applyToPoint(canvasStagePoint);
+        this.viewportPanX = screenStagePoint.x - projected.x;
+        this.viewportPanY = screenStagePoint.y - projected.y;
+    }
+
+    private normalizeViewportRotation(degrees: number): number {
+        let next = degrees % 360;
+        if (next > 180) next -= 360;
+        if (next < -180) next += 360;
+        return next;
+    }
+
     private resetViewport(): void {
         this.viewportScale = 1;
+        this.viewportRotation = 0;
         this.viewportPanX = 0;
         this.viewportPanY = 0;
         this.updateViewportUI();
@@ -2260,7 +2298,10 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private updateViewportUI(): void {
-        if (this.viewportValueEl) this.viewportValueEl.textContent = `${Math.round(this.viewportScale * 100)}%`;
+        if (this.viewportValueEl) {
+            const rotation = Math.round(this.viewportRotation);
+            this.viewportValueEl.textContent = `${Math.round(this.viewportScale * 100)}% / ${rotation}deg`;
+        }
     }
 
     private onCanvasWheel = (e: WheelEvent): void => {

@@ -123,7 +123,7 @@ Requirements:
 
 - Zoom. Done in V1.6.
 - Pan. Done in V1.6.
-- Rotate canvas view.
+- Rotate canvas view. Done in V1.7.
 - Reset view. Done in V1.6.
 - Convert pointer coordinates through inverse viewport transform before calling brush/fill APIs. Done in V1.6.
 
