@@ -113,19 +113,32 @@ export class CanvasStack implements CanvasDelegate {
     }
 
     public removeLayer(id: string): CanvasLayer | null {
+        const removed = this.detachLayer(id);
+        if (!removed) return null;
+        this.context.deleteRenderTarget(removed.layer.canvas.outputRenderTarget);
+        return removed.layer;
+    }
+
+    public detachLayer(id: string): { layer: CanvasLayer; index: number } | null {
         if (this.layers.length <= 1) return null;
         const index = this.layers.findIndex((layer) => layer.id === id);
         if (index < 0) return null;
 
         const [removed] = this.layers.splice(index, 1);
         removed.canvas.delegate = undefined;
-        this.context.deleteRenderTarget(removed.canvas.outputRenderTarget);
 
         const next = this.layers[Math.min(index, this.layers.length - 1)];
         if (next) this.selectLayer(next.id);
         this.notifyLayersChanged();
         this.updateCanvas();
-        return removed;
+        return { layer: removed, index };
+    }
+
+    public restoreLayer(layer: CanvasLayer, index: number, select: boolean = true): void {
+        if (this.layerForId(layer.id)) return;
+        this.insertLayer(layer, index);
+        if (select) this.selectLayer(layer.id);
+        this.updateCanvas();
     }
 
     public selectLayer(id: string): void {

@@ -75,7 +75,15 @@ interface LayerOrderHistoryEntry {
     after: string[];
 }
 
-type HistoryEntry = DrawingHistoryEntry | LayerPropertyHistoryEntry | LayerOrderHistoryEntry;
+interface LayerAddDeleteHistoryEntry {
+    kind: 'layer-add' | 'layer-delete';
+    layer: CanvasLayer;
+    index: number;
+    selectedLayerIdBefore?: string;
+    selectedLayerIdAfter?: string;
+}
+
+type HistoryEntry = DrawingHistoryEntry | LayerPropertyHistoryEntry | LayerOrderHistoryEntry | LayerAddDeleteHistoryEntry;
 
 export class DrawingScreen implements CanvasDelegate {
     readonly element: HTMLElement;
@@ -2020,6 +2028,12 @@ export class DrawingScreen implements CanvasDelegate {
         this.updateUndoRedoButtons();
     }
 
+    private pushLayerAddDeleteHistory(entry: LayerAddDeleteHistoryEntry): void {
+        this.undoStack.push(entry);
+        this.redoStack = [];
+        this.updateUndoRedoButtons();
+    }
+
     private pushSelectedHistory(fixerGroup: FixerGroup): void {
         const layerId = this.canvasStack?.selectedLayer()?.id;
         if (!layerId) return;
@@ -2115,6 +2129,8 @@ export class DrawingScreen implements CanvasDelegate {
         if (!entry) return false;
         if (entry.kind === 'drawing') return this.hasAnyFixer(entry.fixerGroup);
         if (entry.kind === 'layer-property') return !!this.canvasStack?.layerForId(entry.layerId);
+        if (entry.kind === 'layer-add') return !!this.canvasStack?.layerForId(entry.layer.id);
+        if (entry.kind === 'layer-delete') return !this.canvasStack?.layerForId(entry.layer.id);
         return !!this.canvasStack && entry.before.every((id) => !!this.canvasStack!.layerForId(id));
     }
 
@@ -2122,6 +2138,8 @@ export class DrawingScreen implements CanvasDelegate {
         if (!entry) return false;
         if (entry.kind === 'drawing') return this.hasAnyRedoFixer(entry.fixerGroup);
         if (entry.kind === 'layer-property') return !!this.canvasStack?.layerForId(entry.layerId);
+        if (entry.kind === 'layer-add') return !this.canvasStack?.layerForId(entry.layer.id);
+        if (entry.kind === 'layer-delete') return !!this.canvasStack?.layerForId(entry.layer.id);
         return !!this.canvasStack && entry.after.every((id) => !!this.canvasStack!.layerForId(id));
     }
 
@@ -2145,7 +2163,30 @@ export class DrawingScreen implements CanvasDelegate {
             return;
         }
 
+        if (entry.kind === 'layer-add' || entry.kind === 'layer-delete') {
+            this.applyLayerAddDeleteHistory(entry, undoing);
+            return;
+        }
+
         this.applyLayerPropertyHistory(entry.layerId, entry.property, undoing ? entry.before : entry.after);
+    }
+
+    private applyLayerAddDeleteHistory(entry: LayerAddDeleteHistoryEntry, undoing: boolean): void {
+        if (!this.canvasStack) return;
+        const shouldExist = entry.kind === 'layer-delete' ? undoing : !undoing;
+        if (shouldExist) {
+            this.canvasStack.restoreLayer(entry.layer, entry.index, true);
+        } else {
+            this.canvasStack.detachLayer(entry.layer.id);
+        }
+
+        const targetSelection = undoing ? entry.selectedLayerIdBefore : entry.selectedLayerIdAfter;
+        if (targetSelection && this.canvasStack.layerForId(targetSelection)) {
+            this.selectLayer(targetSelection);
+        } else {
+            this.canvas = this.canvasStack.selectedCanvas;
+            this.refreshLayerPanel();
+        }
     }
 
     private applyLayerPropertyHistory(layerId: string, property: LayerHistoryProperty, value: string | number | boolean): void {
@@ -2515,27 +2556,35 @@ export class DrawingScreen implements CanvasDelegate {
 
     private addLayer(): void {
         if (!this.canvasStack) return;
+        const selectedLayerIdBefore = this.canvasStack.selectedLayer()?.id;
         const selectedIndex = this.canvasStack.selectedCanvasIndex();
         const layer = this.canvasStack.createLayer(undefined, selectedIndex + 1);
         this.selectLayer(layer.id);
+        this.pushLayerAddDeleteHistory({
+            kind: 'layer-add',
+            layer,
+            index: selectedIndex + 1,
+            selectedLayerIdBefore,
+            selectedLayerIdAfter: layer.id
+        });
     }
 
     private deleteSelectedLayer(): void {
         const layer = this.canvasStack?.selectedLayer();
         if (!layer) return;
-        this.canvasStack?.removeLayer(layer.id);
-        this.undoStack = this.undoStack.filter((entry) => !this.historyTouchesLayer(entry, layer.id));
-        this.redoStack = this.redoStack.filter((entry) => !this.historyTouchesLayer(entry, layer.id));
+        const selectedLayerIdBefore = layer.id;
+        const removed = this.canvasStack?.detachLayer(layer.id);
+        if (!removed) return;
+        const selectedLayerIdAfter = this.canvasStack?.selectedLayer()?.id;
         this.canvas = this.canvasStack?.selectedCanvas;
         this.refreshLayerPanel();
-        this.updateUndoRedoButtons();
-    }
-
-    private historyTouchesLayer(entry: HistoryEntry, layerId: string): boolean {
-        if (entry.kind === 'layer-order') {
-            return entry.before.indexOf(layerId) >= 0 || entry.after.indexOf(layerId) >= 0;
-        }
-        return entry.layerId === layerId;
+        this.pushLayerAddDeleteHistory({
+            kind: 'layer-delete',
+            layer: removed.layer,
+            index: removed.index,
+            selectedLayerIdBefore,
+            selectedLayerIdAfter
+        });
     }
 
     private selectedLayerIsLocked(): boolean {
