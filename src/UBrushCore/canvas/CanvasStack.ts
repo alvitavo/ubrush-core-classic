@@ -20,6 +20,7 @@ export interface CanvasLayer {
     visible: boolean;
     opacity: number;
     blendMode: LayerBlendMode;
+    locked: boolean;
 }
 
 export interface CanvasStackDelegate {
@@ -99,7 +100,8 @@ export class CanvasStack implements CanvasDelegate {
             canvas,
             visible: true,
             opacity: 1,
-            blendMode: 'normal'
+            blendMode: 'normal',
+            locked: false
         };
         this.insertLayer(layer, index);
         this.selectLayer(layer.id);
@@ -188,6 +190,13 @@ export class CanvasStack implements CanvasDelegate {
         this.updateCanvas();
     }
 
+    public setLayerLocked(id: string, locked: boolean): void {
+        const layer = this.layerForId(id);
+        if (!layer) return;
+        layer.locked = locked;
+        this.notifyLayersChanged();
+    }
+
     public renameLayer(id: string, name: string): void {
         const layer = this.layerForId(id);
         if (!layer) return;
@@ -236,7 +245,8 @@ export class CanvasStack implements CanvasDelegate {
             canvas,
             visible: true,
             opacity: 1,
-            blendMode: 'normal'
+            blendMode: 'normal',
+            locked: false
         };
         this.insertLayer(layer, index);
     }

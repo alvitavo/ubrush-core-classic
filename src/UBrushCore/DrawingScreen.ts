@@ -581,6 +581,7 @@ export class DrawingScreen implements CanvasDelegate {
 
     private onPointerDown = async (e: MouseEvent | TouchEvent): Promise<void> => {
         e.preventDefault();
+        if (this.selectedLayerIsLocked()) return;
         if (this.shapeAssistEditingContext) {
             await this.commitShapeAssistContext();
         }
@@ -1912,6 +1913,7 @@ export class DrawingScreen implements CanvasDelegate {
 
     private async clearWithHistory(): Promise<void> {
         if (!this.canvas) return;
+        if (this.selectedLayerIsLocked()) return;
 
         const group = new FixerGroup();
         group.undoFixer = (await this.canvas.fixer()) || undefined;
@@ -2197,6 +2199,10 @@ export class DrawingScreen implements CanvasDelegate {
         this.updateUndoRedoButtons();
     }
 
+    private selectedLayerIsLocked(): boolean {
+        return !!this.canvasStack?.selectedLayer()?.locked;
+    }
+
     private moveLayer(layerId: string, direction: -1 | 1): void {
         this.canvasStack?.moveLayer(layerId, direction);
         this.refreshLayerPanel();
@@ -2217,6 +2223,13 @@ export class DrawingScreen implements CanvasDelegate {
 
     private renameLayer(layerId: string, name: string): void {
         this.canvasStack?.renameLayer(layerId, name);
+        this.refreshLayerPanel();
+    }
+
+    private toggleLayerLock(layerId: string): void {
+        const layer = this.canvasStack?.layerForId(layerId);
+        if (!layer) return;
+        this.canvasStack?.setLayerLocked(layerId, !layer.locked);
         this.refreshLayerPanel();
     }
 
@@ -2284,6 +2297,9 @@ export class DrawingScreen implements CanvasDelegate {
         });
         row.addEventListener('click', () => this.selectLayer(layer.id));
 
+        const layerButtons = document.createElement('div');
+        layerButtons.style.cssText = `display:flex; flex-direction:column; gap:4px;`;
+
         const visible = document.createElement('button');
         visible.textContent = layer.visible ? 'V' : '-';
         visible.title = layer.visible ? 'Hide layer' : 'Show layer';
@@ -2295,7 +2311,21 @@ export class DrawingScreen implements CanvasDelegate {
             e.stopPropagation();
             this.canvasStack?.setLayerVisible(layer.id, !layer.visible);
         });
-        row.appendChild(visible);
+        layerButtons.appendChild(visible);
+
+        const lock = document.createElement('button');
+        lock.textContent = layer.locked ? 'L' : '-';
+        lock.title = layer.locked ? 'Unlock layer' : 'Lock layer';
+        lock.style.cssText = `
+            width:24px; height:24px; border-radius:4px; border:1px solid #555;
+            background:${layer.locked ? '#5a4630' : '#2a2a2a'}; color:#e0e0e0; cursor:pointer;
+        `;
+        lock.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleLayerLock(layer.id);
+        });
+        layerButtons.appendChild(lock);
+        row.appendChild(layerButtons);
 
         const body = document.createElement('div');
         body.style.cssText = `min-width:0; display:flex; flex-direction:column; gap:5px;`;
