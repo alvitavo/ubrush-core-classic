@@ -21,6 +21,7 @@ export interface CanvasLayer {
     opacity: number;
     blendMode: LayerBlendMode;
     locked: boolean;
+    alphaLock: boolean;
 }
 
 export interface CanvasStackDelegate {
@@ -101,7 +102,8 @@ export class CanvasStack implements CanvasDelegate {
             visible: true,
             opacity: 1,
             blendMode: 'normal',
-            locked: false
+            locked: false,
+            alphaLock: false
         };
         this.insertLayer(layer, index);
         this.selectLayer(layer.id);
@@ -197,6 +199,14 @@ export class CanvasStack implements CanvasDelegate {
         this.notifyLayersChanged();
     }
 
+    public setLayerAlphaLock(id: string, alphaLock: boolean): void {
+        const layer = this.layerForId(id);
+        if (!layer) return;
+        layer.alphaLock = alphaLock;
+        layer.canvas.setAlphaLock(alphaLock);
+        this.notifyLayersChanged();
+    }
+
     public renameLayer(id: string, name: string): void {
         const layer = this.layerForId(id);
         if (!layer) return;
@@ -246,7 +256,8 @@ export class CanvasStack implements CanvasDelegate {
             visible: true,
             opacity: 1,
             blendMode: 'normal',
-            locked: false
+            locked: false,
+            alphaLock: false
         };
         this.insertLayer(layer, index);
     }

@@ -13,6 +13,7 @@ Build a Photoshop-class layer system without breaking the existing brush engine.
 - Rename layers.
 - Move layers up and down.
 - Lock layers.
+- Alpha lock layers.
 - Visibility toggle.
 - Layer opacity.
 - Blend modes: normal, add, screen, max.
@@ -146,7 +147,7 @@ Required strategy:
 - Duplicate layer.
 - Merge down.
 - Flatten visible.
-- Alpha lock UI.
+- Alpha lock UI. Done in V1.4.
 - Layer lock. Done in V1.3.
 - Export/import layer document format.
 - Thumbnails.

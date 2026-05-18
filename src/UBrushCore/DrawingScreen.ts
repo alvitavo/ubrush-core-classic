@@ -2233,6 +2233,13 @@ export class DrawingScreen implements CanvasDelegate {
         this.refreshLayerPanel();
     }
 
+    private toggleLayerAlphaLock(layerId: string): void {
+        const layer = this.canvasStack?.layerForId(layerId);
+        if (!layer) return;
+        this.canvasStack?.setLayerAlphaLock(layerId, !layer.alphaLock);
+        this.refreshLayerPanel();
+    }
+
     private selectLayer(layerId: string): void {
         if (!this.canvasStack) return;
         this.canvasStack.selectLayer(layerId);
@@ -2325,6 +2332,19 @@ export class DrawingScreen implements CanvasDelegate {
             this.toggleLayerLock(layer.id);
         });
         layerButtons.appendChild(lock);
+
+        const alphaLock = document.createElement('button');
+        alphaLock.textContent = layer.alphaLock ? 'A' : '-';
+        alphaLock.title = layer.alphaLock ? 'Disable alpha lock' : 'Enable alpha lock';
+        alphaLock.style.cssText = `
+            width:24px; height:24px; border-radius:4px; border:1px solid #555;
+            background:${layer.alphaLock ? '#305242' : '#2a2a2a'}; color:#e0e0e0; cursor:pointer;
+        `;
+        alphaLock.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleLayerAlphaLock(layer.id);
+        });
+        layerButtons.appendChild(alphaLock);
         row.appendChild(layerButtons);
 
         const body = document.createElement('div');
