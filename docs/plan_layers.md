@@ -121,11 +121,11 @@ interface ViewportState {
 
 Requirements:
 
-- Zoom.
-- Pan.
+- Zoom. Done in V1.6.
+- Pan. Done in V1.6.
 - Rotate canvas view.
-- Reset view.
-- Convert pointer coordinates through inverse viewport transform before calling brush/fill APIs.
+- Reset view. Done in V1.6.
+- Convert pointer coordinates through inverse viewport transform before calling brush/fill APIs. Done in V1.6.
 
 ## Phase 6: Performance
 

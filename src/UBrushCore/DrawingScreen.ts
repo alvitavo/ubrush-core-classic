@@ -68,6 +68,14 @@ export class DrawingScreen implements CanvasDelegate {
     private glContext?: WGPUContext;
     private canvasWidth = 0;
     private canvasHeight = 0;
+    private viewportScale = 1;
+    private viewportPanX = 0;
+    private viewportPanY = 0;
+    private viewportValueEl!: HTMLElement;
+    private spaceKeyDown = false;
+    private isViewportPanning = false;
+    private viewportPanStartClient = new Point();
+    private viewportPanStartOffset = new Point();
 
     private lastPos: Point = new Point();
     private lastStylus: Stylus = new Stylus();
@@ -390,6 +398,11 @@ export class DrawingScreen implements CanvasDelegate {
         // Divider
         sidebar.appendChild(divider());
 
+        sidebar.appendChild(this.buildViewportSection());
+
+        // Divider
+        sidebar.appendChild(divider());
+
         sidebar.appendChild(this.buildLayerSection());
 
         // Divider
@@ -566,7 +579,7 @@ export class DrawingScreen implements CanvasDelegate {
                 source: this.canvasStack.outputRenderTarget.texture,
                 sourceRect: Common.stageRect(),
                 canvasRect: Common.stageRect(),
-                transform: new AffineTransform(),
+                transform: this.viewportTransform(),
                 blend: RenderObjectBlend.Normal
             }
         );
@@ -577,10 +590,17 @@ export class DrawingScreen implements CanvasDelegate {
     private attachInputEvents(): void {
         this.glCanvas.addEventListener('mousedown', this.onPointerDown);
         this.glCanvas.addEventListener('touchstart', this.onPointerDown, { passive: false });
+        this.glCanvas.addEventListener('wheel', this.onCanvasWheel, { passive: false });
+        document.addEventListener('keydown', this.onDocumentKeyDown);
+        document.addEventListener('keyup', this.onDocumentKeyUp);
     }
 
     private onPointerDown = async (e: MouseEvent | TouchEvent): Promise<void> => {
         e.preventDefault();
+        if (e instanceof MouseEvent && (e.button === 1 || this.spaceKeyDown)) {
+            this.beginViewportPan(e);
+            return;
+        }
         if (this.selectedLayerIsLocked()) return;
         if (this.shapeAssistEditingContext) {
             await this.commitShapeAssistContext();
@@ -634,6 +654,34 @@ export class DrawingScreen implements CanvasDelegate {
             document.addEventListener('touchmove', this.onPointerMove);
             document.addEventListener('touchend', this.onPointerUp);
         }
+    };
+
+    private beginViewportPan(e: MouseEvent): void {
+        this.isViewportPanning = true;
+        this.viewportPanStartClient = new Point(e.clientX, e.clientY);
+        this.viewportPanStartOffset = new Point(this.viewportPanX, this.viewportPanY);
+        this.glCanvas.style.cursor = 'grabbing';
+        document.addEventListener('mousemove', this.onViewportPanMove);
+        document.addEventListener('mouseup', this.onViewportPanUp);
+    }
+
+    private onViewportPanMove = (e: MouseEvent): void => {
+        if (!this.isViewportPanning) return;
+        e.preventDefault();
+        const rect = this.glCanvas.getBoundingClientRect();
+        const dx = ((e.clientX - this.viewportPanStartClient.x) / rect.width) * 2;
+        const dy = -((e.clientY - this.viewportPanStartClient.y) / rect.height) * 2;
+        this.viewportPanX = this.viewportPanStartOffset.x + dx;
+        this.viewportPanY = this.viewportPanStartOffset.y + dy;
+        this.updateViewportUI();
+        this.updateShapeAssistHandles();
+    };
+
+    private onViewportPanUp = (): void => {
+        this.isViewportPanning = false;
+        this.glCanvas.style.cursor = this.spaceKeyDown ? 'grab' : 'crosshair';
+        document.removeEventListener('mousemove', this.onViewportPanMove);
+        document.removeEventListener('mouseup', this.onViewportPanUp);
     };
 
     private onPointerMove = (e: MouseEvent | TouchEvent): void => {
@@ -1845,17 +1893,38 @@ export class DrawingScreen implements CanvasDelegate {
 
     private canvasPointToContainer(point: Point): Point {
         const rect = this.glCanvas.getBoundingClientRect();
+        const stage = this.viewportTransform().applyToPoint(this.canvasPointToStagePoint(point));
         return new Point(
-            (point.x / this.canvasWidth) * rect.width,
-            ((this.canvasHeight - point.y) / this.canvasHeight) * rect.height
+            ((stage.x + 1) * 0.5) * rect.width,
+            ((1 - stage.y) * 0.5) * rect.height
         );
     }
 
     private clientPointToCanvasPoint(clientX: number, clientY: number): Point {
+        const stage = this.inverseViewportTransform().applyToPoint(this.clientPointToScreenStagePoint(clientX, clientY));
+        return this.stagePointToCanvasPoint(stage);
+    }
+
+    private clientPointToScreenStagePoint(clientX: number, clientY: number): Point {
         const rect = this.glCanvas.getBoundingClientRect();
-        const x = (clientX - rect.left) * (this.canvasWidth / rect.width);
-        const y = this.canvasHeight - (clientY - rect.top) * (this.canvasHeight / rect.height);
-        return new Point(x, y);
+        return new Point(
+            ((clientX - rect.left) / rect.width) * 2 - 1,
+            1 - ((clientY - rect.top) / rect.height) * 2
+        );
+    }
+
+    private canvasPointToStagePoint(point: Point): Point {
+        return new Point(
+            (point.x / this.canvasWidth) * 2 - 1,
+            (point.y / this.canvasHeight) * 2 - 1
+        );
+    }
+
+    private stagePointToCanvasPoint(point: Point): Point {
+        return new Point(
+            ((point.x + 1) * 0.5) * this.canvasWidth,
+            ((point.y + 1) * 0.5) * this.canvasHeight
+        );
     }
 
     private eventPoint(e: MouseEvent | TouchEvent): Point {
@@ -1870,11 +1939,7 @@ export class DrawingScreen implements CanvasDelegate {
             clientY = e.touches[0]?.clientY ?? 0;
         }
 
-        const scaleX = this.canvasWidth / rect.width;
-        const scaleY = this.canvasHeight / rect.height;
-        const x = (clientX - rect.left) * scaleX;
-        const y = this.canvasHeight - (clientY - rect.top) * scaleY;
-        return new Point(x, y);
+        return this.clientPointToCanvasPoint(clientX, clientY);
     }
 
     private eventStylus(e: MouseEvent | TouchEvent): Stylus {
@@ -2139,6 +2204,88 @@ export class DrawingScreen implements CanvasDelegate {
         if (this.shapeAssistEditingContext) {
             this.pushShapeAssistSnapshot();
         }
+    }
+
+    private buildViewportSection(): HTMLElement {
+        const wrap = document.createElement('div');
+        const header = document.createElement('div');
+        header.style.cssText = `display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;`;
+
+        const label = document.createElement('span');
+        label.textContent = 'View';
+        label.style.cssText = `font-size:11px; color:#9a9a9a; font-weight:600; text-transform:uppercase; letter-spacing:.4px;`;
+        this.viewportValueEl = document.createElement('span');
+        this.viewportValueEl.style.cssText = `font-size:11px; color:#7a9fc0;`;
+        header.appendChild(label);
+        header.appendChild(this.viewportValueEl);
+        wrap.appendChild(header);
+
+        const controls = document.createElement('div');
+        controls.style.cssText = `display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px;`;
+        controls.appendChild(this.layerMiniButton('-', 'Zoom out', () => this.zoomViewportAtCenter(1 / 1.2)));
+        controls.appendChild(this.layerMiniButton('+', 'Zoom in', () => this.zoomViewportAtCenter(1.2)));
+        controls.appendChild(this.layerMiniButton('Reset', 'Reset view', () => this.resetViewport()));
+        wrap.appendChild(controls);
+        this.updateViewportUI();
+        return wrap;
+    }
+
+    private viewportTransform(): AffineTransform {
+        return new AffineTransform().translate(this.viewportPanX, this.viewportPanY).scale(this.viewportScale, this.viewportScale);
+    }
+
+    private inverseViewportTransform(): AffineTransform {
+        return this.viewportTransform().inverse();
+    }
+
+    private zoomViewportAtCenter(factor: number): void {
+        this.zoomViewport(factor, new Point(0, 0));
+    }
+
+    private zoomViewport(factor: number, screenStagePoint: Point): void {
+        const before = this.inverseViewportTransform().applyToPoint(screenStagePoint);
+        this.viewportScale = Math.max(0.1, Math.min(16, this.viewportScale * factor));
+        this.viewportPanX = screenStagePoint.x - before.x * this.viewportScale;
+        this.viewportPanY = screenStagePoint.y - before.y * this.viewportScale;
+        this.updateViewportUI();
+        this.updateShapeAssistHandles();
+    }
+
+    private resetViewport(): void {
+        this.viewportScale = 1;
+        this.viewportPanX = 0;
+        this.viewportPanY = 0;
+        this.updateViewportUI();
+        this.updateShapeAssistHandles();
+    }
+
+    private updateViewportUI(): void {
+        if (this.viewportValueEl) this.viewportValueEl.textContent = `${Math.round(this.viewportScale * 100)}%`;
+    }
+
+    private onCanvasWheel = (e: WheelEvent): void => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+        this.zoomViewport(factor, this.clientPointToScreenStagePoint(e.clientX, e.clientY));
+    };
+
+    private onDocumentKeyDown = (e: KeyboardEvent): void => {
+        if (e.code !== 'Space' || this.isTextEditingTarget(e.target)) return;
+        e.preventDefault();
+        this.spaceKeyDown = true;
+        if (!this.isViewportPanning) this.glCanvas.style.cursor = 'grab';
+    };
+
+    private onDocumentKeyUp = (e: KeyboardEvent): void => {
+        if (e.code !== 'Space') return;
+        this.spaceKeyDown = false;
+        if (!this.isViewportPanning) this.glCanvas.style.cursor = 'crosshair';
+    };
+
+    private isTextEditingTarget(target: EventTarget | null): boolean {
+        const el = target as HTMLElement | null;
+        if (!el) return false;
+        return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
     }
 
     private buildLayerSection(): HTMLElement {
