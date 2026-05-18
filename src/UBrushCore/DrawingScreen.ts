@@ -2,6 +2,7 @@ import { getFavoritesSync, isFavorite, setFavorite } from './favorites/Favorites
 import { WGPUContext } from '../UBrushCore/gpu/webgpu/WGPUContext';
 import { bootstrapWebGPU } from '../UBrushCore/gpu/webgpu/bootstrap';
 import { Canvas, CanvasDelegate, CanvasFloodFillResult } from '../UBrushCore/canvas/Canvas';
+import { CanvasLayer, CanvasStack, LayerBlendMode } from '../UBrushCore/canvas/CanvasStack';
 import { IBrush } from '../UBrushCore/common/IBrush';
 import { Size } from '../UBrushCore/common/Size';
 import { Point } from '../UBrushCore/common/Point';
@@ -52,12 +53,18 @@ interface FloodFillSnapshot {
     edgeSensitivity: number;
 }
 
+interface DrawingHistoryEntry {
+    layerId: string;
+    fixerGroup: FixerGroup;
+}
+
 export class DrawingScreen implements CanvasDelegate {
     readonly element: HTMLElement;
 
     private glCanvas!: HTMLCanvasElement;
     private canvasContainer!: HTMLElement;
     private canvas?: Canvas;
+    private canvasStack?: CanvasStack;
     private glContext?: WGPUContext;
     private canvasWidth = 0;
     private canvasHeight = 0;
@@ -65,8 +72,8 @@ export class DrawingScreen implements CanvasDelegate {
     private lastPos: Point = new Point();
     private lastStylus: Stylus = new Stylus();
     private stylusEventCount: number = 0;
-    private undoStack: FixerGroup[] = [];
-    private redoStack: FixerGroup[] = [];
+    private undoStack: DrawingHistoryEntry[] = [];
+    private redoStack: DrawingHistoryEntry[] = [];
     private pendingFillHistoryCount = 0;
     private loopPaused = false;
     private straightLineTimer: number | null = null;
@@ -136,6 +143,9 @@ export class DrawingScreen implements CanvasDelegate {
     private brushToolBtn!: HTMLButtonElement;
     private fillToolBtn!: HTMLButtonElement;
     private webGPUStatsEl!: HTMLElement;
+    private layerListEl!: HTMLElement;
+    private addLayerBtnEl!: HTMLButtonElement;
+    private deleteLayerBtnEl!: HTMLButtonElement;
     private selectedSwatch: HTMLButtonElement | null = null;
 
     private onEditBrush: () => void;
@@ -194,7 +204,7 @@ export class DrawingScreen implements CanvasDelegate {
         if (cat?.brushes) {
             cat.brushes[this.currentBrushIndex] = cloned;
         }
-        this.canvas?.setBrush(JSON.parse(JSON.stringify(cloned)));
+        this.canvasStack?.setBrush(JSON.parse(JSON.stringify(cloned)));
         this.saveState();
     }
 
@@ -241,15 +251,24 @@ export class DrawingScreen implements CanvasDelegate {
 
     // ---- CanvasDelegate ----
 
-    changeRect(_canvas: Canvas, _rect: Rect): void {}
+    changeRect(_source: Canvas | CanvasStack, _rect: Rect): void {}
 
     didReleaseDrawingWithFixerGroup(_canvas: Canvas, fixerGroup: FixerGroup): void {
-        this.undoStack.push(fixerGroup);
-        this.redoStack = [];
-        this.updateUndoRedoButtons();
+        this.pushCanvasHistory(_canvas, fixerGroup);
     }
 
     didDryCanvas(_canvas: Canvas): void {}
+
+    didReleaseDrawing(_canvasStack: CanvasStack, fixerGroup: FixerGroup, canvasIndex: number): void {
+        const layer = this.canvasStack?.layerArray[canvasIndex];
+        if (!layer) return;
+        this.pushHistory(layer.id, fixerGroup);
+    }
+
+    didChangeLayers(_canvasStack: CanvasStack, _layers: CanvasLayer[]): void {
+        this.canvas = this.canvasStack?.selectedCanvas;
+        this.refreshLayerPanel();
+    }
 
     // ---- Layout ----
 
@@ -339,8 +358,9 @@ export class DrawingScreen implements CanvasDelegate {
             this.currentBrushIndex = parseInt(this.brushSelectEl.value);
             const cat = this.categories[this.currentCategoryIndex];
             const brush = cat?.brushes?.[this.currentBrushIndex];
-            if (brush && this.canvas) {
-                this.canvas.setBrush(JSON.parse(JSON.stringify(brush)));
+            if (brush && this.canvasStack) {
+                this.savedBrush = JSON.parse(JSON.stringify(brush));
+                this.canvasStack.setBrush(JSON.parse(JSON.stringify(brush)));
             }
             this.saveState();
             this.updateFavoriteStar();
@@ -366,6 +386,11 @@ export class DrawingScreen implements CanvasDelegate {
 
         sidebar.appendChild(this.buildBrushSizeSlider());
         sidebar.appendChild(this.buildBrushOpacitySlider());
+
+        // Divider
+        sidebar.appendChild(divider());
+
+        sidebar.appendChild(this.buildLayerSection());
 
         // Divider
         sidebar.appendChild(divider());
@@ -430,8 +455,9 @@ export class DrawingScreen implements CanvasDelegate {
         this.brushSelectEl.value = String(targetIndex);
 
         // Skip canvas.setBrush during initial restore — initWebGL applies savedBrush instead
-        if (brushes.length > 0 && this.canvas && !this.isInitialRestore) {
-            this.canvas.setBrush(JSON.parse(JSON.stringify(brushes[targetIndex])));
+        if (brushes.length > 0 && this.canvasStack && !this.isInitialRestore) {
+            this.savedBrush = JSON.parse(JSON.stringify(brushes[targetIndex]));
+            this.canvasStack.setBrush(JSON.parse(JSON.stringify(brushes[targetIndex])));
         }
         this.updateFavoriteStar();
     }
@@ -492,25 +518,29 @@ export class DrawingScreen implements CanvasDelegate {
         const context = new WGPUContext(bootstrap.device, bootstrap.presentationContext, bootstrap.presentationFormat, size);
         this.glContext = context;
 
-        const canvas = new Canvas(context, size);
-        canvas.delegate = this;
-        this.canvas = canvas;
-
         WGPUProgramManager.init(context);
+
+        const canvasStack = new CanvasStack(context, size);
+        canvasStack.delegate = this;
+        this.canvasStack = canvasStack;
+        const firstLayer = canvasStack.createLayer('Layer 1');
+        this.canvas = firstLayer.canvas;
 
         // Apply saved brush or fall back to first available brush across all categories
         const firstAvailable = this.categories.reduce<IBrush | undefined>(
             (found, cat) => found ?? cat.brushes?.[0], undefined
         );
-        const brushToApply = this.savedBrush ?? firstAvailable;
+        const brushToApply = this.savedBrush ?? this.getCurrentBrush() ?? firstAvailable;
         if (brushToApply) {
-            canvas.setBrush(JSON.parse(JSON.stringify(brushToApply)));
+            canvasStack.setBrush(JSON.parse(JSON.stringify(brushToApply)));
+            this.savedBrush = JSON.parse(JSON.stringify(brushToApply));
         }
         this.isInitialRestore = false;
 
-        canvas.setColor(this.currentColor.clone());
-        canvas.lineDriver.setBrushSize(this.currentSize);
-        canvas.lineDriver.setBrushOpacity(this.currentOpacity);
+        canvasStack.color = this.currentColor.clone();
+        canvasStack.brushSize = this.currentSize;
+        canvasStack.brushOpacity = this.currentOpacity;
+        this.refreshLayerPanel();
 
         this.attachInputEvents();
         this.loop();
@@ -524,15 +554,16 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private render(): void {
-        if (!this.canvas || !this.glContext) return;
+        if (!this.canvasStack || !this.glContext) return;
 
         this.glContext.clearRenderTarget(null, Color.white());
+        this.canvasStack.updateCanvas();
 
         WGPUProgramManager.getInstance().fillRectProgram.fill(
             null,
             {
                 targetRect: Common.stageRect(),
-                source: this.canvas.outputRenderTarget.texture,
+                source: this.canvasStack.outputRenderTarget.texture,
                 sourceRect: Common.stageRect(),
                 canvasRect: Common.stageRect(),
                 transform: new AffineTransform(),
@@ -590,6 +621,7 @@ export class DrawingScreen implements CanvasDelegate {
             point: this.lastPos.clone(),
             stylus: this.cloneStylus(this.lastStylus)
         }];
+        this.ensureSelectedCanvasBrush();
         this.straightLineStrokeGroup = (await this.canvas?.captureLineStartForStraightening()) ?? null;
         this.canvas?.moveTo(this.lastPos, this.lastStylus);
         this.startStraightLineTimer();
@@ -1681,10 +1713,12 @@ export class DrawingScreen implements CanvasDelegate {
         this.renderShapeAssistPreview();
         const fixerGroup = await this.canvas.commitStraightenedLine(this.straightLineUndoGroup);
         if (this.hasAnyFixer(fixerGroup) && this.hasAnyRedoFixer(fixerGroup)) {
+            const layerId = this.canvasStack?.selectedLayer()?.id;
+            if (!layerId) return;
             if (this.straightLineStrokeGroup && this.hasAnyFixer(this.straightLineStrokeGroup) && this.hasAnyRedoFixer(this.straightLineStrokeGroup)) {
-                this.undoStack.push(this.straightLineStrokeGroup);
+                this.undoStack.push({ layerId, fixerGroup: this.straightLineStrokeGroup });
             }
-            this.undoStack.push(fixerGroup);
+            this.undoStack.push({ layerId, fixerGroup });
             this.redoStack = [];
             this.updateUndoRedoButtons();
         }
@@ -1858,6 +1892,24 @@ export class DrawingScreen implements CanvasDelegate {
 
     // ---- Undo / Redo ----
 
+    private pushCanvasHistory(canvas: Canvas, fixerGroup: FixerGroup): void {
+        const layerId = this.canvasStack?.layerIdForCanvas(canvas);
+        if (!layerId) return;
+        this.pushHistory(layerId, fixerGroup);
+    }
+
+    private pushHistory(layerId: string, fixerGroup: FixerGroup): void {
+        this.undoStack.push({ layerId, fixerGroup });
+        this.redoStack = [];
+        this.updateUndoRedoButtons();
+    }
+
+    private pushSelectedHistory(fixerGroup: FixerGroup): void {
+        const layerId = this.canvasStack?.selectedLayer()?.id;
+        if (!layerId) return;
+        this.pushHistory(layerId, fixerGroup);
+    }
+
     private async clearWithHistory(): Promise<void> {
         if (!this.canvas) return;
 
@@ -1870,9 +1922,7 @@ export class DrawingScreen implements CanvasDelegate {
 
         if (!group.undoFixer) return;
 
-        this.undoStack.push(group);
-        this.redoStack = [];
-        this.updateUndoRedoButtons();
+        this.pushSelectedHistory(group);
     }
 
     private undo(): void {
@@ -1886,19 +1936,21 @@ export class DrawingScreen implements CanvasDelegate {
         }
         if (this.undoStack.length === 0) return;
         if (this.pendingFillHistoryCount > 0) return;
-        const group = this.undoStack.pop()!;
+        const entry = this.undoStack.pop()!;
+        const group = entry.fixerGroup;
         if (!this.hasAnyFixer(group)) {
             this.updateUndoRedoButtons();
             return;
         }
 
+        const targetCanvas = this.canvasStack?.layerForId(entry.layerId)?.canvas;
         if (group.undoFixerLiquid) {
-            this.canvas?.fix(group.undoFixerLiquid, true);
+            targetCanvas?.fix(group.undoFixerLiquid, true);
         } else if (group.undoFixer) {
-            this.canvas?.fix(group.undoFixer, false);
+            targetCanvas?.fix(group.undoFixer, false);
         }
 
-        this.redoStack.push(group);
+        this.redoStack.push(entry);
         this.updateUndoRedoButtons();
     }
 
@@ -1912,19 +1964,21 @@ export class DrawingScreen implements CanvasDelegate {
             return;
         }
         if (this.redoStack.length === 0) return;
-        const group = this.redoStack.pop()!;
+        const entry = this.redoStack.pop()!;
+        const group = entry.fixerGroup;
         if (!this.hasAnyRedoFixer(group)) {
             this.updateUndoRedoButtons();
             return;
         }
 
+        const targetCanvas = this.canvasStack?.layerForId(entry.layerId)?.canvas;
         if (group.redoFixerLiquid) {
-            this.canvas?.fix(group.redoFixerLiquid, true);
+            targetCanvas?.fix(group.redoFixerLiquid, true);
         } else if (group.redoFixer) {
-            this.canvas?.fix(group.redoFixer, false);
+            targetCanvas?.fix(group.redoFixer, false);
         }
 
-        this.undoStack.push(group);
+        this.undoStack.push(entry);
         this.updateUndoRedoButtons();
     }
 
@@ -1940,8 +1994,8 @@ export class DrawingScreen implements CanvasDelegate {
             this.redoBtnEl.disabled = this.fillInProgress || this.floodFillRedoStack.length === 0;
             return;
         }
-        const undoTop = this.undoStack[this.undoStack.length - 1];
-        const redoTop = this.redoStack[this.redoStack.length - 1];
+        const undoTop = this.undoStack[this.undoStack.length - 1]?.fixerGroup;
+        const redoTop = this.redoStack[this.redoStack.length - 1]?.fixerGroup;
         this.undoBtnEl.disabled = this.pendingFillHistoryCount > 0 || !this.hasAnyFixer(undoTop);
         this.redoBtnEl.disabled = !this.hasAnyRedoFixer(redoTop);
     }
@@ -1961,7 +2015,8 @@ export class DrawingScreen implements CanvasDelegate {
         const g = parseInt(hex.slice(3, 5), 16) / 255;
         const b = parseInt(hex.slice(5, 7), 16) / 255;
         this.currentColor = new Color(r, g, b, 1);
-        this.canvas?.setColor(this.currentColor.clone());
+        if (this.canvasStack) this.canvasStack.color = this.currentColor.clone();
+        else this.canvas?.setColor(this.currentColor.clone());
     }
 
     private selectPaletteSwatch(swatch: HTMLButtonElement): void {
@@ -2051,7 +2106,8 @@ export class DrawingScreen implements CanvasDelegate {
 
     private applyBrushSize(value: number, fromUser: boolean = false, refreshPreview: boolean = true): void {
         this.currentSize = value;
-        this.canvas?.lineDriver.setBrushSize(value);
+        if (this.canvasStack) this.canvasStack.brushSize = value;
+        else this.canvas?.lineDriver.setBrushSize(value);
         this.updateBrushControlSliders();
         if (refreshPreview && this.shapeAssistEditingContext) {
             this.renderShapeAssistPreview(true);
@@ -2061,7 +2117,8 @@ export class DrawingScreen implements CanvasDelegate {
 
     private applyBrushOpacity(value: number, fromUser: boolean = false, refreshPreview: boolean = true): void {
         this.currentOpacity = value;
-        this.canvas?.lineDriver.setBrushOpacity(value);
+        if (this.canvasStack) this.canvasStack.brushOpacity = value;
+        else this.canvas?.lineDriver.setBrushOpacity(value);
         this.updateBrushControlSliders();
         if (refreshPreview && this.shapeAssistEditingContext) {
             this.renderShapeAssistPreview(true);
@@ -2080,6 +2137,177 @@ export class DrawingScreen implements CanvasDelegate {
         if (this.shapeAssistEditingContext) {
             this.pushShapeAssistSnapshot();
         }
+    }
+
+    private buildLayerSection(): HTMLElement {
+        const wrap = document.createElement('div');
+        const header = document.createElement('div');
+        header.style.cssText = `display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;`;
+
+        const label = document.createElement('span');
+        label.textContent = 'Layers';
+        label.style.cssText = `font-size:11px; color:#9a9a9a; font-weight:600; text-transform:uppercase; letter-spacing:.4px;`;
+        header.appendChild(label);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = `display:flex; gap:4px;`;
+        this.addLayerBtnEl = this.layerIconButton('+', 'Add layer', () => this.addLayer());
+        this.deleteLayerBtnEl = this.layerIconButton('-', 'Delete selected layer', () => this.deleteSelectedLayer());
+        actions.appendChild(this.addLayerBtnEl);
+        actions.appendChild(this.deleteLayerBtnEl);
+        header.appendChild(actions);
+        wrap.appendChild(header);
+
+        this.layerListEl = document.createElement('div');
+        this.layerListEl.style.cssText = `display:flex; flex-direction:column; gap:6px;`;
+        wrap.appendChild(this.layerListEl);
+        this.refreshLayerPanel();
+        return wrap;
+    }
+
+    private layerIconButton(text: string, title: string, onClick: () => void): HTMLButtonElement {
+        const button = document.createElement('button');
+        button.textContent = text;
+        button.title = title;
+        button.style.cssText = `
+            width:26px; height:24px; padding:0; border-radius:4px;
+            background:#3a3a3a; border:1px solid #555; color:#e0e0e0;
+            font-size:15px; line-height:1; cursor:pointer;
+        `;
+        button.addEventListener('click', onClick);
+        return button;
+    }
+
+    private addLayer(): void {
+        if (!this.canvasStack) return;
+        const selectedIndex = this.canvasStack.selectedCanvasIndex();
+        const layer = this.canvasStack.createLayer(undefined, selectedIndex + 1);
+        this.selectLayer(layer.id);
+    }
+
+    private deleteSelectedLayer(): void {
+        const layer = this.canvasStack?.selectedLayer();
+        if (!layer) return;
+        this.canvasStack?.removeLayer(layer.id);
+        this.undoStack = this.undoStack.filter((entry) => entry.layerId !== layer.id);
+        this.redoStack = this.redoStack.filter((entry) => entry.layerId !== layer.id);
+        this.canvas = this.canvasStack?.selectedCanvas;
+        this.refreshLayerPanel();
+        this.updateUndoRedoButtons();
+    }
+
+    private selectLayer(layerId: string): void {
+        if (!this.canvasStack) return;
+        this.canvasStack.selectLayer(layerId);
+        this.canvas = this.canvasStack.selectedCanvas;
+        this.canvasStack.setBrush(this.currentBrushClone());
+        this.canvasStack.color = this.currentColor.clone();
+        this.canvasStack.brushSize = this.currentSize;
+        this.canvasStack.brushOpacity = this.currentOpacity;
+        this.refreshLayerPanel();
+    }
+
+    private refreshLayerPanel(): void {
+        if (!this.layerListEl) return;
+        this.layerListEl.replaceChildren();
+
+        const layers = this.canvasStack?.layerArray ?? [];
+        const selectedId = this.canvasStack?.selectedLayer()?.id;
+
+        for (let i = layers.length - 1; i >= 0; i--) {
+            this.layerListEl.appendChild(this.buildLayerRow(layers[i], layers[i].id === selectedId));
+        }
+
+        if (this.deleteLayerBtnEl) this.deleteLayerBtnEl.disabled = layers.length <= 1;
+    }
+
+    private buildLayerRow(layer: CanvasLayer, selected: boolean): HTMLElement {
+        const row = document.createElement('div');
+        row.style.cssText = `
+            display:grid; grid-template-columns:26px 1fr; gap:6px; align-items:center;
+            padding:7px; border-radius:6px; border:1px solid ${selected ? '#75b7f1' : '#444'};
+            background:${selected ? '#26384a' : '#333'}; cursor:pointer;
+        `;
+        row.addEventListener('click', () => this.selectLayer(layer.id));
+
+        const visible = document.createElement('button');
+        visible.textContent = layer.visible ? 'V' : '-';
+        visible.title = layer.visible ? 'Hide layer' : 'Show layer';
+        visible.style.cssText = `
+            width:24px; height:24px; border-radius:4px; border:1px solid #555;
+            background:${layer.visible ? '#4a4a4a' : '#2a2a2a'}; color:#e0e0e0; cursor:pointer;
+        `;
+        visible.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.canvasStack?.setLayerVisible(layer.id, !layer.visible);
+        });
+        row.appendChild(visible);
+
+        const body = document.createElement('div');
+        body.style.cssText = `min-width:0; display:flex; flex-direction:column; gap:5px;`;
+
+        const top = document.createElement('div');
+        top.style.cssText = `display:flex; align-items:center; justify-content:space-between; gap:6px;`;
+
+        const name = document.createElement('span');
+        name.textContent = layer.name;
+        name.style.cssText = `font-size:12px; color:#e8e8e8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;`;
+        top.appendChild(name);
+
+        const opacityText = document.createElement('span');
+        opacityText.textContent = `${Math.round(layer.opacity * 100)}%`;
+        opacityText.style.cssText = `font-size:11px; color:#93bce4; flex-shrink:0;`;
+        top.appendChild(opacityText);
+        body.appendChild(top);
+
+        const controls = document.createElement('div');
+        controls.style.cssText = `display:grid; grid-template-columns:1fr 72px; gap:6px; align-items:center;`;
+
+        const opacity = document.createElement('input');
+        opacity.type = 'range';
+        opacity.min = '0';
+        opacity.max = '1';
+        opacity.step = '0.01';
+        opacity.value = String(layer.opacity);
+        opacity.style.cssText = `width:100%; accent-color:#4a90d9;`;
+        opacity.addEventListener('click', (e) => e.stopPropagation());
+        opacity.addEventListener('input', (e) => {
+            e.stopPropagation();
+            this.canvasStack?.setLayerOpacity(layer.id, Number(opacity.value));
+        });
+        controls.appendChild(opacity);
+
+        const blend = document.createElement('select');
+        blend.style.cssText = `min-width:0; background:#2a2a2a; border:1px solid #555; color:#e0e0e0; border-radius:4px; font-size:11px; padding:3px;`;
+        for (const mode of ['normal', 'add', 'screen', 'max'] as LayerBlendMode[]) {
+            const option = document.createElement('option');
+            option.value = mode;
+            option.textContent = mode;
+            blend.appendChild(option);
+        }
+        blend.value = layer.blendMode;
+        blend.addEventListener('click', (e) => e.stopPropagation());
+        blend.addEventListener('change', (e) => {
+            e.stopPropagation();
+            this.canvasStack?.setLayerBlendMode(layer.id, blend.value as LayerBlendMode);
+        });
+        controls.appendChild(blend);
+
+        body.appendChild(controls);
+        row.appendChild(body);
+        return row;
+    }
+
+    private currentBrushClone(): IBrush | undefined {
+        const brush = this.getCurrentBrush() ?? this.savedBrush ?? undefined;
+        return brush ? JSON.parse(JSON.stringify(brush)) : undefined;
+    }
+
+    private ensureSelectedCanvasBrush(): void {
+        const brush = this.currentBrushClone();
+        if (!brush) return;
+        this.savedBrush = JSON.parse(JSON.stringify(brush));
+        this.canvasStack?.setBrush(brush);
     }
 
     private toolButton(text: string, onClick: () => void): HTMLButtonElement {
@@ -2185,13 +2413,14 @@ export class DrawingScreen implements CanvasDelegate {
             );
             this.updateFillStats(result.metrics);
             const fixerGroup = result.fixerGroup;
+            const layerId = this.canvasStack?.selectedLayer()?.id;
+            if (!layerId) return;
             if (fixerGroup) {
-                this.undoStack.push(fixerGroup);
-                this.redoStack = [];
-                this.updateUndoRedoButtons();
+                this.pushHistory(layerId, fixerGroup);
             } else if (result.historyPromise) {
                 const pendingGroup = new FixerGroup();
-                this.undoStack.push(pendingGroup);
+                const pendingEntry: DrawingHistoryEntry = { layerId, fixerGroup: pendingGroup };
+                this.undoStack.push(pendingEntry);
                 this.redoStack = [];
                 this.pendingFillHistoryCount++;
                 this.updateUndoRedoButtons();
@@ -2211,7 +2440,7 @@ export class DrawingScreen implements CanvasDelegate {
                     )
                     .then(() => {
                         if (!historyReady) {
-                            const idx = this.undoStack.indexOf(pendingGroup);
+                            const idx = this.undoStack.indexOf(pendingEntry);
                             if (idx >= 0) this.undoStack.splice(idx, 1);
                         }
                         this.pendingFillHistoryCount = Math.max(0, this.pendingFillHistoryCount - 1);
@@ -2319,17 +2548,18 @@ export class DrawingScreen implements CanvasDelegate {
 
     private pushFloodFillResultToHistory(result: CanvasFloodFillResult): void {
         const fixerGroup = result.fixerGroup;
+        const layerId = this.canvasStack?.selectedLayer()?.id;
+        if (!layerId) return;
         if (fixerGroup) {
-            this.undoStack.push(fixerGroup);
-            this.redoStack = [];
-            this.updateUndoRedoButtons();
+            this.pushHistory(layerId, fixerGroup);
             return;
         }
 
         if (!result.historyPromise) return;
 
         const pendingGroup = new FixerGroup();
-        this.undoStack.push(pendingGroup);
+        const pendingEntry: DrawingHistoryEntry = { layerId, fixerGroup: pendingGroup };
+        this.undoStack.push(pendingEntry);
         this.redoStack = [];
         this.pendingFillHistoryCount++;
         this.updateUndoRedoButtons();
@@ -2349,7 +2579,7 @@ export class DrawingScreen implements CanvasDelegate {
             )
             .then(() => {
                 if (!historyReady) {
-                    const idx = this.undoStack.indexOf(pendingGroup);
+                    const idx = this.undoStack.indexOf(pendingEntry);
                     if (idx >= 0) this.undoStack.splice(idx, 1);
                 }
                 this.pendingFillHistoryCount = Math.max(0, this.pendingFillHistoryCount - 1);

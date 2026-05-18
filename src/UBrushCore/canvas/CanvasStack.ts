@@ -7,314 +7,291 @@ import { Color } from "../common/Color";
 import { Common } from "../common/Common";
 import { Rect } from "../common/Rect";
 import { FixerGroup } from "../common/FixerGroup";
+import { WGPUProgramManager } from "../program/webgpu/WGPUProgramManager";
+import { RenderObjectBlend } from "../gpu/RenderObject";
+import { AffineTransform } from "../common/AffineTransform";
+
+export type LayerBlendMode = 'normal' | 'add' | 'screen' | 'max';
+
+export interface CanvasLayer {
+    id: string;
+    name: string;
+    canvas: Canvas;
+    visible: boolean;
+    opacity: number;
+    blendMode: LayerBlendMode;
+}
 
 export interface CanvasStackDelegate {
-
     changeRect(canvasStack: CanvasStack, rect: Rect): void;
     didReleaseDrawing?(canvasStack: CanvasStack, fixerGroup: FixerGroup, canvasIndex: number): void;
     didDry?(canvasStack: CanvasStack, canvasIndex: number): void;
     willChangeCanvases?(canvasStack: CanvasStack, canvasArray: Canvas[]): void;
     didChangeCanvases?(canvasStack: CanvasStack, canvasArray: Canvas[]): void;
-
+    didChangeLayers?(canvasStack: CanvasStack, layers: CanvasLayer[]): void;
 }
 
-export class CanvasStack implements CanvasDelegate{
-
+export class CanvasStack implements CanvasDelegate {
     public delegate?: CanvasStackDelegate;
     public outputRenderTarget: WGPURenderTarget;
     public brush?: IBrush;
     public selectedCanvas?: Canvas;
-
     public updatelock: boolean = false;
 
     private size: Size;
     private context: WGPUContext;
-    private canvasArray: Canvas[];
+    private layers: CanvasLayer[] = [];
     private backgroundColor: Color = Color.white();
+    private nextLayerNumber = 1;
 
-    // get / set
     private _brushSize: number = 1;
-
-    public set brushSize(v: number) {
-
-        this._brushSize = v;
-        this.selectedCanvas?.lineDriver.setBrushSize(v);
-
-    }
-
-    public get brushSize(): number {
-
-        return this._brushSize;
-        
-    }
-    
     private _brushOpacity: number = 1;
-
-    public set brushOpacity(v: number) {
-
-        this._brushOpacity = v;
-        this.selectedCanvas?.lineDriver.setBrushOpacity(v);
-
-    }
-
-    public get brushOpacity(): number {
-
-        return this._brushOpacity;
-        
-    }
-
     private _color: Color = new Color();
 
-    public set color(v: Color) {
-
-        this._color = v;
-        this.selectedCanvas?.setColor(v);
-
-    }
-
-    public get color(): Color {
-
-        return this._color;
-        
-    }
-
     constructor(context: WGPUContext, size: Size) {
-
         this.outputRenderTarget = context.createRenderTarget(size);
         this.size = size;
         this.context = context;
-        this.canvasArray = [];
-        
     }
 
-    public setBrush(brush: IBrush): void {
-        
+    public get layerArray(): CanvasLayer[] {
+        return this.layers.concat();
+    }
+
+    public set brushSize(v: number) {
+        this._brushSize = v;
+        this.selectedCanvas?.lineDriver.setBrushSize(v);
+    }
+
+    public get brushSize(): number {
+        return this._brushSize;
+    }
+
+    public set brushOpacity(v: number) {
+        this._brushOpacity = v;
+        this.selectedCanvas?.lineDriver.setBrushOpacity(v);
+    }
+
+    public get brushOpacity(): number {
+        return this._brushOpacity;
+    }
+
+    public set color(v: Color) {
+        this._color = v;
+        this.selectedCanvas?.setColor(v.clone());
+    }
+
+    public get color(): Color {
+        return this._color;
+    }
+
+    public setBrush(brush?: IBrush): void {
         this.brush = brush;
-        
-        if (this.selectedCanvas) {
-
-            this.selectedCanvas.setBrush(brush);
-
-        }
-
+        void this.selectedCanvas?.setBrush(brush);
     }
 
-    public selectCanvas(canvas: Canvas): void {
+    public createLayer(name?: string, index: number = this.layers.length): CanvasLayer {
+        const canvas = new Canvas(this.context, this.size);
+        canvas.clearOutputRenderTarget();
+        const layer: CanvasLayer = {
+            id: this.createLayerId(),
+            name: name ?? `Layer ${this.nextLayerNumber++}`,
+            canvas,
+            visible: true,
+            opacity: 1,
+            blendMode: 'normal'
+        };
+        this.insertLayer(layer, index);
+        this.selectLayer(layer.id);
+        this.updateCanvas();
+        return layer;
+    }
 
-        this.selectedCanvas = canvas;
-    
-        for (canvas of this.canvasArray) {
+    public removeLayer(id: string): CanvasLayer | null {
+        if (this.layers.length <= 1) return null;
+        const index = this.layers.findIndex((layer) => layer.id === id);
+        if (index < 0) return null;
 
-            if (canvas === this.selectedCanvas) {
+        const [removed] = this.layers.splice(index, 1);
+        removed.canvas.delegate = undefined;
+        this.context.deleteRenderTarget(removed.canvas.outputRenderTarget);
 
-                canvas.setBrush(this.brush);
-                canvas.selected = true;
+        const next = this.layers[Math.min(index, this.layers.length - 1)];
+        if (next) this.selectLayer(next.id);
+        this.notifyLayersChanged();
+        this.updateCanvas();
+        return removed;
+    }
 
+    public selectLayer(id: string): void {
+        const layer = this.layers.find((candidate) => candidate.id === id);
+        if (!layer) return;
+
+        this.selectedCanvas = layer.canvas;
+        for (const item of this.layers) {
+            if (item.canvas === this.selectedCanvas) {
+                void item.canvas.setBrush(this.brush);
+                item.canvas.selected = true;
             } else {
-
-                canvas.dry();
-                canvas.setBrush(undefined);
-                canvas.selected = false;
-
+                item.canvas.dry();
+                void item.canvas.setBrush(undefined);
+                item.canvas.selected = false;
             }
-
         }
-        
-        this.selectedCanvas?.lineDriver.setBrushSize(this.brushSize);
-        this.selectedCanvas?.lineDriver.setBrushOpacity(this.brushOpacity);
-        this.selectedCanvas?.setColor(this.color.clone());
-        
+        this.selectedCanvas.lineDriver.setBrushSize(this.brushSize);
+        this.selectedCanvas.lineDriver.setBrushOpacity(this.brushOpacity);
+        this.selectedCanvas.setColor(this.color.clone());
+        this.notifyLayersChanged();
     }
 
-    public selectCanvasAt(index: number): void {
+    public selectedLayer(): CanvasLayer | undefined {
+        return this.layers.find((layer) => layer.canvas === this.selectedCanvas);
+    }
 
-        if (index >= 0 || index < this.canvasArray.length) {
+    public layerForCanvas(canvas: Canvas): CanvasLayer | undefined {
+        return this.layers.find((layer) => layer.canvas === canvas);
+    }
 
-            this.selectCanvas(this.canvasArray[index]);
+    public layerForId(id: string): CanvasLayer | undefined {
+        return this.layers.find((layer) => layer.id === id);
+    }
 
-        }
-        
+    public layerIdForCanvas(canvas: Canvas): string | undefined {
+        return this.layerForCanvas(canvas)?.id;
     }
 
     public selectedCanvasIndex(): number {
-
-        if (this.selectedCanvas) {
-
-            return this.canvasArray.indexOf(this.selectedCanvas);
-
-        } else {
-
-            return -1;
-
-        }
-
+        return this.selectedCanvas ? this.layers.findIndex((layer) => layer.canvas === this.selectedCanvas) : -1;
     }
 
-    // TODO: setBackgroundColor 로변경 ( 프로젝트의 모든 요소에 적용 )
+    public setLayerVisible(id: string, visible: boolean): void {
+        const layer = this.layerForId(id);
+        if (!layer) return;
+        layer.visible = visible;
+        this.notifyLayersChanged();
+        this.updateCanvas();
+    }
+
+    public setLayerOpacity(id: string, opacity: number): void {
+        const layer = this.layerForId(id);
+        if (!layer) return;
+        layer.opacity = Math.max(0, Math.min(1, opacity));
+        this.notifyLayersChanged();
+        this.updateCanvas();
+    }
+
+    public setLayerBlendMode(id: string, blendMode: LayerBlendMode): void {
+        const layer = this.layerForId(id);
+        if (!layer) return;
+        layer.blendMode = blendMode;
+        this.notifyLayersChanged();
+        this.updateCanvas();
+    }
+
     public setBackgroundColor(backgroundColor: Color): void {
-        
         this.backgroundColor = backgroundColor;
         this.updateCanvas();
-
     }
 
     public addCanvas(canvas: Canvas): void {
-
-        this.insertCanvas(canvas, this.canvasArray.length - 1);
-
+        this.insertCanvas(canvas, this.layers.length);
     }
 
-    // TODO: temporary 를 canvas에서 빼고 insertCanvas 파라미터로 temporary 추가
     public insertCanvas(canvas: Canvas, index: number): void {
-
-        if (canvas.temporary)
-        {
-
-            canvas.useFixer = false;
-            this.canvasArray.splice(index, 0, canvas);
-            return;
-
-        }
-        
-        canvas.useFixer = true;
-        
-        if (this.delegate) {
-
-            this.delegate.willChangeCanvases?.(this, this.canvasArray.concat());
-            this.canvasArray.splice(index, 0, canvas);
-            this.delegate.didChangeCanvases?.(this, this.canvasArray.concat());
-
-        } else {
-
-            this.canvasArray.splice(index, 0, canvas);
-
-        }
-
-        canvas.delegate = this;
-
+        const layer: CanvasLayer = {
+            id: this.createLayerId(),
+            name: `Layer ${this.nextLayerNumber++}`,
+            canvas,
+            visible: true,
+            opacity: 1,
+            blendMode: 'normal'
+        };
+        this.insertLayer(layer, index);
     }
-    
+
     public removeCanvas(canvas: Canvas): void {
-
-        if (canvas.temporary) {
-
-            this.canvasArray.splice(this.canvasArray.indexOf(canvas), 1);
-            return;
-            
-        }
-
-        if (this.delegate) {
-
-            this.delegate.willChangeCanvases?.(this, this.canvasArray.concat());
-            this.canvasArray.splice(this.canvasArray.indexOf(canvas), 1);
-            this.delegate.didChangeCanvases?.(this, this.canvasArray.concat());
-
-        } else {
-
-            this.canvasArray.splice(this.canvasArray.indexOf(canvas), 1);
-
-        }
-        
-        canvas.delegate = this;
-        
-        this.updateCanvas();
-
+        const layer = this.layerForCanvas(canvas);
+        if (layer) this.removeLayer(layer.id);
     }
-    
+
     public insertCanvasFromIndex(fromIndex: number, toIndex: number): void {
-
-        if (this.delegate) {
-
-            this.delegate.willChangeCanvases?.(this, this.canvasArray.concat());
-
-        }
-
-        const canvas = this.canvasArray.splice(fromIndex, 1)[0];
-        this.canvasArray.splice(toIndex, 0, canvas);
-        
-        if (this.delegate) {
-
-            this.delegate.didChangeCanvases?.(this, this.canvasArray.concat());
-
-        }
-        
+        if (fromIndex < 0 || fromIndex >= this.layers.length || toIndex < 0 || toIndex >= this.layers.length) return;
+        this.delegate?.willChangeCanvases?.(this, this.layers.map((layer) => layer.canvas));
+        const [layer] = this.layers.splice(fromIndex, 1);
+        this.layers.splice(toIndex, 0, layer);
+        this.delegate?.didChangeCanvases?.(this, this.layers.map((item) => item.canvas));
+        this.notifyLayersChanged();
         this.updateCanvas();
-        
     }
-
-    // propertise
-
-    // - (void)setVisible:(BOOL)visible withCanvas:(UBrushCanvas *)canvas
-    // {
-    //     [canvas setVisible:visible];
-    //     [self updateCanvas];
-    // }
-
-    // - (void)setAlphaLock:(BOOL)alphaLock withCanvas:(UBrushCanvas *)canvas
-    // {
-    //     [canvas setAlphaLock:alphaLock];
-    // }
-
-    // - (void)setOpacity:(float)opacity withCanvas:(UBrushCanvas *)canvas
-    // {
-    //     [self setOpacity:opacity withCanvas:canvas forPreview:NO];
-    // }
-
-    // - (void)setOpacity:(float)opacity withCanvas:(UBrushCanvas *)canvas forPreview:(BOOL)forPreview
-    // {
-    //     float oldOpacity = canvas.opacity;
-        
-    //     [canvas setOpacity:opacity];
-    //     [self updateCanvas];
-        
-    //     if (forPreview)
-    //     {
-    //         [canvas setOpacity:oldOpacity];
-    //     }
-    // }
-
-    // - (void)setBlendmode:(UBrushCanvasBlendmode)blendmode withCanvas:(UBrushCanvas *)canvas
-    // {
-    //     [canvas setBlendmode:blendmode];
-    //     [self updateCanvas];
-    // }
-
-    // update
 
     public updateCanvas(): void {
-
         this.updateCanvasInRect(Common.stageRect());
-
     }
 
     public updateCanvasInRect(rect: Rect): void {
+        if (this.updatelock) return;
 
-        if (this.updatelock) {
+        this.context.clearRenderTarget(this.outputRenderTarget, this.backgroundColor);
 
-            return;
-
+        const layerComposite = WGPUProgramManager.getInstance().layerCompositeProgram;
+        for (const layer of this.layers) {
+            if (!layer.visible || layer.opacity <= 0) continue;
+            layerComposite.fill(this.outputRenderTarget, {
+                targetRect: Common.stageRect(),
+                source: layer.canvas.outputRenderTarget.texture,
+                sourceRect: Common.stageRect(),
+                canvasRect: Common.stageRect(),
+                transform: new AffineTransform(),
+                blend: this.renderBlendForLayer(layer),
+                opacity: layer.opacity
+            });
         }
-    
-        // [self updateCanvasInRect:rect
-        //     targetFramebuffer:self.outputFramebuffer
-        //                 canvases:canvasArray
-        //             forceVisible:NO
-        //         useBackground:YES];
 
+        this.delegate?.changeRect(this, rect);
     }
 
-    // canvas delegate
-
     public changeRect(canvas: Canvas, rect: Rect): void {
-
+        const layer = this.layerForCanvas(canvas);
+        if (!layer || !layer.visible) return;
+        this.updateCanvasInRect(rect);
     }
 
     public didReleaseDrawingWithFixerGroup(canvas: Canvas, fixerGroup: FixerGroup): void {
-        
+        const index = this.layers.findIndex((layer) => layer.canvas === canvas);
+        this.delegate?.didReleaseDrawing?.(this, fixerGroup, index);
     }
 
     public didDryCanvas(canvas: Canvas): void {
-
+        const index = this.layers.findIndex((layer) => layer.canvas === canvas);
+        this.delegate?.didDry?.(this, index);
+        this.updateCanvas();
     }
 
+    private insertLayer(layer: CanvasLayer, index: number): void {
+        const safeIndex = Math.max(0, Math.min(index, this.layers.length));
+        this.delegate?.willChangeCanvases?.(this, this.layers.map((item) => item.canvas));
+        layer.canvas.useFixer = true;
+        layer.canvas.delegate = this;
+        this.layers.splice(safeIndex, 0, layer);
+        this.delegate?.didChangeCanvases?.(this, this.layers.map((item) => item.canvas));
+        this.notifyLayersChanged();
+    }
+
+    private createLayerId(): string {
+        return `layer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    private renderBlendForLayer(layer: CanvasLayer): RenderObjectBlend {
+        switch (layer.blendMode) {
+            case 'add': return RenderObjectBlend.Add;
+            case 'screen': return RenderObjectBlend.Screen;
+            case 'max': return RenderObjectBlend.Max;
+            case 'normal':
+            default: return RenderObjectBlend.Normal;
+        }
+    }
+
+    private notifyLayersChanged(): void {
+        this.delegate?.didChangeLayers?.(this, this.layerArray);
+    }
 }
