@@ -2196,6 +2196,16 @@ export class DrawingScreen implements CanvasDelegate {
         this.updateUndoRedoButtons();
     }
 
+    private moveLayer(layerId: string, direction: -1 | 1): void {
+        this.canvasStack?.moveLayer(layerId, direction);
+        this.refreshLayerPanel();
+    }
+
+    private renameLayer(layerId: string, name: string): void {
+        this.canvasStack?.renameLayer(layerId, name);
+        this.refreshLayerPanel();
+    }
+
     private selectLayer(layerId: string): void {
         if (!this.canvasStack) return;
         this.canvasStack.selectLayer(layerId);
@@ -2222,6 +2232,8 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private buildLayerRow(layer: CanvasLayer, selected: boolean): HTMLElement {
+        const layers = this.canvasStack?.layerArray ?? [];
+        const layerIndex = layers.findIndex((candidate) => candidate.id === layer.id);
         const row = document.createElement('div');
         row.style.cssText = `
             display:grid; grid-template-columns:26px 1fr; gap:6px; align-items:center;
@@ -2249,9 +2261,32 @@ export class DrawingScreen implements CanvasDelegate {
         const top = document.createElement('div');
         top.style.cssText = `display:flex; align-items:center; justify-content:space-between; gap:6px;`;
 
-        const name = document.createElement('span');
-        name.textContent = layer.name;
-        name.style.cssText = `font-size:12px; color:#e8e8e8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;`;
+        const name = document.createElement('input');
+        name.value = layer.name;
+        name.title = 'Layer name';
+        name.style.cssText = `
+            min-width:0; flex:1; background:transparent; border:1px solid transparent;
+            border-radius:4px; color:#e8e8e8; font-size:12px; padding:2px 3px; outline:none;
+        `;
+        name.addEventListener('click', (e) => e.stopPropagation());
+        name.addEventListener('focus', () => {
+            name.style.background = '#252525';
+            name.style.borderColor = '#555';
+            name.select();
+        });
+        name.addEventListener('blur', () => {
+            name.style.background = 'transparent';
+            name.style.borderColor = 'transparent';
+            this.renameLayer(layer.id, name.value);
+        });
+        name.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') name.blur();
+            if (e.key === 'Escape') {
+                name.value = layer.name;
+                name.blur();
+            }
+        });
         top.appendChild(name);
 
         const opacityText = document.createElement('span');
@@ -2294,8 +2329,34 @@ export class DrawingScreen implements CanvasDelegate {
         controls.appendChild(blend);
 
         body.appendChild(controls);
+
+        const orderControls = document.createElement('div');
+        orderControls.style.cssText = `display:grid; grid-template-columns:1fr 1fr; gap:5px;`;
+        const moveUp = this.layerMiniButton('Up', 'Move layer up', () => this.moveLayer(layer.id, 1));
+        const moveDown = this.layerMiniButton('Down', 'Move layer down', () => this.moveLayer(layer.id, -1));
+        moveUp.disabled = layerIndex === layers.length - 1;
+        moveDown.disabled = layerIndex <= 0;
+        orderControls.appendChild(moveUp);
+        orderControls.appendChild(moveDown);
+        body.appendChild(orderControls);
+
         row.appendChild(body);
         return row;
+    }
+
+    private layerMiniButton(text: string, title: string, onClick: () => void): HTMLButtonElement {
+        const button = document.createElement('button');
+        button.textContent = text;
+        button.title = title;
+        button.style.cssText = `
+            height:22px; min-width:0; border-radius:4px; border:1px solid #555;
+            background:#2a2a2a; color:#d8d8d8; font-size:11px; cursor:pointer;
+        `;
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onClick();
+        });
+        return button;
     }
 
     private currentBrushClone(): IBrush | undefined {

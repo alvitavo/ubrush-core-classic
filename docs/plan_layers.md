@@ -10,6 +10,8 @@ Build a Photoshop-class layer system without breaking the existing brush engine.
 - Multiple raster layers backed by individual `Canvas` instances.
 - Layer panel in `DrawingScreen`.
 - Add, delete, and select layers.
+- Rename layers.
+- Move layers up and down.
 - Visibility toggle.
 - Layer opacity.
 - Blend modes: normal, add, screen, max.
@@ -55,7 +57,7 @@ It should keep compatibility with existing drawing flows by using `this.canvas` 
 
 ## Phase 2: Layer Ordering
 
-- Move layer up/down.
+- Move layer up/down. Done in V1.1.
 - Drag reorder in the layer panel.
 - Preserve selected layer through reorder.
 - Add history entries for reorder operations.

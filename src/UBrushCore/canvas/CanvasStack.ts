@@ -188,6 +188,22 @@ export class CanvasStack implements CanvasDelegate {
         this.updateCanvas();
     }
 
+    public renameLayer(id: string, name: string): void {
+        const layer = this.layerForId(id);
+        if (!layer) return;
+        const trimmed = name.trim();
+        layer.name = trimmed.length > 0 ? trimmed : layer.name;
+        this.notifyLayersChanged();
+    }
+
+    public moveLayer(id: string, direction: -1 | 1): void {
+        const fromIndex = this.layers.findIndex((layer) => layer.id === id);
+        if (fromIndex < 0) return;
+        const toIndex = fromIndex + direction;
+        if (toIndex < 0 || toIndex >= this.layers.length) return;
+        this.insertCanvasFromIndex(fromIndex, toIndex);
+    }
+
     public setBackgroundColor(backgroundColor: Color): void {
         this.backgroundColor = backgroundColor;
         this.updateCanvas();
