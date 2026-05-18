@@ -127,6 +127,7 @@ Requirements:
 - Reset view. Done in V1.6.
 - Convert pointer coordinates through inverse viewport transform before calling brush/fill APIs. Done in V1.6.
 - Keyboard viewport shortcuts. Done in V1.8.
+- Gray pasteboard and transformed canvas frame. Done in V1.9.
 
 ## Phase 6: Performance
 
