@@ -2127,20 +2127,34 @@ export class DrawingScreen implements CanvasDelegate {
 
     private canUndoEntry(entry?: HistoryEntry): boolean {
         if (!entry) return false;
-        if (entry.kind === 'drawing') return this.hasAnyFixer(entry.fixerGroup);
-        if (entry.kind === 'layer-property') return !!this.canvasStack?.layerForId(entry.layerId);
-        if (entry.kind === 'layer-add') return !!this.canvasStack?.layerForId(entry.layer.id);
-        if (entry.kind === 'layer-delete') return !this.canvasStack?.layerForId(entry.layer.id);
-        return !!this.canvasStack && entry.before.every((id) => !!this.canvasStack!.layerForId(id));
+        switch (entry.kind) {
+            case 'drawing':
+                return this.hasAnyFixer(entry.fixerGroup);
+            case 'layer-property':
+                return !!this.canvasStack?.layerForId(entry.layerId);
+            case 'layer-add':
+                return !!this.canvasStack?.layerForId(entry.layer.id);
+            case 'layer-delete':
+                return !this.canvasStack?.layerForId(entry.layer.id);
+            case 'layer-order':
+                return !!this.canvasStack && entry.before.every((id) => !!this.canvasStack!.layerForId(id));
+        }
     }
 
     private canRedoEntry(entry?: HistoryEntry): boolean {
         if (!entry) return false;
-        if (entry.kind === 'drawing') return this.hasAnyRedoFixer(entry.fixerGroup);
-        if (entry.kind === 'layer-property') return !!this.canvasStack?.layerForId(entry.layerId);
-        if (entry.kind === 'layer-add') return !this.canvasStack?.layerForId(entry.layer.id);
-        if (entry.kind === 'layer-delete') return !!this.canvasStack?.layerForId(entry.layer.id);
-        return !!this.canvasStack && entry.after.every((id) => !!this.canvasStack!.layerForId(id));
+        switch (entry.kind) {
+            case 'drawing':
+                return this.hasAnyRedoFixer(entry.fixerGroup);
+            case 'layer-property':
+                return !!this.canvasStack?.layerForId(entry.layerId);
+            case 'layer-add':
+                return !this.canvasStack?.layerForId(entry.layer.id);
+            case 'layer-delete':
+                return !!this.canvasStack?.layerForId(entry.layer.id);
+            case 'layer-order':
+                return !!this.canvasStack && entry.after.every((id) => !!this.canvasStack!.layerForId(id));
+        }
     }
 
     private applyHistoryEntry(entry: HistoryEntry, undoing: boolean): void {
@@ -2157,18 +2171,19 @@ export class DrawingScreen implements CanvasDelegate {
             return;
         }
 
-        if (entry.kind === 'layer-order') {
-            this.canvasStack?.setLayerOrder(undoing ? entry.before : entry.after);
-            this.refreshLayerPanel();
-            return;
+        switch (entry.kind) {
+            case 'layer-order':
+                this.canvasStack?.setLayerOrder(undoing ? entry.before : entry.after);
+                this.refreshLayerPanel();
+                return;
+            case 'layer-add':
+            case 'layer-delete':
+                this.applyLayerAddDeleteHistory(entry, undoing);
+                return;
+            case 'layer-property':
+                this.applyLayerPropertyHistory(entry.layerId, entry.property, undoing ? entry.before : entry.after);
+                return;
         }
-
-        if (entry.kind === 'layer-add' || entry.kind === 'layer-delete') {
-            this.applyLayerAddDeleteHistory(entry, undoing);
-            return;
-        }
-
-        this.applyLayerPropertyHistory(entry.layerId, entry.property, undoing ? entry.before : entry.after);
     }
 
     private applyLayerAddDeleteHistory(entry: LayerAddDeleteHistoryEntry, undoing: boolean): void {
