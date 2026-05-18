@@ -45,6 +45,7 @@ export class CanvasStack implements CanvasDelegate {
     private layers: CanvasLayer[] = [];
     private backgroundColor: Color = Color.white();
     private nextLayerNumber = 1;
+    private needsComposite = true;
 
     private _brushSize: number = 1;
     private _brushOpacity: number = 1;
@@ -284,6 +285,7 @@ export class CanvasStack implements CanvasDelegate {
     public updateCanvasInRect(rect: Rect): void {
         if (this.updatelock) return;
 
+        this.needsComposite = false;
         this.context.clearRenderTarget(this.outputRenderTarget, this.backgroundColor);
 
         const layerComposite = WGPUProgramManager.getInstance().layerCompositeProgram;
@@ -301,6 +303,11 @@ export class CanvasStack implements CanvasDelegate {
         }
 
         this.delegate?.changeRect(this, rect);
+    }
+
+    public compositeIfNeeded(): void {
+        if (!this.needsComposite) return;
+        this.updateCanvas();
     }
 
     public changeRect(canvas: Canvas, rect: Rect): void {
@@ -326,6 +333,7 @@ export class CanvasStack implements CanvasDelegate {
         layer.canvas.useFixer = true;
         layer.canvas.delegate = this;
         this.layers.splice(safeIndex, 0, layer);
+        this.needsComposite = true;
         this.delegate?.didChangeCanvases?.(this, this.layers.map((item) => item.canvas));
         this.notifyLayersChanged();
     }

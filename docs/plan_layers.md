@@ -134,6 +134,7 @@ The target is smooth operation with many layers.
 Required strategy:
 
 - Per-layer dirty flags.
+- Stack-level dirty compositing. Done in V1.5.
 - Dirty rect tracking.
 - Cached group render targets.
 - Composite only when layer content or layer properties change.
