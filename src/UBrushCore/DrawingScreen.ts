@@ -570,7 +570,7 @@ export class DrawingScreen implements CanvasDelegate {
     private render(): void {
         if (!this.canvasStack || !this.glContext) return;
 
-        this.glContext.clearRenderTarget(null, Color.white());
+        this.glContext.clearRenderTarget(null, new Color(0.72, 0.72, 0.72, 1));
         this.canvasStack.compositeIfNeeded();
 
         WGPUProgramManager.getInstance().fillRectProgram.fill(
