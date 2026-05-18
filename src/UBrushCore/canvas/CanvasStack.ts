@@ -177,11 +177,11 @@ export class CanvasStack implements CanvasDelegate {
         this.updateCanvas();
     }
 
-    public setLayerOpacity(id: string, opacity: number): void {
+    public setLayerOpacity(id: string, opacity: number, notify: boolean = true): void {
         const layer = this.layerForId(id);
         if (!layer) return;
         layer.opacity = Math.max(0, Math.min(1, opacity));
-        this.notifyLayersChanged();
+        if (notify) this.notifyLayersChanged();
         this.updateCanvas();
     }
 

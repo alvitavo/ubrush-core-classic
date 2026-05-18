@@ -54,9 +54,28 @@ interface FloodFillSnapshot {
 }
 
 interface DrawingHistoryEntry {
+    kind: 'drawing';
     layerId: string;
     fixerGroup: FixerGroup;
 }
+
+type LayerHistoryProperty = 'name' | 'visible' | 'opacity' | 'blendMode' | 'locked' | 'alphaLock';
+
+interface LayerPropertyHistoryEntry {
+    kind: 'layer-property';
+    layerId: string;
+    property: LayerHistoryProperty;
+    before: string | number | boolean;
+    after: string | number | boolean;
+}
+
+interface LayerOrderHistoryEntry {
+    kind: 'layer-order';
+    before: string[];
+    after: string[];
+}
+
+type HistoryEntry = DrawingHistoryEntry | LayerPropertyHistoryEntry | LayerOrderHistoryEntry;
 
 export class DrawingScreen implements CanvasDelegate {
     readonly element: HTMLElement;
@@ -82,8 +101,9 @@ export class DrawingScreen implements CanvasDelegate {
     private lastPos: Point = new Point();
     private lastStylus: Stylus = new Stylus();
     private stylusEventCount: number = 0;
-    private undoStack: DrawingHistoryEntry[] = [];
-    private redoStack: DrawingHistoryEntry[] = [];
+    private undoStack: HistoryEntry[] = [];
+    private redoStack: HistoryEntry[] = [];
+    private layerOpacityHistoryStart: Map<string, number> = new Map();
     private pendingFillHistoryCount = 0;
     private loopPaused = false;
     private straightLineTimer: number | null = null;
@@ -1776,9 +1796,9 @@ export class DrawingScreen implements CanvasDelegate {
             const layerId = this.canvasStack?.selectedLayer()?.id;
             if (!layerId) return;
             if (this.straightLineStrokeGroup && this.hasAnyFixer(this.straightLineStrokeGroup) && this.hasAnyRedoFixer(this.straightLineStrokeGroup)) {
-                this.undoStack.push({ layerId, fixerGroup: this.straightLineStrokeGroup });
+                this.undoStack.push({ kind: 'drawing', layerId, fixerGroup: this.straightLineStrokeGroup });
             }
-            this.undoStack.push({ layerId, fixerGroup });
+            this.undoStack.push({ kind: 'drawing', layerId, fixerGroup });
             this.redoStack = [];
             this.updateUndoRedoButtons();
         }
@@ -1976,7 +1996,26 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private pushHistory(layerId: string, fixerGroup: FixerGroup): void {
-        this.undoStack.push({ layerId, fixerGroup });
+        this.undoStack.push({ kind: 'drawing', layerId, fixerGroup });
+        this.redoStack = [];
+        this.updateUndoRedoButtons();
+    }
+
+    private pushLayerPropertyHistory(
+        layerId: string,
+        property: LayerHistoryProperty,
+        before: string | number | boolean,
+        after: string | number | boolean
+    ): void {
+        if (before === after) return;
+        this.undoStack.push({ kind: 'layer-property', layerId, property, before, after });
+        this.redoStack = [];
+        this.updateUndoRedoButtons();
+    }
+
+    private pushLayerOrderHistory(before: string[], after: string[]): void {
+        if (before.length !== after.length || before.every((id, index) => id === after[index])) return;
+        this.undoStack.push({ kind: 'layer-order', before, after });
         this.redoStack = [];
         this.updateUndoRedoButtons();
     }
@@ -2015,19 +2054,12 @@ export class DrawingScreen implements CanvasDelegate {
         if (this.undoStack.length === 0) return;
         if (this.pendingFillHistoryCount > 0) return;
         const entry = this.undoStack.pop()!;
-        const group = entry.fixerGroup;
-        if (!this.hasAnyFixer(group)) {
+        if (!this.canUndoEntry(entry)) {
             this.updateUndoRedoButtons();
             return;
         }
 
-        const targetCanvas = this.canvasStack?.layerForId(entry.layerId)?.canvas;
-        if (group.undoFixerLiquid) {
-            targetCanvas?.fix(group.undoFixerLiquid, true);
-        } else if (group.undoFixer) {
-            targetCanvas?.fix(group.undoFixer, false);
-        }
-
+        this.applyHistoryEntry(entry, true);
         this.redoStack.push(entry);
         this.updateUndoRedoButtons();
     }
@@ -2043,19 +2075,12 @@ export class DrawingScreen implements CanvasDelegate {
         }
         if (this.redoStack.length === 0) return;
         const entry = this.redoStack.pop()!;
-        const group = entry.fixerGroup;
-        if (!this.hasAnyRedoFixer(group)) {
+        if (!this.canRedoEntry(entry)) {
             this.updateUndoRedoButtons();
             return;
         }
 
-        const targetCanvas = this.canvasStack?.layerForId(entry.layerId)?.canvas;
-        if (group.redoFixerLiquid) {
-            targetCanvas?.fix(group.redoFixerLiquid, true);
-        } else if (group.redoFixer) {
-            targetCanvas?.fix(group.redoFixer, false);
-        }
-
+        this.applyHistoryEntry(entry, false);
         this.undoStack.push(entry);
         this.updateUndoRedoButtons();
     }
@@ -2072,10 +2097,10 @@ export class DrawingScreen implements CanvasDelegate {
             this.redoBtnEl.disabled = this.fillInProgress || this.floodFillRedoStack.length === 0;
             return;
         }
-        const undoTop = this.undoStack[this.undoStack.length - 1]?.fixerGroup;
-        const redoTop = this.redoStack[this.redoStack.length - 1]?.fixerGroup;
-        this.undoBtnEl.disabled = this.pendingFillHistoryCount > 0 || !this.hasAnyFixer(undoTop);
-        this.redoBtnEl.disabled = !this.hasAnyRedoFixer(redoTop);
+        const undoTop = this.undoStack[this.undoStack.length - 1];
+        const redoTop = this.redoStack[this.redoStack.length - 1];
+        this.undoBtnEl.disabled = this.pendingFillHistoryCount > 0 || !this.canUndoEntry(undoTop);
+        this.redoBtnEl.disabled = !this.canRedoEntry(redoTop);
     }
 
     private hasAnyFixer(group?: FixerGroup): boolean {
@@ -2084,6 +2109,68 @@ export class DrawingScreen implements CanvasDelegate {
 
     private hasAnyRedoFixer(group?: FixerGroup): boolean {
         return !!(group?.redoFixer || group?.redoFixerLiquid);
+    }
+
+    private canUndoEntry(entry?: HistoryEntry): boolean {
+        if (!entry) return false;
+        if (entry.kind === 'drawing') return this.hasAnyFixer(entry.fixerGroup);
+        if (entry.kind === 'layer-property') return !!this.canvasStack?.layerForId(entry.layerId);
+        return !!this.canvasStack && entry.before.every((id) => !!this.canvasStack!.layerForId(id));
+    }
+
+    private canRedoEntry(entry?: HistoryEntry): boolean {
+        if (!entry) return false;
+        if (entry.kind === 'drawing') return this.hasAnyRedoFixer(entry.fixerGroup);
+        if (entry.kind === 'layer-property') return !!this.canvasStack?.layerForId(entry.layerId);
+        return !!this.canvasStack && entry.after.every((id) => !!this.canvasStack!.layerForId(id));
+    }
+
+    private applyHistoryEntry(entry: HistoryEntry, undoing: boolean): void {
+        if (entry.kind === 'drawing') {
+            const group = entry.fixerGroup;
+            const targetCanvas = this.canvasStack?.layerForId(entry.layerId)?.canvas;
+            if (undoing) {
+                if (group.undoFixerLiquid) targetCanvas?.fix(group.undoFixerLiquid, true);
+                else if (group.undoFixer) targetCanvas?.fix(group.undoFixer, false);
+            } else {
+                if (group.redoFixerLiquid) targetCanvas?.fix(group.redoFixerLiquid, true);
+                else if (group.redoFixer) targetCanvas?.fix(group.redoFixer, false);
+            }
+            return;
+        }
+
+        if (entry.kind === 'layer-order') {
+            this.canvasStack?.setLayerOrder(undoing ? entry.before : entry.after);
+            this.refreshLayerPanel();
+            return;
+        }
+
+        this.applyLayerPropertyHistory(entry.layerId, entry.property, undoing ? entry.before : entry.after);
+    }
+
+    private applyLayerPropertyHistory(layerId: string, property: LayerHistoryProperty, value: string | number | boolean): void {
+        if (!this.canvasStack?.layerForId(layerId)) return;
+        switch (property) {
+            case 'name':
+                this.canvasStack.renameLayer(layerId, String(value));
+                break;
+            case 'visible':
+                this.canvasStack.setLayerVisible(layerId, Boolean(value));
+                break;
+            case 'opacity':
+                this.canvasStack.setLayerOpacity(layerId, Number(value));
+                break;
+            case 'blendMode':
+                this.canvasStack.setLayerBlendMode(layerId, value as LayerBlendMode);
+                break;
+            case 'locked':
+                this.canvasStack.setLayerLocked(layerId, Boolean(value));
+                break;
+            case 'alphaLock':
+                this.canvasStack.setLayerAlphaLock(layerId, Boolean(value));
+                break;
+        }
+        this.refreshLayerPanel();
     }
 
     // ---- Color ----
@@ -2437,11 +2524,18 @@ export class DrawingScreen implements CanvasDelegate {
         const layer = this.canvasStack?.selectedLayer();
         if (!layer) return;
         this.canvasStack?.removeLayer(layer.id);
-        this.undoStack = this.undoStack.filter((entry) => entry.layerId !== layer.id);
-        this.redoStack = this.redoStack.filter((entry) => entry.layerId !== layer.id);
+        this.undoStack = this.undoStack.filter((entry) => !this.historyTouchesLayer(entry, layer.id));
+        this.redoStack = this.redoStack.filter((entry) => !this.historyTouchesLayer(entry, layer.id));
         this.canvas = this.canvasStack?.selectedCanvas;
         this.refreshLayerPanel();
         this.updateUndoRedoButtons();
+    }
+
+    private historyTouchesLayer(entry: HistoryEntry, layerId: string): boolean {
+        if (entry.kind === 'layer-order') {
+            return entry.before.includes(layerId) || entry.after.includes(layerId);
+        }
+        return entry.layerId === layerId;
     }
 
     private selectedLayerIsLocked(): boolean {
@@ -2449,12 +2543,15 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private moveLayer(layerId: string, direction: -1 | 1): void {
+        const before = this.layerOrderIds();
         this.canvasStack?.moveLayer(layerId, direction);
+        this.pushLayerOrderHistory(before, this.layerOrderIds());
         this.refreshLayerPanel();
     }
 
     private moveLayerToPanelIndex(layerId: string, panelIndex: number): void {
         if (!this.canvasStack) return;
+        const before = this.layerOrderIds();
         const panelIds = this.canvasStack.layerArray.map((layer) => layer.id).reverse();
         const fromPanelIndex = panelIds.indexOf(layerId);
         if (fromPanelIndex < 0) return;
@@ -2463,26 +2560,78 @@ export class DrawingScreen implements CanvasDelegate {
         if (fromPanelIndex < panelIndex) targetPanelIndex = Math.max(0, targetPanelIndex - 1);
         panelIds.splice(targetPanelIndex, 0, layerId);
         this.canvasStack.setLayerOrder(panelIds.reverse());
+        this.pushLayerOrderHistory(before, this.layerOrderIds());
         this.refreshLayerPanel();
     }
 
     private renameLayer(layerId: string, name: string): void {
+        const before = this.canvasStack?.layerForId(layerId)?.name;
         this.canvasStack?.renameLayer(layerId, name);
+        const after = this.canvasStack?.layerForId(layerId)?.name;
+        if (before !== undefined && after !== undefined) {
+            this.pushLayerPropertyHistory(layerId, 'name', before, after);
+        }
+        this.refreshLayerPanel();
+    }
+
+    private toggleLayerVisible(layerId: string): void {
+        const layer = this.canvasStack?.layerForId(layerId);
+        if (!layer) return;
+        const before = layer.visible;
+        this.canvasStack?.setLayerVisible(layerId, !before);
+        this.pushLayerPropertyHistory(layerId, 'visible', before, !before);
         this.refreshLayerPanel();
     }
 
     private toggleLayerLock(layerId: string): void {
         const layer = this.canvasStack?.layerForId(layerId);
         if (!layer) return;
-        this.canvasStack?.setLayerLocked(layerId, !layer.locked);
+        const before = layer.locked;
+        this.canvasStack?.setLayerLocked(layerId, !before);
+        this.pushLayerPropertyHistory(layerId, 'locked', before, !before);
         this.refreshLayerPanel();
     }
 
     private toggleLayerAlphaLock(layerId: string): void {
         const layer = this.canvasStack?.layerForId(layerId);
         if (!layer) return;
-        this.canvasStack?.setLayerAlphaLock(layerId, !layer.alphaLock);
+        const before = layer.alphaLock;
+        this.canvasStack?.setLayerAlphaLock(layerId, !before);
+        this.pushLayerPropertyHistory(layerId, 'alphaLock', before, !before);
         this.refreshLayerPanel();
+    }
+
+    private setLayerBlendModeWithHistory(layerId: string, blendMode: LayerBlendMode): void {
+        const layer = this.canvasStack?.layerForId(layerId);
+        if (!layer) return;
+        const before = layer.blendMode;
+        this.canvasStack?.setLayerBlendMode(layerId, blendMode);
+        this.pushLayerPropertyHistory(layerId, 'blendMode', before, blendMode);
+        this.refreshLayerPanel();
+    }
+
+    private beginLayerOpacityHistory(layerId: string): void {
+        const layer = this.canvasStack?.layerForId(layerId);
+        if (!layer || this.layerOpacityHistoryStart.has(layerId)) return;
+        this.layerOpacityHistoryStart.set(layerId, layer.opacity);
+    }
+
+    private setLayerOpacityForPreview(layerId: string, opacity: number, valueEl: HTMLElement): void {
+        this.canvasStack?.setLayerOpacity(layerId, opacity, false);
+        valueEl.textContent = `${Math.round(opacity * 100)}%`;
+    }
+
+    private commitLayerOpacityHistory(layerId: string): void {
+        const before = this.layerOpacityHistoryStart.get(layerId);
+        this.layerOpacityHistoryStart.delete(layerId);
+        const after = this.canvasStack?.layerForId(layerId)?.opacity;
+        if (before === undefined || after === undefined) return;
+        this.pushLayerPropertyHistory(layerId, 'opacity', before, after);
+        this.refreshLayerPanel();
+    }
+
+    private layerOrderIds(): string[] {
+        return this.canvasStack?.layerArray.map((layer) => layer.id) ?? [];
     }
 
     private selectLayer(layerId: string): void {
@@ -2561,7 +2710,7 @@ export class DrawingScreen implements CanvasDelegate {
         `;
         visible.addEventListener('click', (e) => {
             e.stopPropagation();
-            this.canvasStack?.setLayerVisible(layer.id, !layer.visible);
+            this.toggleLayerVisible(layer.id);
         });
         layerButtons.appendChild(visible);
 
@@ -2643,9 +2792,18 @@ export class DrawingScreen implements CanvasDelegate {
         opacity.value = String(layer.opacity);
         opacity.style.cssText = `width:100%; accent-color:#4a90d9;`;
         opacity.addEventListener('click', (e) => e.stopPropagation());
+        opacity.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            this.beginLayerOpacityHistory(layer.id);
+        });
+        opacity.addEventListener('focus', () => this.beginLayerOpacityHistory(layer.id));
         opacity.addEventListener('input', (e) => {
             e.stopPropagation();
-            this.canvasStack?.setLayerOpacity(layer.id, Number(opacity.value));
+            this.setLayerOpacityForPreview(layer.id, Number(opacity.value), opacityText);
+        });
+        opacity.addEventListener('change', (e) => {
+            e.stopPropagation();
+            this.commitLayerOpacityHistory(layer.id);
         });
         controls.appendChild(opacity);
 
@@ -2661,7 +2819,7 @@ export class DrawingScreen implements CanvasDelegate {
         blend.addEventListener('click', (e) => e.stopPropagation());
         blend.addEventListener('change', (e) => {
             e.stopPropagation();
-            this.canvasStack?.setLayerBlendMode(layer.id, blend.value as LayerBlendMode);
+            this.setLayerBlendModeWithHistory(layer.id, blend.value as LayerBlendMode);
         });
         controls.appendChild(blend);
 
@@ -2835,7 +2993,7 @@ export class DrawingScreen implements CanvasDelegate {
                 this.pushHistory(layerId, fixerGroup);
             } else if (result.historyPromise) {
                 const pendingGroup = new FixerGroup();
-                const pendingEntry: DrawingHistoryEntry = { layerId, fixerGroup: pendingGroup };
+                const pendingEntry: DrawingHistoryEntry = { kind: 'drawing', layerId, fixerGroup: pendingGroup };
                 this.undoStack.push(pendingEntry);
                 this.redoStack = [];
                 this.pendingFillHistoryCount++;
@@ -2974,7 +3132,7 @@ export class DrawingScreen implements CanvasDelegate {
         if (!result.historyPromise) return;
 
         const pendingGroup = new FixerGroup();
-        const pendingEntry: DrawingHistoryEntry = { layerId, fixerGroup: pendingGroup };
+        const pendingEntry: DrawingHistoryEntry = { kind: 'drawing', layerId, fixerGroup: pendingGroup };
         this.undoStack.push(pendingEntry);
         this.redoStack = [];
         this.pendingFillHistoryCount++;

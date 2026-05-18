@@ -62,7 +62,8 @@ It should keep compatibility with existing drawing flows by using `this.canvas` 
 - Move layer up/down. Done in V1.1.
 - Drag reorder in the layer panel. Done in V1.2.
 - Preserve selected layer through reorder. Done in V1.2.
-- Add history entries for reorder operations.
+- Add history entries for reorder operations. Done in V2.0.
+- Add history entries for layer metadata: name, visibility, opacity, blend mode, lock, alpha lock. Done in V2.0.
 
 ## Phase 3: Groups
 
