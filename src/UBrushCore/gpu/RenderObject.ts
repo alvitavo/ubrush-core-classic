@@ -8,6 +8,7 @@ export enum RenderObjectBlend {
     None,
     Normal,
     Add,
+    Multiply,
     Screen,
     Max,
 

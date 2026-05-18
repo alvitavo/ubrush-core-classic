@@ -11,7 +11,7 @@ import { WGPUProgramManager } from "../program/webgpu/WGPUProgramManager";
 import { RenderObjectBlend } from "../gpu/RenderObject";
 import { AffineTransform } from "../common/AffineTransform";
 
-export type LayerBlendMode = 'normal' | 'add' | 'screen' | 'max';
+export type LayerBlendMode = 'normal' | 'multiply' | 'add' | 'screen' | 'max';
 
 export interface CanvasLayer {
     id: string;
@@ -344,6 +344,7 @@ export class CanvasStack implements CanvasDelegate {
 
     private renderBlendForLayer(layer: CanvasLayer): RenderObjectBlend {
         switch (layer.blendMode) {
+            case 'multiply': return RenderObjectBlend.Multiply;
             case 'add': return RenderObjectBlend.Add;
             case 'screen': return RenderObjectBlend.Screen;
             case 'max': return RenderObjectBlend.Max;

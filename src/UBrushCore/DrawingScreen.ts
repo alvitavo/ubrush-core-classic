@@ -2809,7 +2809,7 @@ export class DrawingScreen implements CanvasDelegate {
 
         const blend = document.createElement('select');
         blend.style.cssText = `min-width:0; background:#2a2a2a; border:1px solid #555; color:#e0e0e0; border-radius:4px; font-size:11px; padding:3px;`;
-        for (const mode of ['normal', 'add', 'screen', 'max'] as LayerBlendMode[]) {
+        for (const mode of ['normal', 'multiply', 'add', 'screen', 'max'] as LayerBlendMode[]) {
             const option = document.createElement('option');
             option.value = mode;
             option.textContent = mode;

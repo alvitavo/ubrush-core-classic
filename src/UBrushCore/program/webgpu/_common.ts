@@ -20,6 +20,12 @@ export function blendStateFor(blend: RenderObjectBlend): GPUBlendState | undefin
                 alpha: { srcFactor: "one", dstFactor: "one", operation: "add" },
             };
 
+        case RenderObjectBlend.Multiply:
+            return {
+                color: { srcFactor: "dst", dstFactor: "one-minus-src-alpha", operation: "add" },
+                alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+            };
+
         case RenderObjectBlend.Screen:
             // GLSL used: gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR)
             return {

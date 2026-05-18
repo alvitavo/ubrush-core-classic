@@ -90,7 +90,7 @@ Photoshop-style modes need shader-based compositing.
 Priority:
 
 - normal
-- multiply
+- multiply. Done in V2.1.
 - screen
 - overlay
 - soft light
