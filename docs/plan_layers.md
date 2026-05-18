@@ -58,8 +58,8 @@ It should keep compatibility with existing drawing flows by using `this.canvas` 
 ## Phase 2: Layer Ordering
 
 - Move layer up/down. Done in V1.1.
-- Drag reorder in the layer panel.
-- Preserve selected layer through reorder.
+- Drag reorder in the layer panel. Done in V1.2.
+- Preserve selected layer through reorder. Done in V1.2.
 - Add history entries for reorder operations.
 
 ## Phase 3: Groups

@@ -204,6 +204,22 @@ export class CanvasStack implements CanvasDelegate {
         this.insertCanvasFromIndex(fromIndex, toIndex);
     }
 
+    public setLayerOrder(layerIdsBottomToTop: string[]): void {
+        if (layerIdsBottomToTop.length !== this.layers.length) return;
+        const byId = new Map(this.layers.map((layer) => [layer.id, layer]));
+        const nextLayers: CanvasLayer[] = [];
+        for (const id of layerIdsBottomToTop) {
+            const layer = byId.get(id);
+            if (!layer) return;
+            nextLayers.push(layer);
+        }
+        this.delegate?.willChangeCanvases?.(this, this.layers.map((layer) => layer.canvas));
+        this.layers = nextLayers;
+        this.delegate?.didChangeCanvases?.(this, this.layers.map((layer) => layer.canvas));
+        this.notifyLayersChanged();
+        this.updateCanvas();
+    }
+
     public setBackgroundColor(backgroundColor: Color): void {
         this.backgroundColor = backgroundColor;
         this.updateCanvas();

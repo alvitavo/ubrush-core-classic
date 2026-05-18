@@ -2160,6 +2160,7 @@ export class DrawingScreen implements CanvasDelegate {
 
         this.layerListEl = document.createElement('div');
         this.layerListEl.style.cssText = `display:flex; flex-direction:column; gap:6px;`;
+        this.layerListEl.addEventListener('dragover', (e) => e.preventDefault());
         wrap.appendChild(this.layerListEl);
         this.refreshLayerPanel();
         return wrap;
@@ -2198,6 +2199,19 @@ export class DrawingScreen implements CanvasDelegate {
 
     private moveLayer(layerId: string, direction: -1 | 1): void {
         this.canvasStack?.moveLayer(layerId, direction);
+        this.refreshLayerPanel();
+    }
+
+    private moveLayerToPanelIndex(layerId: string, panelIndex: number): void {
+        if (!this.canvasStack) return;
+        const panelIds = this.canvasStack.layerArray.map((layer) => layer.id).reverse();
+        const fromPanelIndex = panelIds.indexOf(layerId);
+        if (fromPanelIndex < 0) return;
+        panelIds.splice(fromPanelIndex, 1);
+        let targetPanelIndex = Math.max(0, Math.min(panelIndex, panelIds.length));
+        if (fromPanelIndex < panelIndex) targetPanelIndex = Math.max(0, targetPanelIndex - 1);
+        panelIds.splice(targetPanelIndex, 0, layerId);
+        this.canvasStack.setLayerOrder(panelIds.reverse());
         this.refreshLayerPanel();
     }
 
@@ -2240,6 +2254,34 @@ export class DrawingScreen implements CanvasDelegate {
             padding:7px; border-radius:6px; border:1px solid ${selected ? '#75b7f1' : '#444'};
             background:${selected ? '#26384a' : '#333'}; cursor:pointer;
         `;
+        row.draggable = true;
+        row.dataset.layerId = layer.id;
+        row.addEventListener('dragstart', (e) => {
+            e.dataTransfer?.setData('text/plain', layer.id);
+            e.dataTransfer?.setDragImage(row, 12, 12);
+            row.style.opacity = '.55';
+        });
+        row.addEventListener('dragend', () => {
+            row.style.opacity = '1';
+            this.clearLayerDropIndicators();
+        });
+        row.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            this.showLayerDropIndicator(row, e.offsetY > row.clientHeight * 0.5);
+        });
+        row.addEventListener('dragleave', () => {
+            row.style.borderTopColor = selected ? '#75b7f1' : '#444';
+            row.style.borderBottomColor = selected ? '#75b7f1' : '#444';
+        });
+        row.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const sourceLayerId = e.dataTransfer?.getData('text/plain');
+            if (!sourceLayerId || sourceLayerId === layer.id) return;
+            const panelRows = Array.from(this.layerListEl.querySelectorAll<HTMLElement>('[data-layer-id]'));
+            const targetPanelIndex = panelRows.indexOf(row);
+            const dropAfter = e.offsetY > row.clientHeight * 0.5;
+            this.moveLayerToPanelIndex(sourceLayerId, targetPanelIndex + (dropAfter ? 1 : 0));
+        });
         row.addEventListener('click', () => this.selectLayer(layer.id));
 
         const visible = document.createElement('button');
@@ -2357,6 +2399,24 @@ export class DrawingScreen implements CanvasDelegate {
             onClick();
         });
         return button;
+    }
+
+    private showLayerDropIndicator(row: HTMLElement, after: boolean): void {
+        this.clearLayerDropIndicators();
+        if (after) {
+            row.style.borderBottomColor = '#f1b84a';
+        } else {
+            row.style.borderTopColor = '#f1b84a';
+        }
+    }
+
+    private clearLayerDropIndicators(): void {
+        if (!this.layerListEl) return;
+        for (const row of Array.from(this.layerListEl.querySelectorAll<HTMLElement>('[data-layer-id]'))) {
+            const selected = row.dataset.layerId === this.canvasStack?.selectedLayer()?.id;
+            row.style.borderTopColor = selected ? '#75b7f1' : '#444';
+            row.style.borderBottomColor = selected ? '#75b7f1' : '#444';
+        }
     }
 
     private currentBrushClone(): IBrush | undefined {
