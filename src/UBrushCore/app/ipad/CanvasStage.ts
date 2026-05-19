@@ -18,6 +18,7 @@ import { FloodFillTuningMode } from '../../program/webgpu/WGPUFloodFillProgram';
 const STRAIGHTEN_MORPH_MS = 180;
 const SHAPE_ASSIST_EDIT_MORPH_MS = 90;
 const SHAPE_ASSIST_HOLD_MS = 1200;
+const VIEWPORT_ANIMATION_MS = 220;
 
 interface StrokeSample {
     point: Point;
@@ -55,6 +56,7 @@ export interface CanvasStageDelegate {
 export class CanvasStage {
     public readonly element = document.createElement('div');
     public readonly canvas = document.createElement('canvas');
+    private readonly fitViewButton = document.createElement('button');
 
     private context?: WGPUContext;
     private document?: DocumentController;
@@ -116,11 +118,21 @@ export class CanvasStage {
     private touchViewportStartScale = 1;
     private touchViewportStartRotation = 0;
     private touchViewportAnchorStagePoint = new Point();
+    private viewportAnimationToken = 0;
 
     constructor(private delegate: CanvasStageDelegate) {
         this.element.className = 'ub-ipad-stage';
         this.canvas.className = 'ub-ipad-canvas';
-        this.element.appendChild(this.canvas);
+        this.fitViewButton.className = 'ub-fit-view-button';
+        this.fitViewButton.textContent = '맞춤';
+        this.fitViewButton.title = '화면 맞추기';
+        this.fitViewButton.hidden = true;
+        this.fitViewButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.resetViewport(true);
+        });
+        this.element.append(this.canvas, this.fitViewButton);
     }
 
     public async init(): Promise<void> {
@@ -165,7 +177,7 @@ export class CanvasStage {
         this.canvas.width = Math.floor(width * scale);
         this.canvas.height = Math.floor(height * scale);
         this.canvasSize = new Size(this.canvas.width, this.canvas.height);
-        this.updateShapeAssistHandles();
+        this.refreshViewportOverlays();
     }
 
     private loop(): void {
@@ -246,6 +258,7 @@ export class CanvasStage {
     };
 
     private beginViewportPan(e: MouseEvent): void {
+        this.cancelViewportAnimation();
         this.isViewportPanning = true;
         this.viewportPanStartClient = new Point(e.clientX, e.clientY);
         this.viewportPanStartOffset = new Point(this.viewportPanX, this.viewportPanY);
@@ -262,7 +275,7 @@ export class CanvasStage {
         const dy = -((e.clientY - this.viewportPanStartClient.y) / Math.max(1, rect.height)) * 2;
         this.viewportPanX = this.viewportPanStartOffset.x + dx;
         this.viewportPanY = this.viewportPanStartOffset.y + dy;
-        this.updateShapeAssistHandles();
+        this.refreshViewportOverlays();
     };
 
     private onViewportPanUp = (): void => {
@@ -275,6 +288,7 @@ export class CanvasStage {
     private beginTouchViewportGesture(e: TouchEvent): void {
         const metrics = this.touchGestureMetrics(e);
         if (!metrics) return;
+        this.cancelViewportAnimation();
         this.isTouchViewportGesture = true;
         this.clearStraightLineTimer();
         this.touchViewportStartDistance = metrics.distance;
@@ -297,7 +311,7 @@ export class CanvasStage {
         this.viewportScale = this.clampViewportScale(this.touchViewportStartScale * factor);
         this.viewportRotation = this.normalizeViewportRotation(this.touchViewportStartRotation + deltaDegrees);
         this.setViewportPanForAnchor(this.touchViewportAnchorStagePoint, metrics.centerStage);
-        this.updateShapeAssistHandles();
+        this.refreshViewportOverlays();
     };
 
     private onTouchViewportGestureEnd = (e: TouchEvent): void => {
@@ -1483,41 +1497,122 @@ export class CanvasStage {
     }
 
     private zoomViewport(factor: number, screenStagePoint: Point): void {
+        this.cancelViewportAnimation();
         const before = this.inverseViewportTransform().applyToPoint(screenStagePoint);
         this.viewportScale = this.clampViewportScale(this.viewportScale * factor);
         this.setViewportPanForAnchor(before, screenStagePoint);
-        this.updateShapeAssistHandles();
+        this.refreshViewportOverlays();
     }
 
-    private rotateViewport(deltaDegrees: number, screenStagePoint: Point): void {
+    private rotateViewport(deltaDegrees: number, screenStagePoint: Point, animated = false): void {
         const before = this.inverseViewportTransform().applyToPoint(screenStagePoint);
-        this.viewportRotation = this.normalizeViewportRotation(this.viewportRotation + deltaDegrees);
-        this.setViewportPanForAnchor(before, screenStagePoint);
-        this.updateShapeAssistHandles();
+        const targetRotation = this.viewportRotation + deltaDegrees;
+        const nextPan = this.viewportPanForAnchor(before, screenStagePoint, this.viewportScale, targetRotation);
+        this.animateOrSetViewport(this.viewportScale, targetRotation, nextPan.x, nextPan.y, animated);
     }
 
-    private rotateViewportAtCenter(deltaDegrees: number): void {
-        this.rotateViewport(deltaDegrees, new Point(0, 0));
+    private rotateViewportAtCenter(deltaDegrees: number, animated = false): void {
+        this.rotateViewport(deltaDegrees, new Point(0, 0), animated);
     }
 
-    private resetViewport(): void {
-        this.viewportScale = 1;
-        this.viewportRotation = 0;
-        this.viewportPanX = 0;
-        this.viewportPanY = 0;
-        this.updateShapeAssistHandles();
+    private resetViewport(animated = false): void {
+        this.animateOrSetViewport(1, this.closestEquivalentRotation(0), 0, 0, animated);
     }
 
     private setViewportPanForAnchor(canvasStagePoint: Point, screenStagePoint: Point): void {
+        const pan = this.viewportPanForAnchor(canvasStagePoint, screenStagePoint, this.viewportScale, this.viewportRotation);
+        this.viewportPanX = pan.x;
+        this.viewportPanY = pan.y;
+    }
+
+    private viewportPanForAnchor(canvasStagePoint: Point, screenStagePoint: Point, scale: number, rotation: number): Point {
         const previousPanX = this.viewportPanX;
         const previousPanY = this.viewportPanY;
+        const previousScale = this.viewportScale;
+        const previousRotation = this.viewportRotation;
+        this.viewportScale = scale;
+        this.viewportRotation = rotation;
         this.viewportPanX = 0;
         this.viewportPanY = 0;
         const projected = this.viewportTransform().applyToPoint(canvasStagePoint);
+        this.viewportScale = previousScale;
+        this.viewportRotation = previousRotation;
         this.viewportPanX = previousPanX;
         this.viewportPanY = previousPanY;
-        this.viewportPanX = screenStagePoint.x - projected.x;
-        this.viewportPanY = screenStagePoint.y - projected.y;
+        return new Point(screenStagePoint.x - projected.x, screenStagePoint.y - projected.y);
+    }
+
+    private animateOrSetViewport(scale: number, rotation: number, panX: number, panY: number, animated: boolean): void {
+        this.cancelViewportAnimation();
+        if (!animated) {
+            this.viewportScale = this.clampViewportScale(scale);
+            this.viewportRotation = this.normalizeViewportRotation(rotation);
+            this.viewportPanX = panX;
+            this.viewportPanY = panY;
+            this.refreshViewportOverlays();
+            return;
+        }
+
+        const token = ++this.viewportAnimationToken;
+        const fromScale = this.viewportScale;
+        const fromRotation = this.viewportRotation;
+        const fromPanX = this.viewportPanX;
+        const fromPanY = this.viewportPanY;
+        const toScale = this.clampViewportScale(scale);
+        const toRotation = rotation;
+        const startedAt = performance.now();
+
+        const frame = (now: number) => {
+            if (token !== this.viewportAnimationToken) return;
+            const rawT = Math.min(1, (now - startedAt) / VIEWPORT_ANIMATION_MS);
+            const t = rawT * rawT * (3 - 2 * rawT);
+            this.viewportScale = fromScale + (toScale - fromScale) * t;
+            this.viewportRotation = fromRotation + (toRotation - fromRotation) * t;
+            this.viewportPanX = fromPanX + (panX - fromPanX) * t;
+            this.viewportPanY = fromPanY + (panY - fromPanY) * t;
+            this.refreshViewportOverlays();
+
+            if (rawT >= 1) {
+                this.viewportScale = toScale;
+                this.viewportRotation = this.normalizeViewportRotation(toRotation);
+                this.viewportPanX = panX;
+                this.viewportPanY = panY;
+                this.refreshViewportOverlays();
+            } else {
+                requestAnimationFrame(frame);
+            }
+        };
+        requestAnimationFrame(frame);
+    }
+
+    private cancelViewportAnimation(): void {
+        this.viewportAnimationToken++;
+    }
+
+    private closestEquivalentRotation(targetDegrees: number): number {
+        const turns = Math.round((this.viewportRotation - targetDegrees) / 360);
+        return targetDegrees + turns * 360;
+    }
+
+    private refreshViewportOverlays(): void {
+        this.updateShapeAssistHandles();
+        this.updateFitViewButton();
+    }
+
+    private updateFitViewButton(): void {
+        const shouldShow = !this.viewportIsIdentity();
+        this.fitViewButton.hidden = false;
+        this.fitViewButton.classList.toggle('visible', shouldShow);
+        window.setTimeout(() => {
+            if (!this.fitViewButton.classList.contains('visible')) this.fitViewButton.hidden = true;
+        }, 180);
+    }
+
+    private viewportIsIdentity(): boolean {
+        return Math.abs(this.viewportScale - 1) < 0.001
+            && Math.abs(this.normalizeViewportRotation(this.viewportRotation)) < 0.001
+            && Math.abs(this.viewportPanX) < 0.001
+            && Math.abs(this.viewportPanY) < 0.001;
     }
 
     private clampViewportScale(scale: number): number {
@@ -1547,17 +1642,17 @@ export class CanvasStage {
         }
         if (e.code === 'Digit0') {
             e.preventDefault();
-            this.resetViewport();
+            this.resetViewport(true);
             return;
         }
         if (e.shiftKey && e.code === 'ArrowLeft') {
             e.preventDefault();
-            this.rotateViewportAtCenter(-90);
+            this.rotateViewportAtCenter(-90, true);
             return;
         }
         if (e.shiftKey && e.code === 'ArrowRight') {
             e.preventDefault();
-            this.rotateViewportAtCenter(90);
+            this.rotateViewportAtCenter(90, true);
         }
     };
 
