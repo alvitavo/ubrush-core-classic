@@ -85,6 +85,7 @@ export class CanvasStage {
     private shapeAssistHandlesEl: HTMLElement | null = null;
     private shapeAssistDragKey: ShapeAssistHandleKey | null = null;
     private shapeAssistDragStartSnapshot: ShapeAssistSnapshot | null = null;
+    private shapeAssistDragTouchIdentifier: number | null = null;
     private shapeAssistPreviewAnimationToken = 0;
     private shapeAssistRenderedSamples: StrokeSample[] = [];
     private shapeAssistUndoStack: ShapeAssistSnapshot[] = [];
@@ -1230,12 +1231,14 @@ export class CanvasStage {
         document.removeEventListener('mouseup', this.onShapeAssistHandleUp);
         document.removeEventListener('touchmove', this.onShapeAssistHandleTouchMove);
         document.removeEventListener('touchend', this.onShapeAssistHandleUp);
+        document.removeEventListener('touchcancel', this.onShapeAssistHandleUp);
         this.shapeAssistRibbonEl?.remove();
         this.shapeAssistHandlesEl?.remove();
         this.shapeAssistRibbonEl = null;
         this.shapeAssistHandlesEl = null;
         this.shapeAssistDragKey = null;
         this.shapeAssistDragStartSnapshot = null;
+        this.shapeAssistDragTouchIdentifier = null;
         this.document?.setTransientHistory(undefined);
     }
 
@@ -1259,8 +1262,34 @@ export class CanvasStage {
 
     private updateShapeAssistHandles(): void {
         if (!this.shapeAssistHandlesEl || !this.shapeAssistHandles) return;
+        const keys = this.shapeAssistHandleKeys();
+        const existing = Array.from(this.shapeAssistHandlesEl.querySelectorAll<HTMLElement>('.ub-shape-assist-handle'));
+        const canReuse = existing.length === keys.length
+            && existing.every((handle, index) => handle.dataset.key === keys[index]);
+
+        if (canReuse) {
+            this.positionShapeAssistHandleElements(existing);
+            return;
+        }
+
         this.shapeAssistHandlesEl.replaceChildren();
-        const keys: ShapeAssistHandleKey[] = this.shapeAssistMode === 'line'
+        for (const key of keys) {
+            const handle = document.createElement('div');
+            const isControl = key === 'control1' || key === 'control2';
+            const isAnchor = key.startsWith('anchor:');
+            const isCenter = key === 'ellipseCenter';
+            handle.dataset.key = key;
+            handle.className = `ub-shape-assist-handle${isControl ? ' control' : ''}${isAnchor ? ' anchor' : ''}${isCenter ? ' center' : ''}`;
+            handle.addEventListener('mousedown', (e) => this.beginShapeAssistHandleDrag(e, key));
+            handle.addEventListener('touchstart', (e) => this.beginShapeAssistHandleTouchDrag(e, key), { passive: false });
+            this.shapeAssistHandlesEl.appendChild(handle);
+        }
+        this.positionShapeAssistHandleElements(Array.from(this.shapeAssistHandlesEl.querySelectorAll<HTMLElement>('.ub-shape-assist-handle')));
+    }
+
+    private shapeAssistHandleKeys(): ShapeAssistHandleKey[] {
+        if (!this.shapeAssistHandles) return [];
+        return this.shapeAssistMode === 'line'
             ? ['start', 'end']
             : this.shapeAssistMode === 'bezier'
                 ? ['start', 'control1', 'control2', 'end']
@@ -1269,20 +1298,16 @@ export class CanvasStage {
                     : this.shapeAssistMode === 'polyline' && this.polylineHandlesAreClosed()
                         ? ['start', ...this.shapeAssistHandles.anchors.map((_, index) => `anchor:${index}` as ShapeAssistHandleKey)]
                         : ['start', ...this.shapeAssistHandles.anchors.map((_, index) => `anchor:${index}` as ShapeAssistHandleKey), 'end'];
+    }
 
-        for (const key of keys) {
+    private positionShapeAssistHandleElements(handles: HTMLElement[]): void {
+        for (const handle of handles) {
+            const key = handle.dataset.key as ShapeAssistHandleKey | undefined;
+            if (!key) continue;
             const point = this.shapeAssistPointForHandle(key);
             const pos = this.canvasPointToContainer(point);
-            const handle = document.createElement('div');
-            const isControl = key === 'control1' || key === 'control2';
-            const isAnchor = key.startsWith('anchor:');
-            const isCenter = key === 'ellipseCenter';
-            handle.className = `ub-shape-assist-handle${isControl ? ' control' : ''}${isAnchor ? ' anchor' : ''}${isCenter ? ' center' : ''}`;
             handle.style.left = `${pos.x}px`;
             handle.style.top = `${pos.y}px`;
-            handle.addEventListener('mousedown', (e) => this.beginShapeAssistHandleDrag(e, key));
-            handle.addEventListener('touchstart', (e) => this.beginShapeAssistHandleTouchDrag(e, key), { passive: false });
-            this.shapeAssistHandlesEl.appendChild(handle);
         }
     }
 
@@ -1298,10 +1323,14 @@ export class CanvasStage {
     private beginShapeAssistHandleTouchDrag(e: TouchEvent, key: ShapeAssistHandleKey): void {
         e.preventDefault();
         e.stopPropagation();
+        const touch = e.changedTouches[0] ?? e.touches[0];
+        if (!touch) return;
         this.shapeAssistDragKey = key;
         this.shapeAssistDragStartSnapshot = this.currentShapeAssistSnapshot();
+        this.shapeAssistDragTouchIdentifier = touch.identifier;
         document.addEventListener('touchmove', this.onShapeAssistHandleTouchMove, { passive: false });
         document.addEventListener('touchend', this.onShapeAssistHandleUp);
+        document.addEventListener('touchcancel', this.onShapeAssistHandleUp);
     }
 
     private onShapeAssistHandleMove = (e: MouseEvent): void => {
@@ -1313,7 +1342,7 @@ export class CanvasStage {
     private onShapeAssistHandleTouchMove = (e: TouchEvent): void => {
         if (!this.shapeAssistDragKey || !this.shapeAssistHandles) return;
         e.preventDefault();
-        const touch = e.touches[0];
+        const touch = this.shapeAssistTouchForEvent(e);
         if (!touch) return;
         this.moveShapeAssistHandle(this.clientPointToCanvasPoint(touch.clientX, touch.clientY));
     };
@@ -1331,14 +1360,24 @@ export class CanvasStage {
         const after = this.currentShapeAssistSnapshot();
         this.shapeAssistDragKey = null;
         this.shapeAssistDragStartSnapshot = null;
+        this.shapeAssistDragTouchIdentifier = null;
         document.removeEventListener('mousemove', this.onShapeAssistHandleMove);
         document.removeEventListener('mouseup', this.onShapeAssistHandleUp);
         document.removeEventListener('touchmove', this.onShapeAssistHandleTouchMove);
         document.removeEventListener('touchend', this.onShapeAssistHandleUp);
+        document.removeEventListener('touchcancel', this.onShapeAssistHandleUp);
         if (before && after && !this.shapeAssistSnapshotsEqual(before, after)) {
             this.pushShapeAssistSnapshot(after);
         }
     };
+
+    private shapeAssistTouchForEvent(e: TouchEvent): Touch | null {
+        if (this.shapeAssistDragTouchIdentifier === null) return e.touches[0] ?? null;
+        for (const touch of Array.from(e.touches)) {
+            if (touch.identifier === this.shapeAssistDragTouchIdentifier) return touch;
+        }
+        return null;
+    }
 
     private shapeAssistPointForHandle(key: ShapeAssistHandleKey): Point {
         const handles = this.shapeAssistHandles!;
