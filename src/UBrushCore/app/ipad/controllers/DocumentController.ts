@@ -173,6 +173,10 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
         this.delegate?.documentDidChangeLayers();
     }
 
+    public previewLayerOpacity(layerId: string, opacity: number): void {
+        this.canvasStack.setLayerOpacity(layerId, opacity, false);
+    }
+
     public commitLayerOpacity(layerId: string, before: number, after: number): void {
         this.pushLayerPropertyHistory(layerId, 'opacity', before, after);
         this.delegate?.documentDidChangeLayers();

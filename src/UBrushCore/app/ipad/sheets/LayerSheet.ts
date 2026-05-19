@@ -78,6 +78,7 @@ export class LayerSheet {
     private layerRow(layer: CanvasLayer, selected: boolean): HTMLElement {
         const row = document.createElement('div');
         row.className = `ub-layer-row${selected ? ' selected' : ''}`;
+        row.dataset.layerId = layer.id;
         row.addEventListener('click', () => {
             this.documentController.selectLayer(layer.id);
             this.refresh();
@@ -144,10 +145,16 @@ export class LayerSheet {
             this.beginOpacityHistory(layer.id);
         });
         opacity.addEventListener('focus', () => this.beginOpacityHistory(layer.id));
-        opacity.addEventListener('input', () => this.documentController.setLayerOpacity(layer.id, Number(opacity.value), false));
-        opacity.addEventListener('change', () => this.commitOpacityHistory(layer.id, Number(opacity.value)));
 
         const opacityRow = this.optionRow(`Opacity ${Math.round(layer.opacity * 100)}%`, opacity);
+        const opacityLabel = opacityRow.querySelector('span');
+        opacity.addEventListener('input', () => {
+            const value = Number(opacity.value);
+            this.documentController.previewLayerOpacity(layer.id, value);
+            if (opacityLabel) opacityLabel.textContent = `Opacity ${Math.round(value * 100)}%`;
+            this.updateLayerSummary(layer.id);
+        });
+        opacity.addEventListener('change', () => this.commitOpacityHistory(layer.id, Number(opacity.value)));
 
         const blend = document.createElement('select');
         blend.value = layer.blendMode;
@@ -262,5 +269,13 @@ export class LayerSheet {
         if (before === undefined) return;
         this.documentController.commitLayerOpacity(layerId, before, after);
         this.refresh();
+    }
+
+    private updateLayerSummary(layerId: string): void {
+        const layer = this.documentController.layers.find((candidate) => candidate.id === layerId);
+        if (!layer) return;
+        const row = this.list.querySelector<HTMLElement>(`[data-layer-id="${layerId}"]`);
+        const sub = row?.querySelector<HTMLElement>('.ub-layer-sub');
+        if (sub) sub.textContent = `${layer.blendMode} ${Math.round(layer.opacity * 100)}%`;
     }
 }
