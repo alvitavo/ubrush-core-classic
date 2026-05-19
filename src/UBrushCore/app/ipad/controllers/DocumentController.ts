@@ -24,7 +24,7 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
     private currentBrushOpacity = 1;
     private thumbnailCache = new Map<string, { age: number; dataUrl: string }>();
 
-    constructor(context: WGPUContext, size: Size) {
+    constructor(private context: WGPUContext, size: Size) {
         this.canvasStack = new CanvasStack(context, size);
         this.canvasStack.delegate = this;
         this.history = new HistoryController(this);
