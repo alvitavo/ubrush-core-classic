@@ -240,6 +240,7 @@ export class CanvasStage {
                 stylus: this.cloneStylus(this.lastStylus)
             });
             canvas.lineTo(this.lastPoint, this.lastStylus);
+            this.restartStraightLineTimer();
         }
     };
 
@@ -276,6 +277,11 @@ export class CanvasStage {
         this.straightLineTimer = window.setTimeout(() => {
             this.straightLineActivationPromise = this.activateStraightLinePreview(token);
         }, SHAPE_ASSIST_HOLD_MS);
+    }
+
+    private restartStraightLineTimer(): void {
+        this.clearStraightLineTimer();
+        this.startStraightLineTimer();
     }
 
     private clearStraightLineTimer(): void {
