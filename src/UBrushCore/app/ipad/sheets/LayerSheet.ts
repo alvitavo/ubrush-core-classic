@@ -76,8 +76,12 @@ export class LayerSheet {
             this.refresh();
         });
 
-        const thumb = document.createElement('div');
+        const thumb = document.createElement('canvas');
         thumb.className = 'ub-layer-thumb';
+        thumb.width = 96;
+        thumb.height = 76;
+        this.drawEmptyThumbnail(thumb);
+        void this.documentController.drawLayerThumbnail(layer.id, thumb);
 
         const meta = document.createElement('div');
         meta.className = 'ub-layer-meta';
@@ -150,5 +154,17 @@ export class LayerSheet {
             this.refresh();
         });
         return button;
+    }
+
+    private drawEmptyThumbnail(thumbnail: HTMLCanvasElement): void {
+        const ctx = thumbnail.getContext('2d');
+        if (!ctx) return;
+        const cell = 12;
+        for (let y = 0; y < thumbnail.height; y += cell) {
+            for (let x = 0; x < thumbnail.width; x += cell) {
+                ctx.fillStyle = ((x / cell + y / cell) % 2 === 0) ? '#dedbd2' : '#bcb7ad';
+                ctx.fillRect(x, y, cell, cell);
+            }
+        }
     }
 }

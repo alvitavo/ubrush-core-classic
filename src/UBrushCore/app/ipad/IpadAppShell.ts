@@ -200,7 +200,7 @@ export class IpadAppShell implements DocumentControllerDelegate {
 .ub-layer-list { max-height:calc(100vh - 146px); }
 .ub-layer-row { display:grid; grid-template-columns:48px 1fr auto; gap:10px; align-items:center; padding:10px; margin-bottom:8px; border:1px solid rgba(255,255,255,.08); border-radius:14px; background:rgba(255,255,255,.06); cursor:pointer; }
 .ub-layer-row.selected { border-color:#f0c96a; background:rgba(240,201,106,.16); }
-.ub-layer-thumb { width:48px; height:38px; border-radius:8px; background:linear-gradient(45deg, #eee 25%, #cfcfcf 25% 50%, #eee 50% 75%, #cfcfcf 75%); background-size:14px 14px; border:1px solid rgba(0,0,0,.28); }
+.ub-layer-thumb { width:48px; height:38px; border-radius:8px; background:#d7d2c7; border:1px solid rgba(0,0,0,.28); }
 .ub-layer-meta { min-width:0; }
 .ub-layer-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:760; }
 .ub-layer-sub { margin-top:3px; color:#c7bdac; font-size:12px; }

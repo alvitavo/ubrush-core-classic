@@ -22,6 +22,7 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
     private currentColor = Color.black();
     private currentBrushSize = 0.1;
     private currentBrushOpacity = 1;
+    private thumbnailCache = new Map<string, { age: number; dataUrl: string }>();
 
     constructor(context: WGPUContext, size: Size) {
         this.canvasStack = new CanvasStack(context, size);
@@ -114,6 +115,29 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
         this.delegate?.documentDidChangeRender();
     }
 
+    public async drawLayerThumbnail(layerId: string, target: HTMLCanvasElement): Promise<void> {
+        const layer = this.canvasStack.layerForId(layerId);
+        if (!layer) return;
+
+        const cached = this.thumbnailCache.get(layerId);
+        if (cached && cached.age === layer.canvas.age) {
+            this.drawThumbnailDataUrl(target, cached.dataUrl);
+            return;
+        }
+
+        const renderTarget = layer.canvas.outputRenderTarget;
+        const sourceWidth = renderTarget.size.width;
+        const sourceHeight = renderTarget.size.height;
+        const pixels = await this.context.readPixels(renderTarget, new Rect(0, 0, sourceWidth, sourceHeight));
+        const dataUrl = this.layerThumbnailDataUrl(pixels, sourceWidth, sourceHeight, target.width, target.height);
+
+        const latest = this.canvasStack.layerForId(layerId);
+        if (!latest || latest.canvas.age !== layer.canvas.age) return;
+
+        this.thumbnailCache.set(layerId, { age: layer.canvas.age, dataUrl });
+        this.drawThumbnailDataUrl(target, dataUrl);
+    }
+
     public selectedLayerIsLocked(): boolean {
         return !!this.selectedLayer?.locked;
     }
@@ -150,5 +174,42 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
 
     public didChangeLayers(): void {
         this.delegate?.documentDidChangeLayers();
+    }
+
+    private drawThumbnailDataUrl(target: HTMLCanvasElement, dataUrl: string): void {
+        if (!dataUrl) return;
+        const image = new Image();
+        image.onload = () => {
+            const ctx = target.getContext('2d');
+            if (!ctx) return;
+            ctx.clearRect(0, 0, target.width, target.height);
+            ctx.drawImage(image, 0, 0, target.width, target.height);
+        };
+        image.src = dataUrl;
+    }
+
+    private layerThumbnailDataUrl(pixels: Uint8Array, sourceWidth: number, sourceHeight: number, thumbWidth: number, thumbHeight: number): string {
+        const source = document.createElement('canvas');
+        source.width = sourceWidth;
+        source.height = sourceHeight;
+        const sourceCtx = source.getContext('2d');
+        if (!sourceCtx) return '';
+        sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(pixels), sourceWidth, sourceHeight), 0, 0);
+
+        const preview = document.createElement('canvas');
+        preview.width = thumbWidth;
+        preview.height = thumbHeight;
+        const previewCtx = preview.getContext('2d');
+        if (!previewCtx) return '';
+
+        previewCtx.clearRect(0, 0, preview.width, preview.height);
+        const scale = Math.min(preview.width / sourceWidth, preview.height / sourceHeight);
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
+        const x = Math.round((preview.width - width) * 0.5);
+        const y = Math.round((preview.height - height) * 0.5);
+        previewCtx.drawImage(source, x, y, width, height);
+
+        return preview.toDataURL('image/png');
     }
 }
