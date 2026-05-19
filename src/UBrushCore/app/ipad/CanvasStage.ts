@@ -10,6 +10,9 @@ import { bootstrapWebGPU } from '../../gpu/webgpu/bootstrap';
 import { WGPUProgramManager } from '../../program/webgpu/WGPUProgramManager';
 import { AffineTransform } from '../../common/AffineTransform';
 import { DocumentController } from './controllers/DocumentController';
+import { FixerGroup } from '../../common/FixerGroup';
+
+const STRAIGHTEN_HOLD_MS = 1200;
 
 export interface CanvasStageDelegate {
     stageDidCreateDocument(document: DocumentController): void;
@@ -27,6 +30,13 @@ export class CanvasStage {
     private lastStylus = new Stylus();
     private stylusEventCount = 0;
     private resizeObserver?: ResizeObserver;
+    private straightLineTimer: number | null = null;
+    private straightLineToken = 0;
+    private straightLineActive = false;
+    private straightLineActivationPromise: Promise<void> | null = null;
+    private straightLineStartPoint: Point | null = null;
+    private straightLineStartStylus: Stylus | null = null;
+    private straightLineStrokeGroup: FixerGroup | null = null;
 
     constructor(private delegate: CanvasStageDelegate) {
         this.element.className = 'ub-ipad-stage';
@@ -106,7 +116,16 @@ export class CanvasStage {
         this.stylusEventCount = 0;
         this.lastPoint = this.eventPoint(e);
         this.lastStylus = this.eventStylus(e);
+        this.resetStraightLineState(false);
+        this.straightLineStartPoint = this.lastPoint.clone();
+        this.straightLineStartStylus = new Stylus(
+            this.lastStylus.pressure,
+            this.lastStylus.altitudeAngle,
+            this.lastStylus.azimuthAngle
+        );
+        this.straightLineStrokeGroup = await canvas.captureLineStartForStraightening();
         canvas.moveTo(this.lastPoint, this.lastStylus);
+        this.startStraightLineTimer();
 
         if (e instanceof MouseEvent) {
             document.addEventListener('mousemove', this.onPointerMove);
@@ -124,13 +143,31 @@ export class CanvasStage {
 
         this.lastPoint = this.eventPoint(e);
         this.lastStylus = this.eventStylus(e);
+        if (this.straightLineActive) {
+            this.renderStraightLinePreview(canvas);
+            return;
+        }
+
         canvas.lineTo(this.lastPoint, this.lastStylus);
     };
 
     private onPointerUp = async (e: MouseEvent | TouchEvent): Promise<void> => {
         e.preventDefault();
+        this.clearStraightLineTimer();
+        if (this.straightLineActivationPromise) {
+            await this.straightLineActivationPromise;
+        }
+
         const canvas = this.activeCanvas();
-        if (canvas) await canvas.endLine(this.lastPoint, this.lastStylus);
+        if (canvas && this.straightLineActive && this.straightLineStrokeGroup) {
+            this.renderStraightLinePreview(canvas);
+            const fixerGroup = await canvas.commitStraightenedLine(this.straightLineStrokeGroup);
+            this.document?.pushCanvasHistory(canvas, fixerGroup);
+        } else if (canvas) {
+            await canvas.endLine(this.lastPoint, this.lastStylus);
+        }
+
+        this.resetStraightLineState(false);
 
         document.removeEventListener('mousemove', this.onPointerMove);
         document.removeEventListener('mouseup', this.onPointerUp);
@@ -140,6 +177,49 @@ export class CanvasStage {
 
     private activeCanvas(): Canvas | undefined {
         return this.document?.selectedCanvas;
+    }
+
+    private startStraightLineTimer(): void {
+        const token = ++this.straightLineToken;
+        this.straightLineTimer = window.setTimeout(() => {
+            this.straightLineActivationPromise = this.activateStraightLine(token);
+        }, STRAIGHTEN_HOLD_MS);
+    }
+
+    private clearStraightLineTimer(): void {
+        if (this.straightLineTimer === null) return;
+        window.clearTimeout(this.straightLineTimer);
+        this.straightLineTimer = null;
+    }
+
+    private async activateStraightLine(token: number): Promise<void> {
+        const canvas = this.activeCanvas();
+        if (!canvas || token !== this.straightLineToken) return;
+        if (!this.straightLineStartPoint || !this.straightLineStartStylus) return;
+
+        this.straightLineActive = true;
+        this.renderStraightLinePreview(canvas);
+    }
+
+    private renderStraightLinePreview(canvas: Canvas): void {
+        if (!this.straightLineStartPoint || !this.straightLineStartStylus) return;
+        canvas.replaceActiveLineWithStraightLine(
+            this.straightLineStartPoint,
+            this.lastPoint,
+            this.straightLineStartStylus,
+            this.lastStylus,
+            { disableSmudging: canvas.brushUsesSmudging() }
+        );
+    }
+
+    private resetStraightLineState(clearTimer: boolean = true): void {
+        if (clearTimer) this.clearStraightLineTimer();
+        this.straightLineToken++;
+        this.straightLineActive = false;
+        this.straightLineActivationPromise = null;
+        this.straightLineStartPoint = null;
+        this.straightLineStartStylus = null;
+        this.straightLineStrokeGroup = null;
     }
 
     private eventPoint(e: MouseEvent | TouchEvent): Point {

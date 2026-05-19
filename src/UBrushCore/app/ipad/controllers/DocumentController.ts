@@ -200,6 +200,13 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
         this.delegate?.documentDidChangeRender();
     }
 
+    public pushCanvasHistory(canvas: Canvas, fixerGroup: FixerGroup): void {
+        const layerId = this.canvasStack.layerIdForCanvas(canvas);
+        if (!layerId) return;
+        this.history.pushDrawing(layerId, fixerGroup);
+        this.delegate?.documentDidChangeLayers();
+    }
+
     public async drawLayerThumbnail(layerId: string, target: HTMLCanvasElement): Promise<void> {
         const layer = this.canvasStack.layerForId(layerId);
         if (!layer) return;
