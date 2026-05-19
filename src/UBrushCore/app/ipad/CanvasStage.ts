@@ -307,7 +307,7 @@ export class CanvasStage {
         const metrics = this.touchGestureMetrics(e);
         if (!metrics) return;
         const factor = metrics.distance / Math.max(1, this.touchViewportStartDistance);
-        const deltaDegrees = (metrics.angle - this.touchViewportStartAngle) * 57.29577951308232;
+        const deltaDegrees = (this.touchViewportStartAngle - metrics.angle) * 57.29577951308232;
         this.viewportScale = this.clampViewportScale(this.touchViewportStartScale * factor);
         this.viewportRotation = this.normalizeViewportRotation(this.touchViewportStartRotation + deltaDegrees);
         this.setViewportPanForAnchor(this.touchViewportAnchorStagePoint, metrics.centerStage);
