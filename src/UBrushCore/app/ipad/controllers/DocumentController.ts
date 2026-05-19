@@ -30,7 +30,7 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
         this.canvasStack.delegate = this;
         this.history = new HistoryController(this);
 
-        this.canvasStack.createLayer('Layer 1');
+        this.canvasStack.createLayer();
         this.canvasStack.color = this.currentColor.clone();
         this.canvasStack.brushSize = this.currentBrushSize;
         this.canvasStack.brushOpacity = this.currentBrushOpacity;
