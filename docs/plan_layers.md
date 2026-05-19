@@ -93,12 +93,12 @@ Priority:
 - normal
 - multiply. Done in V2.1.
 - screen
-- overlay
-- soft light
-- hard light
-- color dodge
-- color burn
-- difference
+- overlay. Done in V2.7.
+- soft light. Done in V2.8.
+- hard light. Done in V2.8.
+- color dodge. Done in V2.8.
+- color burn. Done in V2.8.
+- difference. Done in V2.7.
 
 Plan:
 
@@ -143,8 +143,10 @@ Required strategy:
 - Cached group render targets.
 - Composite only when layer content or layer properties change.
 - Avoid per-frame full-stack recomposite.
-- Render target pooling for temporary group/blend passes.
-- Debounced thumbnail generation.
+- Render target pooling for temporary blend passes. Done in V2.9.
+- Render target pooling for temporary group passes.
+- Debounced thumbnail generation. Done in V2.6.
+- Batched thumbnail readback. Done in V2.10.
 - Dirty-rect fixer readback where possible.
 
 ## Phase 7: Document Operations

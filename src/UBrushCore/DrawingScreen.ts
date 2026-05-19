@@ -143,6 +143,8 @@ export class DrawingScreen implements CanvasDelegate {
     private layerThumbnailCache: Map<string, LayerThumbnailCacheEntry> = new Map();
     private layerThumbnailPendingAges: Map<string, number> = new Map();
     private layerThumbnailRefreshTimers: Map<string, number> = new Map();
+    private layerThumbnailElements: Map<string, Set<HTMLCanvasElement>> = new Map();
+    private layerThumbnailBatchTimer: number | null = null;
     private pendingFillHistoryCount = 0;
     private loopPaused = false;
     private straightLineTimer: number | null = null;
@@ -2944,6 +2946,9 @@ export class DrawingScreen implements CanvasDelegate {
             window.clearTimeout(timer);
             this.layerThumbnailRefreshTimers.delete(id);
         }
+        for (const id of Array.from(this.layerThumbnailElements.keys())) {
+            if (!layerIds.has(id)) this.layerThumbnailElements.delete(id);
+        }
 
         for (let i = layers.length - 1; i >= 0; i--) {
             this.layerListEl.appendChild(this.buildLayerRow(layers[i], layers[i].id === selectedId));
@@ -2971,6 +2976,7 @@ export class DrawingScreen implements CanvasDelegate {
             this.layerThumbnailRefreshTimers.delete(layerId);
             this.layerThumbnailCache.delete(layerId);
             this.layerThumbnailPendingAges.delete(layerId);
+            this.layerThumbnailElements.delete(layerId);
             this.refreshLayerPanel();
         }, 0);
         this.layerThumbnailRefreshTimers.set(layerId, timer);
@@ -3129,7 +3135,7 @@ export class DrawingScreen implements CanvasDelegate {
 
         const blend = document.createElement('select');
         blend.style.cssText = `min-width:0; background:#2a2a2a; border:1px solid #555; color:#e0e0e0; border-radius:4px; font-size:11px; padding:3px;`;
-        for (const mode of ['normal', 'multiply', 'add', 'screen', 'max'] as LayerBlendMode[]) {
+        for (const mode of ['normal', 'multiply', 'add', 'screen', 'max', 'overlay', 'hard-light', 'soft-light', 'color-dodge', 'color-burn', 'difference'] as LayerBlendMode[]) {
             const option = document.createElement('option');
             option.value = mode;
             option.textContent = mode;
@@ -3181,7 +3187,7 @@ export class DrawingScreen implements CanvasDelegate {
             this.drawLayerThumbnailDataUrl(thumbnail, cached.dataUrl);
         } else {
             this.drawEmptyLayerThumbnail(thumbnail);
-            void this.refreshLayerThumbnail(layer, thumbnail);
+            this.queueLayerThumbnailRead(layer, thumbnail);
         }
         return thumbnail;
     }
@@ -3203,31 +3209,93 @@ export class DrawingScreen implements CanvasDelegate {
         image.src = dataUrl;
     }
 
-    private async refreshLayerThumbnail(layer: CanvasLayer, thumbnail: HTMLCanvasElement): Promise<void> {
-        const pendingAge = this.layerThumbnailPendingAges.get(layer.id);
-        if (pendingAge === layer.canvas.age) return;
-        this.layerThumbnailPendingAges.set(layer.id, layer.canvas.age);
+    private queueLayerThumbnailRead(layer: CanvasLayer, thumbnail: HTMLCanvasElement): void {
+        let elements = this.layerThumbnailElements.get(layer.id);
+        if (!elements) {
+            elements = new Set();
+            this.layerThumbnailElements.set(layer.id, elements);
+        }
+        elements.add(thumbnail);
 
-        const age = layer.canvas.age;
-        const renderTarget = layer.canvas.outputRenderTarget;
-        const sourceWidth = renderTarget.size.width;
-        const sourceHeight = renderTarget.size.height;
-        const pixels = await this.glContext?.readPixels(renderTarget, new Rect(0, 0, sourceWidth, sourceHeight));
-        this.layerThumbnailPendingAges.delete(layer.id);
-        if (!pixels || !this.canvasStack?.layerForId(layer.id) || layer.canvas.age !== age) return;
+        if (this.layerThumbnailBatchTimer !== null) return;
+        this.layerThumbnailBatchTimer = window.setTimeout(() => {
+            this.layerThumbnailBatchTimer = null;
+            void this.flushLayerThumbnailReads();
+        }, 0);
+    }
 
+    private async flushLayerThumbnailReads(): Promise<void> {
+        if (!this.glContext || !this.canvasStack) return;
+
+        const entries: Array<{ layer: CanvasLayer; age: number; sourceWidth: number; sourceHeight: number }> = [];
+        for (const layerId of Array.from(this.layerThumbnailElements.keys())) {
+            const layer = this.canvasStack.layerForId(layerId);
+            if (!layer) {
+                this.layerThumbnailElements.delete(layerId);
+                continue;
+            }
+            const pendingAge = this.layerThumbnailPendingAges.get(layerId);
+            if (pendingAge === layer.canvas.age) continue;
+
+            const renderTarget = layer.canvas.outputRenderTarget;
+            this.layerThumbnailPendingAges.set(layerId, layer.canvas.age);
+            entries.push({
+                layer,
+                age: layer.canvas.age,
+                sourceWidth: renderTarget.size.width,
+                sourceHeight: renderTarget.size.height
+            });
+        }
+        if (entries.length === 0) return;
+
+        const pixelsList = await this.glContext.readPixelsBatch(entries.map((entry) => ({
+            renderTarget: entry.layer.canvas.outputRenderTarget,
+            pixelBounds: new Rect(0, 0, entry.sourceWidth, entry.sourceHeight)
+        })));
+
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            const layer = this.canvasStack?.layerForId(entry.layer.id);
+            this.layerThumbnailPendingAges.delete(entry.layer.id);
+            if (!layer) {
+                this.layerThumbnailElements.delete(entry.layer.id);
+                continue;
+            }
+            if (layer.canvas.age !== entry.age) {
+                if (this.layerThumbnailElements.has(entry.layer.id) && this.layerThumbnailBatchTimer === null) {
+                    this.layerThumbnailBatchTimer = window.setTimeout(() => {
+                        this.layerThumbnailBatchTimer = null;
+                        void this.flushLayerThumbnailReads();
+                    }, 0);
+                }
+                continue;
+            }
+
+            const dataUrl = this.layerThumbnailDataUrl(pixelsList[i], entry.sourceWidth, entry.sourceHeight);
+            this.layerThumbnailCache.set(entry.layer.id, { age: entry.age, dataUrl });
+            const elements = this.layerThumbnailElements.get(entry.layer.id);
+            if (elements) {
+                for (const thumbnail of elements) {
+                    if (thumbnail.isConnected) this.drawLayerThumbnailDataUrl(thumbnail, dataUrl);
+                }
+            }
+            this.layerThumbnailElements.delete(entry.layer.id);
+        }
+    }
+
+    private layerThumbnailDataUrl(pixels: Uint8Array, sourceWidth: number, sourceHeight: number): string {
         const source = document.createElement('canvas');
         source.width = sourceWidth;
         source.height = sourceHeight;
         const sourceCtx = source.getContext('2d');
-        if (!sourceCtx) return;
+        if (!sourceCtx) return '';
         sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(pixels), sourceWidth, sourceHeight), 0, 0);
 
         const preview = document.createElement('canvas');
         preview.width = LAYER_THUMB_W;
         preview.height = LAYER_THUMB_H;
         const previewCtx = preview.getContext('2d');
-        if (!previewCtx) return;
+        if (!previewCtx) return '';
         previewCtx.clearRect(0, 0, preview.width, preview.height);
 
         const scale = Math.min(preview.width / sourceWidth, preview.height / sourceHeight);
@@ -3237,9 +3305,7 @@ export class DrawingScreen implements CanvasDelegate {
         const y = Math.round((preview.height - height) * 0.5);
         previewCtx.drawImage(source, x, y, width, height);
 
-        const dataUrl = preview.toDataURL('image/png');
-        this.layerThumbnailCache.set(layer.id, { age, dataUrl });
-        if (thumbnail.isConnected) this.drawLayerThumbnailDataUrl(thumbnail, dataUrl);
+        return preview.toDataURL('image/png');
     }
 
     private layerMiniButton(text: string, title: string, onClick: () => void): HTMLButtonElement {

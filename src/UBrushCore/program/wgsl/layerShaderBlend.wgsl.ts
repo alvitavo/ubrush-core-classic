@@ -42,12 +42,69 @@ fn overlayChannel(s : f32, d : f32) -> f32 {
     return 1.0 - 2.0 * (1.0 - s) * (1.0 - d);
 }
 
+fn hardLightChannel(s : f32, d : f32) -> f32 {
+    if (s <= 0.5) {
+        return 2.0 * s * d;
+    }
+    return 1.0 - 2.0 * (1.0 - s) * (1.0 - d);
+}
+
+fn softLightChannel(s : f32, d : f32) -> f32 {
+    if (s <= 0.5) {
+        return d - (1.0 - 2.0 * s) * d * (1.0 - d);
+    }
+    let g = select(sqrt(d), ((16.0 * d - 12.0) * d + 4.0) * d, d <= 0.25);
+    return d + (2.0 * s - 1.0) * (g - d);
+}
+
+fn colorDodgeChannel(s : f32, d : f32) -> f32 {
+    if (s >= 0.9999) {
+        return 1.0;
+    }
+    return min(1.0, d / (1.0 - s));
+}
+
+fn colorBurnChannel(s : f32, d : f32) -> f32 {
+    if (s <= 0.0001) {
+        return 0.0;
+    }
+    return 1.0 - min(1.0, (1.0 - d) / s);
+}
+
 fn blendColor(src : vec3f, dst : vec3f, mode : f32) -> vec3f {
     if (mode < 1.5) {
         return vec3f(
             overlayChannel(src.r, dst.r),
             overlayChannel(src.g, dst.g),
             overlayChannel(src.b, dst.b)
+        );
+    }
+    if (mode < 2.5) {
+        return vec3f(
+            hardLightChannel(src.r, dst.r),
+            hardLightChannel(src.g, dst.g),
+            hardLightChannel(src.b, dst.b)
+        );
+    }
+    if (mode < 3.5) {
+        return vec3f(
+            softLightChannel(src.r, dst.r),
+            softLightChannel(src.g, dst.g),
+            softLightChannel(src.b, dst.b)
+        );
+    }
+    if (mode < 4.5) {
+        return vec3f(
+            colorDodgeChannel(src.r, dst.r),
+            colorDodgeChannel(src.g, dst.g),
+            colorDodgeChannel(src.b, dst.b)
+        );
+    }
+    if (mode < 5.5) {
+        return vec3f(
+            colorBurnChannel(src.r, dst.r),
+            colorBurnChannel(src.g, dst.g),
+            colorBurnChannel(src.b, dst.b)
         );
     }
     return abs(dst - src);

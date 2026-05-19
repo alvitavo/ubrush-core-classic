@@ -8,10 +8,11 @@ import { Common } from "../common/Common";
 import { Rect } from "../common/Rect";
 import { FixerGroup } from "../common/FixerGroup";
 import { WGPUProgramManager } from "../program/webgpu/WGPUProgramManager";
+import { LayerShaderBlendMode } from "../program/webgpu/WGPULayerShaderBlendProgram";
 import { RenderObjectBlend } from "../gpu/RenderObject";
 import { AffineTransform } from "../common/AffineTransform";
 
-export type LayerBlendMode = 'normal' | 'multiply' | 'add' | 'screen' | 'max';
+export type LayerBlendMode = 'normal' | 'multiply' | 'add' | 'screen' | 'max' | LayerShaderBlendMode;
 
 export interface CanvasLayer {
     id: string;
@@ -62,6 +63,7 @@ export class CanvasStack implements CanvasDelegate {
     private backgroundColor: Color = Color.white();
     private nextLayerNumber = 1;
     private needsComposite = true;
+    private shaderBlendDestinationScratch?: WGPURenderTarget;
 
     private _brushSize: number = 1;
     private _brushOpacity: number = 1;
@@ -163,15 +165,7 @@ export class CanvasStack implements CanvasDelegate {
         const target = this.layers[sourceIndex - 1];
         if (source.locked || target.locked) return null;
 
-        WGPUProgramManager.getInstance().layerCompositeProgram.fill(target.canvas.outputRenderTarget, {
-            targetRect: Common.stageRect(),
-            source: source.canvas.outputRenderTarget.texture,
-            sourceRect: Common.stageRect(),
-            canvasRect: Common.stageRect(),
-            transform: new AffineTransform(),
-            blend: this.renderBlendForLayer(source),
-            opacity: source.opacity
-        });
+        this.compositeLayerIntoTarget(target.canvas.outputRenderTarget, source);
         target.canvas.syncFromOutputRenderTarget();
 
         const removed = this.detachLayer(source.id);
@@ -192,15 +186,7 @@ export class CanvasStack implements CanvasDelegate {
 
         const target = visibleLayers[0];
         for (const source of visibleLayers.slice(1)) {
-            WGPUProgramManager.getInstance().layerCompositeProgram.fill(target.canvas.outputRenderTarget, {
-                targetRect: Common.stageRect(),
-                source: source.canvas.outputRenderTarget.texture,
-                sourceRect: Common.stageRect(),
-                canvasRect: Common.stageRect(),
-                transform: new AffineTransform(),
-                blend: this.renderBlendForLayer(source),
-                opacity: source.opacity
-            });
+            this.compositeLayerIntoTarget(target.canvas.outputRenderTarget, source);
         }
         target.canvas.syncFromOutputRenderTarget();
 
@@ -411,18 +397,9 @@ export class CanvasStack implements CanvasDelegate {
         this.needsComposite = false;
         this.context.clearRenderTarget(this.outputRenderTarget, this.backgroundColor);
 
-        const layerComposite = WGPUProgramManager.getInstance().layerCompositeProgram;
         for (const layer of this.layers) {
             if (!layer.visible || layer.opacity <= 0) continue;
-            layerComposite.fill(this.outputRenderTarget, {
-                targetRect: Common.stageRect(),
-                source: layer.canvas.outputRenderTarget.texture,
-                sourceRect: Common.stageRect(),
-                canvasRect: Common.stageRect(),
-                transform: new AffineTransform(),
-                blend: this.renderBlendForLayer(layer),
-                opacity: layer.opacity
-            });
+            this.compositeLayerIntoTarget(this.outputRenderTarget, layer);
         }
 
         this.delegate?.changeRect(this, rect);
@@ -473,6 +450,59 @@ export class CanvasStack implements CanvasDelegate {
             case 'max': return RenderObjectBlend.Max;
             case 'normal':
             default: return RenderObjectBlend.Normal;
+        }
+    }
+
+    private compositeLayerIntoTarget(target: WGPURenderTarget, layer: CanvasLayer): void {
+        const stageRect = Common.stageRect();
+        const transform = new AffineTransform();
+        const programManager = WGPUProgramManager.getInstance();
+
+        if (this.isShaderBlendMode(layer.blendMode)) {
+            const destination = this.shaderBlendDestinationTarget();
+            this.context.copyTexture(destination, target);
+            programManager.layerShaderBlendProgram.fill(target, {
+                targetRect: stageRect,
+                source: layer.canvas.outputRenderTarget.texture,
+                destination: destination.texture,
+                sourceRect: stageRect,
+                canvasRect: stageRect,
+                transform,
+                mode: layer.blendMode,
+                opacity: layer.opacity
+            });
+            return;
+        }
+
+        programManager.layerCompositeProgram.fill(target, {
+            targetRect: stageRect,
+            source: layer.canvas.outputRenderTarget.texture,
+            sourceRect: stageRect,
+            canvasRect: stageRect,
+            transform,
+            blend: this.renderBlendForLayer(layer),
+            opacity: layer.opacity
+        });
+    }
+
+    private shaderBlendDestinationTarget(): WGPURenderTarget {
+        if (!this.shaderBlendDestinationScratch) {
+            this.shaderBlendDestinationScratch = this.context.createRenderTarget(this.size);
+        }
+        return this.shaderBlendDestinationScratch;
+    }
+
+    private isShaderBlendMode(blendMode: LayerBlendMode): blendMode is LayerShaderBlendMode {
+        switch (blendMode) {
+            case 'overlay':
+            case 'hard-light':
+            case 'soft-light':
+            case 'color-dodge':
+            case 'color-burn':
+            case 'difference':
+                return true;
+            default:
+                return false;
         }
     }
 

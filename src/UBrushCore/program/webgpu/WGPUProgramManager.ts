@@ -4,6 +4,7 @@ import { WGPUFillRectProgram } from "./WGPUFillRectProgram";
 import { WGPUFloodFillProgram } from "./WGPUFloodFillProgram";
 import { WGPUHighLowCutProgram } from "./WGPUHighLowCutProgram";
 import { WGPULayerCompositeProgram } from "./WGPULayerCompositeProgram";
+import { WGPULayerShaderBlendProgram } from "./WGPULayerShaderBlendProgram";
 import { WGPUMaskAndCutProgram } from "./WGPUMaskAndCutProgram";
 import { WGPUMaskProgram } from "./WGPUMaskProgram";
 import { WGPUMergeLayersProgram } from "./WGPUMergeLayersProgram";
@@ -42,6 +43,7 @@ export class WGPUProgramManager {
     public floodFillProgram: WGPUFloodFillProgram;
     public highLowCutProgram: WGPUHighLowCutProgram;
     public layerCompositeProgram: WGPULayerCompositeProgram;
+    public layerShaderBlendProgram: WGPULayerShaderBlendProgram;
     public maskAndCutProgram: WGPUMaskAndCutProgram;
     public maskProgram: WGPUMaskProgram;
     public mergeLayersProgram: WGPUMergeLayersProgram;
@@ -55,6 +57,7 @@ export class WGPUProgramManager {
         this.floodFillProgram = new WGPUFloodFillProgram(context);
         this.highLowCutProgram = new WGPUHighLowCutProgram(context);
         this.layerCompositeProgram = new WGPULayerCompositeProgram(context);
+        this.layerShaderBlendProgram = new WGPULayerShaderBlendProgram(context);
         this.maskAndCutProgram = new WGPUMaskAndCutProgram(context);
         this.maskProgram = new WGPUMaskProgram(context);
         this.mergeLayersProgram = new WGPUMergeLayersProgram(context);
@@ -70,6 +73,7 @@ export class WGPUProgramManager {
         this.smudgingDotProgram.distroy();
         this.highLowCutProgram.distroy();
         this.layerCompositeProgram.distroy();
+        this.layerShaderBlendProgram.distroy();
         this.maskAndCutProgram.distroy();
         this.maskProgram.distroy();
         this.mergeLayersProgram.distroy();
