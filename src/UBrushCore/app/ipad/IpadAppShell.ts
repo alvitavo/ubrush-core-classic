@@ -16,6 +16,8 @@ export class IpadAppShell implements DocumentControllerDelegate {
     private sheetHost = document.createElement('div');
     private undoButton = this.iconButton('Undo', 'Undo', () => this.document?.undo());
     private redoButton = this.iconButton('Redo', 'Redo', () => this.document?.redo());
+    private brushButton = this.segmentButton('Brush', () => this.setTool('brush'));
+    private fillButton = this.segmentButton('Fill', () => this.setTool('fill'));
     private layerSheet?: LayerSheet;
     private brushSheet: BrushLibrarySheet;
     private sizeValue = document.createElement('span');
@@ -63,13 +65,16 @@ export class IpadAppShell implements DocumentControllerDelegate {
             this.textButton('Gallery', () => {}),
             this.undoButton,
             this.redoButton,
-            this.segmentButton('Brush', () => this.brushSheet.toggle()),
+            this.brushButton,
+            this.fillButton,
+            this.segmentButton('Library', () => this.brushSheet.toggle()),
             this.segmentButton('Smudge', () => {}),
             this.segmentButton('Erase', () => {}),
             this.colorButton(),
             this.iconButton('Layers', 'Layers', () => this.layerSheet?.toggle()),
             this.iconButton('More', 'More', () => this.document?.drySelectedLayer())
         );
+        this.updateToolButtons();
 
         const stageHost = document.createElement('div');
         stageHost.className = 'ub-stage-host';
@@ -142,6 +147,16 @@ export class IpadAppShell implements DocumentControllerDelegate {
         this.redoButton.disabled = !this.document?.canRedo;
     }
 
+    private setTool(tool: 'brush' | 'fill'): void {
+        this.document?.setTool(tool);
+        this.updateToolButtons();
+    }
+
+    private updateToolButtons(): void {
+        this.brushButton.classList.toggle('active', this.document?.tool !== 'fill');
+        this.fillButton.classList.toggle('active', this.document?.tool === 'fill');
+    }
+
     private textButton(text: string, onClick: () => void): HTMLButtonElement {
         const button = document.createElement('button');
         button.className = 'ub-text-button';
@@ -181,6 +196,7 @@ export class IpadAppShell implements DocumentControllerDelegate {
 .ub-icon-button.compact { height:28px; min-width:28px; padding:0 7px; font-size:11px; }
 .ub-text-button { background:transparent; color:#d9d1c2; }
 .ub-segment-button:active, .ub-icon-button:active { background:rgba(255,255,255,.22); }
+.ub-segment-button.active { background:#f0c96a; color:#1f201e; }
 .ub-icon-button:disabled { opacity:.35; cursor:default; }
 .ub-color-chip { --chip-color:#000; width:34px; height:34px; border:2px solid rgba(255,255,255,.72); border-radius:50%; background:var(--chip-color); overflow:hidden; cursor:pointer; }
 .ub-color-chip input { opacity:0; width:100%; height:100%; }
@@ -227,6 +243,11 @@ export class IpadAppShell implements DocumentControllerDelegate {
 .ub-shape-assist-handle.control { background:#f1b84a; }
 .ub-shape-assist-handle.anchor { background:#5ad18d; }
 .ub-shape-assist-handle.center { width:20px; height:20px; margin-left:-10px; margin-top:-10px; background:#f05a7e; }
+.ub-flood-fill-ribbon { position:absolute; z-index:25; left:50%; top:calc(env(safe-area-inset-top, 0px) + 68px); transform:translateX(-50%); display:flex; align-items:center; gap:10px; max-width:calc(100vw - 28px); overflow-x:auto; padding:8px; border:1px solid rgba(255,255,255,.14); border-radius:18px; background:rgba(31,32,30,.84); backdrop-filter:blur(20px); box-shadow:0 12px 34px rgba(0,0,0,.24); pointer-events:auto; }
+.ub-flood-fill-slider { display:flex; align-items:center; gap:7px; color:#f6f0e7; font-size:12px; font-weight:750; white-space:nowrap; }
+.ub-flood-fill-slider input { width:132px; accent-color:#f0c96a; }
+.ub-flood-fill-slider b { min-width:28px; color:#f0c96a; font-size:12px; }
+.ub-flood-fill-ribbon button { flex:0 0 auto; height:32px; border:0; border-radius:16px; background:rgba(255,255,255,.18); color:#f6f0e7; padding:0 12px; font-weight:750; }
 @media (max-width: 720px) {
   .ub-topbar { left:8px; right:8px; gap:5px; overflow-x:auto; }
   .ub-text-button, .ub-segment-button, .ub-icon-button { flex:0 0 auto; }

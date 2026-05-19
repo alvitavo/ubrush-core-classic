@@ -7,4 +7,4 @@ export interface BrushCategory {
     brushes?: IBrush[];
 }
 
-export type AppTool = 'brush' | 'eraser' | 'smudge';
+export type AppTool = 'brush' | 'fill' | 'eraser' | 'smudge';

@@ -1,4 +1,4 @@
-import { Canvas } from '../../../canvas/Canvas';
+import { Canvas, CanvasFloodFillResult } from '../../../canvas/Canvas';
 import { CanvasLayer, CanvasStack, CanvasStackDelegate, LayerBlendMode } from '../../../canvas/CanvasStack';
 import { Color } from '../../../common/Color';
 import { FixerGroup } from '../../../common/FixerGroup';
@@ -7,6 +7,7 @@ import { Rect } from '../../../common/Rect';
 import { Size } from '../../../common/Size';
 import { WGPUContext } from '../../../gpu/webgpu/WGPUContext';
 import { HistoryController, HistoryLayerProvider } from './HistoryController';
+import { AppTool } from '../types';
 
 export interface DocumentControllerDelegate {
     documentDidChangeLayers(): void;
@@ -29,6 +30,7 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
     private currentColor = Color.black();
     private currentBrushSize = 0.1;
     private currentBrushOpacity = 1;
+    private currentTool: AppTool = 'brush';
     private thumbnailCache = new Map<string, { age: number; dataUrl: string }>();
     private suppressLayerHistory = false;
     private transientHistory?: TransientHistoryController;
@@ -54,6 +56,14 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
 
     public get selectedCanvas(): Canvas | undefined {
         return this.canvasStack.selectedCanvas;
+    }
+
+    public get tool(): AppTool {
+        return this.currentTool;
+    }
+
+    public get color(): Color {
+        return this.currentColor.clone();
     }
 
     public get canUndo(): boolean {
@@ -104,6 +114,10 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
     public setColor(color: Color): void {
         this.currentColor = color.clone();
         this.canvasStack.color = color.clone();
+    }
+
+    public setTool(tool: AppTool): void {
+        this.currentTool = tool;
     }
 
     public addLayer(): void {
@@ -244,6 +258,28 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
         if (!layerId) return;
         this.history.pushDrawing(layerId, fixerGroup);
         this.delegate?.documentDidChangeLayers();
+    }
+
+    public pushFloodFillResult(canvas: Canvas, result: CanvasFloodFillResult): void {
+        const layerId = this.canvasStack.layerIdForCanvas(canvas);
+        if (!layerId) return;
+
+        if (result.fixerGroup) {
+            this.history.pushDrawing(layerId, result.fixerGroup);
+            this.delegate?.documentDidChangeLayers();
+            return;
+        }
+
+        if (!result.historyPromise) return;
+
+        result.historyPromise
+            .then((history) => {
+                if (history.fixerGroup) {
+                    this.history.pushDrawing(layerId, history.fixerGroup);
+                    this.delegate?.documentDidChangeLayers();
+                }
+            })
+            .catch((error) => console.error('Flood fill history failed', error));
     }
 
     public async drawLayerThumbnail(layerId: string, target: HTMLCanvasElement): Promise<void> {
