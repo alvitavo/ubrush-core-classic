@@ -1217,9 +1217,9 @@ export class CanvasStage {
         this.updateShapeAssistHandles();
         this.resetShapeAssistEditHistory();
         this.document?.setTransientHistory({
-            canUndo: () => this.shapeAssistUndoStack.length > 1,
+            canUndo: () => this.shapeAssistUndoStack.length > 0,
             canRedo: () => this.shapeAssistRedoStack.length > 0,
-            undo: () => this.undoShapeAssistEdit(),
+            undo: () => void this.undoShapeAssistEdit(),
             redo: () => this.redoShapeAssistEdit(),
             brushDidChange: () => this.renderShapeAssistPreview(true),
             brushDidCommit: () => this.pushShapeAssistSnapshot()
@@ -1428,6 +1428,7 @@ export class CanvasStage {
         const target = e.target as Node | null;
         if (!target) return;
         if (this.shapeAssistRibbonEl?.contains(target) || this.shapeAssistHandlesEl?.contains(target)) return;
+        if (this.isAppControlTarget(target)) return;
         if (target === this.canvas) return;
         void this.commitShapeAssistContext();
     };
@@ -1437,6 +1438,7 @@ export class CanvasStage {
         const target = e.target as Node | null;
         if (!target) return;
         if (this.shapeAssistRibbonEl?.contains(target) || this.shapeAssistHandlesEl?.contains(target)) return;
+        if (this.isAppControlTarget(target)) return;
         if (target === this.canvas) return;
         void this.commitShapeAssistContext();
     };
@@ -1471,8 +1473,11 @@ export class CanvasStage {
         this.document?.onHistoryChanged();
     }
 
-    private undoShapeAssistEdit(): void {
-        if (this.shapeAssistUndoStack.length <= 1) return;
+    private async undoShapeAssistEdit(): Promise<void> {
+        if (this.shapeAssistUndoStack.length <= 1) {
+            await this.cancelShapeAssistContext();
+            return;
+        }
         const current = this.shapeAssistUndoStack.pop()!;
         this.shapeAssistRedoStack.push(current);
         this.applyShapeAssistSnapshot(this.shapeAssistUndoStack[this.shapeAssistUndoStack.length - 1]);
@@ -1484,6 +1489,21 @@ export class CanvasStage {
         if (!next) return;
         this.shapeAssistUndoStack.push(next);
         this.applyShapeAssistSnapshot(next);
+        this.document?.onHistoryChanged();
+    }
+
+    private async cancelShapeAssistContext(): Promise<void> {
+        if (!this.shapeAssistEditingContext) return;
+        const canvas = this.activeCanvas();
+        const strokeGroup = this.straightLineStrokeGroup;
+        canvas?.cancelLine();
+
+        if (canvas && strokeGroup) {
+            if (strokeGroup.undoFixerLiquid) await canvas.fix(strokeGroup.undoFixerLiquid, true);
+            if (strokeGroup.undoFixer) await canvas.fix(strokeGroup.undoFixer, false);
+        }
+
+        this.resetShapeAssistState();
         this.document?.onHistoryChanged();
     }
 
@@ -2009,6 +2029,7 @@ export class CanvasStage {
         const target = e.target as Node | null;
         if (!target) return;
         if (this.floodFillRibbonEl?.contains(target)) return;
+        if (this.isAppControlTarget(target)) return;
         if (target === this.canvas) return;
         void this.commitFloodFillContext();
     };
@@ -2018,9 +2039,15 @@ export class CanvasStage {
         const target = e.target as Node | null;
         if (!target) return;
         if (this.floodFillRibbonEl?.contains(target)) return;
+        if (this.isAppControlTarget(target)) return;
         if (target === this.canvas) return;
         void this.commitFloodFillContext();
     };
+
+    private isAppControlTarget(target: Node): boolean {
+        if (!(target instanceof Element)) return false;
+        return !!target.closest('.ub-topbar, .ub-floating-controls');
+    }
 
     private resetFloodFillEditHistory(): void {
         this.floodFillUndoStack = [];
