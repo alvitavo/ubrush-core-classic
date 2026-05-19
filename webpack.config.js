@@ -62,6 +62,7 @@ function devServerConfig() {
 module.exports = {
   entry: {
     main: './src/UBrushCore/main.ts',
+    ipad: './src/UBrushCore/app/ipad-main.ts',
     benchmark: './src/UBrushCore/benchmark/main.ts',
   },
   module: {
@@ -91,6 +92,11 @@ module.exports = {
       template: './src/UBrushCore/index.html',
       filename: 'index.html',
       chunks: ['main']
+    }),
+    new HtmlWebpackPlugin({
+      template: './src/UBrushCore/app/ipad.html',
+      filename: 'ipad.html',
+      chunks: ['ipad']
     }),
     new HtmlWebpackPlugin({
       template: './src/UBrushCore/benchmark/index.html',
