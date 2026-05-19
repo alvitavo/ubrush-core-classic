@@ -640,8 +640,16 @@ export class Canvas implements LineDriverDelegate {
         this.updateCanvas();
         this.hasContent = false;
         this.needsDry = false;
-        
+
         this.age ++;
+
+    }
+
+    public syncFromOutputRenderTarget(): void {
+
+        this.engineSetupWithRenderTarget(this.outputRenderTarget);
+        this.updateCanvas();
+        this.age++;
 
     }
 

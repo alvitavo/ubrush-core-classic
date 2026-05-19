@@ -24,6 +24,22 @@ export interface CanvasLayer {
     alphaLock: boolean;
 }
 
+export interface MergeDownResult {
+    sourceLayer: CanvasLayer;
+    sourceIndex: number;
+    targetLayerId: string;
+}
+
+export interface RemovedLayerEntry {
+    layer: CanvasLayer;
+    index: number;
+}
+
+export interface FlattenVisibleResult {
+    targetLayerId: string;
+    removedLayers: RemovedLayerEntry[];
+}
+
 export interface CanvasStackDelegate {
     changeRect(canvasStack: CanvasStack, rect: Rect): void;
     didReleaseDrawing?(canvasStack: CanvasStack, fixerGroup: FixerGroup, canvasIndex: number): void;
@@ -110,6 +126,100 @@ export class CanvasStack implements CanvasDelegate {
         this.selectLayer(layer.id);
         this.updateCanvas();
         return layer;
+    }
+
+    public duplicateLayer(id: string, index?: number): CanvasLayer | null {
+        const sourceIndex = this.layers.findIndex((layer) => layer.id === id);
+        if (sourceIndex < 0) return null;
+
+        const source = this.layers[sourceIndex];
+        const canvas = new Canvas(this.context, this.size);
+        canvas.clearOutputRenderTarget();
+        this.context.copyTexture(canvas.outputRenderTarget, source.canvas.outputRenderTarget);
+
+        const layer: CanvasLayer = {
+            id: this.createLayerId(),
+            name: `${source.name} copy`,
+            canvas,
+            visible: source.visible,
+            opacity: source.opacity,
+            blendMode: source.blendMode,
+            locked: source.locked,
+            alphaLock: source.alphaLock
+        };
+        if (layer.alphaLock) canvas.setAlphaLock(true);
+
+        this.insertLayer(layer, index ?? sourceIndex + 1);
+        this.selectLayer(layer.id);
+        this.updateCanvas();
+        return layer;
+    }
+
+    public mergeLayerDown(id: string): MergeDownResult | null {
+        const sourceIndex = this.layers.findIndex((layer) => layer.id === id);
+        if (sourceIndex <= 0) return null;
+
+        const source = this.layers[sourceIndex];
+        const target = this.layers[sourceIndex - 1];
+        if (source.locked || target.locked) return null;
+
+        WGPUProgramManager.getInstance().layerCompositeProgram.fill(target.canvas.outputRenderTarget, {
+            targetRect: Common.stageRect(),
+            source: source.canvas.outputRenderTarget.texture,
+            sourceRect: Common.stageRect(),
+            canvasRect: Common.stageRect(),
+            transform: new AffineTransform(),
+            blend: this.renderBlendForLayer(source),
+            opacity: source.opacity
+        });
+        target.canvas.syncFromOutputRenderTarget();
+
+        const removed = this.detachLayer(source.id);
+        if (!removed) return null;
+        this.selectLayer(target.id);
+        this.updateCanvas();
+        return {
+            sourceLayer: removed.layer,
+            sourceIndex: removed.index,
+            targetLayerId: target.id
+        };
+    }
+
+    public flattenVisible(): FlattenVisibleResult | null {
+        const visibleLayers = this.layers.filter((layer) => layer.visible && layer.opacity > 0);
+        if (visibleLayers.length <= 1) return null;
+        if (visibleLayers.some((layer) => layer.locked)) return null;
+
+        const target = visibleLayers[0];
+        for (const source of visibleLayers.slice(1)) {
+            WGPUProgramManager.getInstance().layerCompositeProgram.fill(target.canvas.outputRenderTarget, {
+                targetRect: Common.stageRect(),
+                source: source.canvas.outputRenderTarget.texture,
+                sourceRect: Common.stageRect(),
+                canvasRect: Common.stageRect(),
+                transform: new AffineTransform(),
+                blend: this.renderBlendForLayer(source),
+                opacity: source.opacity
+            });
+        }
+        target.canvas.syncFromOutputRenderTarget();
+
+        const removedLayers: RemovedLayerEntry[] = [];
+        for (let i = this.layers.length - 1; i >= 0; i--) {
+            const layer = this.layers[i];
+            if (layer !== target && layer.visible && layer.opacity > 0) {
+                const removed = this.detachLayer(layer.id);
+                if (removed) removedLayers.unshift(removed);
+            }
+        }
+
+        target.name = 'Flattened Visible';
+        this.selectLayer(target.id);
+        this.updateCanvas();
+        return {
+            targetLayerId: target.id,
+            removedLayers
+        };
     }
 
     public removeLayer(id: string): CanvasLayer | null {

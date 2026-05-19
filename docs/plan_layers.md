@@ -149,13 +149,13 @@ Required strategy:
 
 ## Phase 7: Document Operations
 
-- Duplicate layer.
-- Merge down.
-- Flatten visible.
+- Duplicate layer. Done in V2.3.
+- Merge down. Done in V2.4.
+- Flatten visible. Done in V2.5.
 - Alpha lock UI. Done in V1.4.
 - Layer lock. Done in V1.3.
 - Export/import layer document format.
-- Thumbnails.
+- Thumbnails. Done in V2.6.
 
 ## Risks
 

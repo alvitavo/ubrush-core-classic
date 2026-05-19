@@ -2,7 +2,7 @@ import { getFavoritesSync, isFavorite, setFavorite } from './favorites/Favorites
 import { WGPUContext } from '../UBrushCore/gpu/webgpu/WGPUContext';
 import { bootstrapWebGPU } from '../UBrushCore/gpu/webgpu/bootstrap';
 import { Canvas, CanvasDelegate, CanvasFloodFillResult } from '../UBrushCore/canvas/Canvas';
-import { CanvasLayer, CanvasStack, LayerBlendMode } from '../UBrushCore/canvas/CanvasStack';
+import { CanvasLayer, CanvasStack, LayerBlendMode, RemovedLayerEntry } from '../UBrushCore/canvas/CanvasStack';
 import { IBrush } from '../UBrushCore/common/IBrush';
 import { Size } from '../UBrushCore/common/Size';
 import { Point } from '../UBrushCore/common/Point';
@@ -19,6 +19,8 @@ import { BrushCategory } from './App';
 import { FloodFillTuningMode } from '../UBrushCore/program/webgpu/WGPUFloodFillProgram';
 
 const SIDEBAR_W = 220;
+const LAYER_THUMB_W = 44;
+const LAYER_THUMB_H = 34;
 const STRAIGHTEN_MORPH_MS = 180;
 const SHAPE_ASSIST_EDIT_MORPH_MS = 90;
 const SHAPE_ASSIST_HOLD_MS = 1200;
@@ -53,6 +55,11 @@ interface FloodFillSnapshot {
     edgeSensitivity: number;
 }
 
+interface LayerThumbnailCacheEntry {
+    age: number;
+    dataUrl: string;
+}
+
 interface DrawingHistoryEntry {
     kind: 'drawing';
     layerId: string;
@@ -83,7 +90,28 @@ interface LayerAddDeleteHistoryEntry {
     selectedLayerIdAfter?: string;
 }
 
-type HistoryEntry = DrawingHistoryEntry | LayerPropertyHistoryEntry | LayerOrderHistoryEntry | LayerAddDeleteHistoryEntry;
+interface LayerMergeDownHistoryEntry {
+    kind: 'layer-merge-down';
+    sourceLayer: CanvasLayer;
+    sourceIndex: number;
+    targetLayerId: string;
+    targetFixerGroup: FixerGroup;
+    selectedLayerIdBefore?: string;
+    selectedLayerIdAfter?: string;
+}
+
+interface LayerFlattenVisibleHistoryEntry {
+    kind: 'layer-flatten-visible';
+    targetLayerId: string;
+    targetNameBefore: string;
+    targetNameAfter: string;
+    removedLayers: RemovedLayerEntry[];
+    targetFixerGroup: FixerGroup;
+    selectedLayerIdBefore?: string;
+    selectedLayerIdAfter?: string;
+}
+
+type HistoryEntry = DrawingHistoryEntry | LayerPropertyHistoryEntry | LayerOrderHistoryEntry | LayerAddDeleteHistoryEntry | LayerMergeDownHistoryEntry | LayerFlattenVisibleHistoryEntry;
 
 export class DrawingScreen implements CanvasDelegate {
     readonly element: HTMLElement;
@@ -112,6 +140,9 @@ export class DrawingScreen implements CanvasDelegate {
     private undoStack: HistoryEntry[] = [];
     private redoStack: HistoryEntry[] = [];
     private layerOpacityHistoryStart: Map<string, number> = new Map();
+    private layerThumbnailCache: Map<string, LayerThumbnailCacheEntry> = new Map();
+    private layerThumbnailPendingAges: Map<string, number> = new Map();
+    private layerThumbnailRefreshTimers: Map<string, number> = new Map();
     private pendingFillHistoryCount = 0;
     private loopPaused = false;
     private straightLineTimer: number | null = null;
@@ -183,6 +214,9 @@ export class DrawingScreen implements CanvasDelegate {
     private webGPUStatsEl!: HTMLElement;
     private layerListEl!: HTMLElement;
     private addLayerBtnEl!: HTMLButtonElement;
+    private duplicateLayerBtnEl!: HTMLButtonElement;
+    private mergeDownLayerBtnEl!: HTMLButtonElement;
+    private flattenVisibleLayerBtnEl!: HTMLButtonElement;
     private deleteLayerBtnEl!: HTMLButtonElement;
     private selectedSwatch: HTMLButtonElement | null = null;
 
@@ -1808,6 +1842,7 @@ export class DrawingScreen implements CanvasDelegate {
             }
             this.undoStack.push({ kind: 'drawing', layerId, fixerGroup });
             this.redoStack = [];
+            this.queueLayerThumbnailRefresh(layerId);
             this.updateUndoRedoButtons();
         }
 
@@ -2006,6 +2041,7 @@ export class DrawingScreen implements CanvasDelegate {
     private pushHistory(layerId: string, fixerGroup: FixerGroup): void {
         this.undoStack.push({ kind: 'drawing', layerId, fixerGroup });
         this.redoStack = [];
+        this.queueLayerThumbnailRefresh(layerId);
         this.updateUndoRedoButtons();
     }
 
@@ -2034,6 +2070,18 @@ export class DrawingScreen implements CanvasDelegate {
         this.updateUndoRedoButtons();
     }
 
+    private pushLayerMergeDownHistory(entry: LayerMergeDownHistoryEntry): void {
+        this.undoStack.push(entry);
+        this.redoStack = [];
+        this.updateUndoRedoButtons();
+    }
+
+    private pushLayerFlattenVisibleHistory(entry: LayerFlattenVisibleHistoryEntry): void {
+        this.undoStack.push(entry);
+        this.redoStack = [];
+        this.updateUndoRedoButtons();
+    }
+
     private pushSelectedHistory(fixerGroup: FixerGroup): void {
         const layerId = this.canvasStack?.selectedLayer()?.id;
         if (!layerId) return;
@@ -2056,7 +2104,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.pushSelectedHistory(group);
     }
 
-    private undo(): void {
+    private async undo(): Promise<void> {
         if (this.shapeAssistEditingContext) {
             this.undoShapeAssistEdit();
             return;
@@ -2073,12 +2121,12 @@ export class DrawingScreen implements CanvasDelegate {
             return;
         }
 
-        this.applyHistoryEntry(entry, true);
+        await this.applyHistoryEntry(entry, true);
         this.redoStack.push(entry);
         this.updateUndoRedoButtons();
     }
 
-    private redo(): void {
+    private async redo(): Promise<void> {
         if (this.shapeAssistEditingContext) {
             this.redoShapeAssistEdit();
             return;
@@ -2094,7 +2142,7 @@ export class DrawingScreen implements CanvasDelegate {
             return;
         }
 
-        this.applyHistoryEntry(entry, false);
+        await this.applyHistoryEntry(entry, false);
         this.undoStack.push(entry);
         this.updateUndoRedoButtons();
     }
@@ -2138,6 +2186,16 @@ export class DrawingScreen implements CanvasDelegate {
                 return !this.canvasStack?.layerForId(entry.layer.id);
             case 'layer-order':
                 return !!this.canvasStack && entry.before.every((id) => !!this.canvasStack!.layerForId(id));
+            case 'layer-merge-down':
+                return !!this.canvasStack
+                    && !!this.canvasStack.layerForId(entry.targetLayerId)
+                    && !this.canvasStack.layerForId(entry.sourceLayer.id)
+                    && this.hasAnyFixer(entry.targetFixerGroup);
+            case 'layer-flatten-visible':
+                return !!this.canvasStack
+                    && !!this.canvasStack.layerForId(entry.targetLayerId)
+                    && entry.removedLayers.every((item) => !this.canvasStack!.layerForId(item.layer.id))
+                    && this.hasAnyFixer(entry.targetFixerGroup);
         }
     }
 
@@ -2154,20 +2212,31 @@ export class DrawingScreen implements CanvasDelegate {
                 return !!this.canvasStack?.layerForId(entry.layer.id);
             case 'layer-order':
                 return !!this.canvasStack && entry.after.every((id) => !!this.canvasStack!.layerForId(id));
+            case 'layer-merge-down':
+                return !!this.canvasStack
+                    && !!this.canvasStack.layerForId(entry.targetLayerId)
+                    && !!this.canvasStack.layerForId(entry.sourceLayer.id)
+                    && this.hasAnyRedoFixer(entry.targetFixerGroup);
+            case 'layer-flatten-visible':
+                return !!this.canvasStack
+                    && !!this.canvasStack.layerForId(entry.targetLayerId)
+                    && entry.removedLayers.every((item) => !!this.canvasStack!.layerForId(item.layer.id))
+                    && this.hasAnyRedoFixer(entry.targetFixerGroup);
         }
     }
 
-    private applyHistoryEntry(entry: HistoryEntry, undoing: boolean): void {
+    private async applyHistoryEntry(entry: HistoryEntry, undoing: boolean): Promise<void> {
         if (entry.kind === 'drawing') {
             const group = entry.fixerGroup;
             const targetCanvas = this.canvasStack?.layerForId(entry.layerId)?.canvas;
             if (undoing) {
-                if (group.undoFixerLiquid) targetCanvas?.fix(group.undoFixerLiquid, true);
-                else if (group.undoFixer) targetCanvas?.fix(group.undoFixer, false);
+                if (group.undoFixerLiquid) await targetCanvas?.fix(group.undoFixerLiquid, true);
+                else if (group.undoFixer) await targetCanvas?.fix(group.undoFixer, false);
             } else {
-                if (group.redoFixerLiquid) targetCanvas?.fix(group.redoFixerLiquid, true);
-                else if (group.redoFixer) targetCanvas?.fix(group.redoFixer, false);
+                if (group.redoFixerLiquid) await targetCanvas?.fix(group.redoFixerLiquid, true);
+                else if (group.redoFixer) await targetCanvas?.fix(group.redoFixer, false);
             }
+            this.queueLayerThumbnailRefresh(entry.layerId);
             return;
         }
 
@@ -2179,6 +2248,12 @@ export class DrawingScreen implements CanvasDelegate {
             case 'layer-add':
             case 'layer-delete':
                 this.applyLayerAddDeleteHistory(entry, undoing);
+                return;
+            case 'layer-merge-down':
+                await this.applyLayerMergeDownHistory(entry, undoing);
+                return;
+            case 'layer-flatten-visible':
+                await this.applyLayerFlattenVisibleHistory(entry, undoing);
                 return;
             case 'layer-property':
                 this.applyLayerPropertyHistory(entry.layerId, entry.property, undoing ? entry.before : entry.after);
@@ -2202,6 +2277,58 @@ export class DrawingScreen implements CanvasDelegate {
             this.canvas = this.canvasStack.selectedCanvas;
             this.refreshLayerPanel();
         }
+    }
+
+    private async applyLayerMergeDownHistory(entry: LayerMergeDownHistoryEntry, undoing: boolean): Promise<void> {
+        if (!this.canvasStack) return;
+        const targetCanvas = this.canvasStack.layerForId(entry.targetLayerId)?.canvas;
+        if (!targetCanvas) return;
+
+        if (undoing) {
+            if (entry.targetFixerGroup.undoFixer) await targetCanvas.fix(entry.targetFixerGroup.undoFixer, false);
+            this.canvasStack.restoreLayer(entry.sourceLayer, entry.sourceIndex, true);
+        } else {
+            if (entry.targetFixerGroup.redoFixer) await targetCanvas.fix(entry.targetFixerGroup.redoFixer, false);
+            this.canvasStack.detachLayer(entry.sourceLayer.id);
+        }
+
+        const targetSelection = undoing ? entry.selectedLayerIdBefore : entry.selectedLayerIdAfter;
+        if (targetSelection && this.canvasStack.layerForId(targetSelection)) {
+            this.selectLayer(targetSelection);
+        } else {
+            this.canvas = this.canvasStack.selectedCanvas;
+            this.refreshLayerPanel();
+        }
+        this.canvasStack.updateCanvas();
+    }
+
+    private async applyLayerFlattenVisibleHistory(entry: LayerFlattenVisibleHistoryEntry, undoing: boolean): Promise<void> {
+        if (!this.canvasStack) return;
+        const targetLayer = this.canvasStack.layerForId(entry.targetLayerId);
+        if (!targetLayer) return;
+
+        if (undoing) {
+            if (entry.targetFixerGroup.undoFixer) await targetLayer.canvas.fix(entry.targetFixerGroup.undoFixer, false);
+            this.canvasStack.renameLayer(entry.targetLayerId, entry.targetNameBefore);
+            for (const removed of entry.removedLayers) {
+                this.canvasStack.restoreLayer(removed.layer, removed.index, false);
+            }
+        } else {
+            if (entry.targetFixerGroup.redoFixer) await targetLayer.canvas.fix(entry.targetFixerGroup.redoFixer, false);
+            this.canvasStack.renameLayer(entry.targetLayerId, entry.targetNameAfter);
+            for (let i = entry.removedLayers.length - 1; i >= 0; i--) {
+                this.canvasStack.detachLayer(entry.removedLayers[i].layer.id);
+            }
+        }
+
+        const targetSelection = undoing ? entry.selectedLayerIdBefore : entry.selectedLayerIdAfter;
+        if (targetSelection && this.canvasStack.layerForId(targetSelection)) {
+            this.selectLayer(targetSelection);
+        } else {
+            this.canvas = this.canvasStack.selectedCanvas;
+            this.refreshLayerPanel();
+        }
+        this.canvasStack.updateCanvas();
     }
 
     private applyLayerPropertyHistory(layerId: string, property: LayerHistoryProperty, value: string | number | boolean): void {
@@ -2542,8 +2669,14 @@ export class DrawingScreen implements CanvasDelegate {
         const actions = document.createElement('div');
         actions.style.cssText = `display:flex; gap:4px;`;
         this.addLayerBtnEl = this.layerIconButton('+', 'Add layer', () => this.addLayer());
+        this.duplicateLayerBtnEl = this.layerIconButton('D', 'Duplicate selected layer', () => this.duplicateSelectedLayer());
+        this.mergeDownLayerBtnEl = this.layerIconButton('M', 'Merge selected layer down', () => { void this.mergeSelectedLayerDown(); });
+        this.flattenVisibleLayerBtnEl = this.layerIconButton('F', 'Flatten visible layers', () => { void this.flattenVisibleLayers(); });
         this.deleteLayerBtnEl = this.layerIconButton('-', 'Delete selected layer', () => this.deleteSelectedLayer());
         actions.appendChild(this.addLayerBtnEl);
+        actions.appendChild(this.duplicateLayerBtnEl);
+        actions.appendChild(this.mergeDownLayerBtnEl);
+        actions.appendChild(this.flattenVisibleLayerBtnEl);
         actions.appendChild(this.deleteLayerBtnEl);
         header.appendChild(actions);
         wrap.appendChild(header);
@@ -2581,6 +2714,90 @@ export class DrawingScreen implements CanvasDelegate {
             index: selectedIndex + 1,
             selectedLayerIdBefore,
             selectedLayerIdAfter: layer.id
+        });
+        this.queueLayerThumbnailRefresh(layer.id);
+    }
+
+    private duplicateSelectedLayer(): void {
+        if (!this.canvasStack) return;
+        const selectedLayer = this.canvasStack.selectedLayer();
+        if (!selectedLayer) return;
+
+        const selectedLayerIdBefore = selectedLayer.id;
+        const selectedIndex = this.canvasStack.selectedCanvasIndex();
+        const layer = this.canvasStack.duplicateLayer(selectedLayer.id, selectedIndex + 1);
+        if (!layer) return;
+
+        this.selectLayer(layer.id);
+        this.pushLayerAddDeleteHistory({
+            kind: 'layer-add',
+            layer,
+            index: selectedIndex + 1,
+            selectedLayerIdBefore,
+            selectedLayerIdAfter: layer.id
+        });
+        this.queueLayerThumbnailRefresh(layer.id);
+    }
+
+    private async mergeSelectedLayerDown(): Promise<void> {
+        if (!this.canvasStack) return;
+        const selectedLayer = this.canvasStack.selectedLayer();
+        const selectedIndex = this.canvasStack.selectedCanvasIndex();
+        if (!selectedLayer || selectedIndex <= 0) return;
+
+        const targetLayer = this.canvasStack.layerArray[selectedIndex - 1];
+        if (!targetLayer || selectedLayer.locked || targetLayer.locked) return;
+
+        const selectedLayerIdBefore = selectedLayer.id;
+        const targetFixerGroup = new FixerGroup();
+        targetFixerGroup.undoFixer = (await targetLayer.canvas.fixer()) || undefined;
+
+        const result = this.canvasStack.mergeLayerDown(selectedLayer.id);
+        if (!result) return;
+
+        const targetAfter = this.canvasStack.layerForId(result.targetLayerId);
+        targetFixerGroup.redoFixer = (await targetAfter?.canvas.fixer()) || undefined;
+
+        this.selectLayer(result.targetLayerId);
+        this.pushLayerMergeDownHistory({
+            kind: 'layer-merge-down',
+            sourceLayer: result.sourceLayer,
+            sourceIndex: result.sourceIndex,
+            targetLayerId: result.targetLayerId,
+            targetFixerGroup,
+            selectedLayerIdBefore,
+            selectedLayerIdAfter: result.targetLayerId
+        });
+    }
+
+    private async flattenVisibleLayers(): Promise<void> {
+        if (!this.canvasStack) return;
+        const layers = this.canvasStack.layerArray;
+        const visibleLayers = layers.filter((layer) => layer.visible && layer.opacity > 0);
+        if (visibleLayers.length <= 1 || visibleLayers.some((layer) => layer.locked)) return;
+
+        const targetLayer = visibleLayers[0];
+        const selectedLayerIdBefore = this.canvasStack.selectedLayer()?.id;
+        const targetNameBefore = targetLayer.name;
+        const targetFixerGroup = new FixerGroup();
+        targetFixerGroup.undoFixer = (await targetLayer.canvas.fixer()) || undefined;
+
+        const result = this.canvasStack.flattenVisible();
+        if (!result) return;
+
+        const targetAfter = this.canvasStack.layerForId(result.targetLayerId);
+        targetFixerGroup.redoFixer = (await targetAfter?.canvas.fixer()) || undefined;
+
+        this.selectLayer(result.targetLayerId);
+        this.pushLayerFlattenVisibleHistory({
+            kind: 'layer-flatten-visible',
+            targetLayerId: result.targetLayerId,
+            targetNameBefore,
+            targetNameAfter: targetAfter?.name ?? targetNameBefore,
+            removedLayers: result.removedLayers,
+            targetFixerGroup,
+            selectedLayerIdBefore,
+            selectedLayerIdAfter: result.targetLayerId
         });
     }
 
@@ -2715,12 +2932,48 @@ export class DrawingScreen implements CanvasDelegate {
 
         const layers = this.canvasStack?.layerArray ?? [];
         const selectedId = this.canvasStack?.selectedLayer()?.id;
+        const layerIds = new Set(layers.map((layer) => layer.id));
+        for (const id of Array.from(this.layerThumbnailCache.keys())) {
+            if (!layerIds.has(id)) this.layerThumbnailCache.delete(id);
+        }
+        for (const id of Array.from(this.layerThumbnailPendingAges.keys())) {
+            if (!layerIds.has(id)) this.layerThumbnailPendingAges.delete(id);
+        }
+        for (const [id, timer] of Array.from(this.layerThumbnailRefreshTimers.entries())) {
+            if (layerIds.has(id)) continue;
+            window.clearTimeout(timer);
+            this.layerThumbnailRefreshTimers.delete(id);
+        }
 
         for (let i = layers.length - 1; i >= 0; i--) {
             this.layerListEl.appendChild(this.buildLayerRow(layers[i], layers[i].id === selectedId));
         }
 
         if (this.deleteLayerBtnEl) this.deleteLayerBtnEl.disabled = layers.length <= 1;
+        if (this.duplicateLayerBtnEl) this.duplicateLayerBtnEl.disabled = layers.length === 0;
+        if (this.mergeDownLayerBtnEl) {
+            const selectedIndex = layers.findIndex((layer) => layer.id === selectedId);
+            const selectedLayer = selectedIndex >= 0 ? layers[selectedIndex] : undefined;
+            const targetLayer = selectedIndex > 0 ? layers[selectedIndex - 1] : undefined;
+            this.mergeDownLayerBtnEl.disabled = selectedIndex <= 0 || !!selectedLayer?.locked || !!targetLayer?.locked;
+        }
+        if (this.flattenVisibleLayerBtnEl) {
+            const visibleLayers = layers.filter((layer) => layer.visible && layer.opacity > 0);
+            this.flattenVisibleLayerBtnEl.disabled = visibleLayers.length <= 1 || visibleLayers.some((layer) => layer.locked);
+        }
+    }
+
+    private queueLayerThumbnailRefresh(layerId: string): void {
+        const previous = this.layerThumbnailRefreshTimers.get(layerId);
+        if (previous !== undefined) window.clearTimeout(previous);
+
+        const timer = window.setTimeout(() => {
+            this.layerThumbnailRefreshTimers.delete(layerId);
+            this.layerThumbnailCache.delete(layerId);
+            this.layerThumbnailPendingAges.delete(layerId);
+            this.refreshLayerPanel();
+        }, 0);
+        this.layerThumbnailRefreshTimers.set(layerId, timer);
     }
 
     private buildLayerRow(layer: CanvasLayer, selected: boolean): HTMLElement {
@@ -2728,7 +2981,7 @@ export class DrawingScreen implements CanvasDelegate {
         const layerIndex = layers.findIndex((candidate) => candidate.id === layer.id);
         const row = document.createElement('div');
         row.style.cssText = `
-            display:grid; grid-template-columns:26px 1fr; gap:6px; align-items:center;
+            display:grid; grid-template-columns:26px ${LAYER_THUMB_W}px 1fr; gap:6px; align-items:center;
             padding:7px; border-radius:6px; border:1px solid ${selected ? '#75b7f1' : '#444'};
             background:${selected ? '#26384a' : '#333'}; cursor:pointer;
         `;
@@ -2804,6 +3057,9 @@ export class DrawingScreen implements CanvasDelegate {
         });
         layerButtons.appendChild(alphaLock);
         row.appendChild(layerButtons);
+
+        const thumbnail = this.buildLayerThumbnail(layer);
+        row.appendChild(thumbnail);
 
         const body = document.createElement('div');
         body.style.cssText = `min-width:0; display:flex; flex-direction:column; gap:5px;`;
@@ -2901,6 +3157,89 @@ export class DrawingScreen implements CanvasDelegate {
 
         row.appendChild(body);
         return row;
+    }
+
+    private buildLayerThumbnail(layer: CanvasLayer): HTMLCanvasElement {
+        const thumbnail = document.createElement('canvas');
+        thumbnail.width = LAYER_THUMB_W;
+        thumbnail.height = LAYER_THUMB_H;
+        thumbnail.title = 'Layer thumbnail';
+        thumbnail.style.cssText = `
+            width:${LAYER_THUMB_W}px; height:${LAYER_THUMB_H}px; border-radius:4px;
+            border:1px solid #555; background:
+                linear-gradient(45deg, #555 25%, transparent 25%),
+                linear-gradient(-45deg, #555 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #555 75%),
+                linear-gradient(-45deg, transparent 75%, #555 75%);
+            background-color:#3c3c3c; background-size:10px 10px; background-position:0 0,0 5px,5px -5px,-5px 0;
+            image-rendering:auto; object-fit:contain;
+        `;
+        thumbnail.addEventListener('click', (e) => e.stopPropagation());
+
+        const cached = this.layerThumbnailCache.get(layer.id);
+        if (cached && cached.age === layer.canvas.age) {
+            this.drawLayerThumbnailDataUrl(thumbnail, cached.dataUrl);
+        } else {
+            this.drawEmptyLayerThumbnail(thumbnail);
+            void this.refreshLayerThumbnail(layer, thumbnail);
+        }
+        return thumbnail;
+    }
+
+    private drawEmptyLayerThumbnail(thumbnail: HTMLCanvasElement): void {
+        const ctx = thumbnail.getContext('2d');
+        if (!ctx) return;
+        ctx.clearRect(0, 0, thumbnail.width, thumbnail.height);
+    }
+
+    private drawLayerThumbnailDataUrl(thumbnail: HTMLCanvasElement, dataUrl: string): void {
+        const image = new Image();
+        image.onload = () => {
+            const ctx = thumbnail.getContext('2d');
+            if (!ctx) return;
+            ctx.clearRect(0, 0, thumbnail.width, thumbnail.height);
+            ctx.drawImage(image, 0, 0, thumbnail.width, thumbnail.height);
+        };
+        image.src = dataUrl;
+    }
+
+    private async refreshLayerThumbnail(layer: CanvasLayer, thumbnail: HTMLCanvasElement): Promise<void> {
+        const pendingAge = this.layerThumbnailPendingAges.get(layer.id);
+        if (pendingAge === layer.canvas.age) return;
+        this.layerThumbnailPendingAges.set(layer.id, layer.canvas.age);
+
+        const age = layer.canvas.age;
+        const renderTarget = layer.canvas.outputRenderTarget;
+        const sourceWidth = renderTarget.size.width;
+        const sourceHeight = renderTarget.size.height;
+        const pixels = await this.glContext?.readPixels(renderTarget, new Rect(0, 0, sourceWidth, sourceHeight));
+        this.layerThumbnailPendingAges.delete(layer.id);
+        if (!pixels || !this.canvasStack?.layerForId(layer.id) || layer.canvas.age !== age) return;
+
+        const source = document.createElement('canvas');
+        source.width = sourceWidth;
+        source.height = sourceHeight;
+        const sourceCtx = source.getContext('2d');
+        if (!sourceCtx) return;
+        sourceCtx.putImageData(new ImageData(new Uint8ClampedArray(pixels), sourceWidth, sourceHeight), 0, 0);
+
+        const preview = document.createElement('canvas');
+        preview.width = LAYER_THUMB_W;
+        preview.height = LAYER_THUMB_H;
+        const previewCtx = preview.getContext('2d');
+        if (!previewCtx) return;
+        previewCtx.clearRect(0, 0, preview.width, preview.height);
+
+        const scale = Math.min(preview.width / sourceWidth, preview.height / sourceHeight);
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
+        const x = Math.round((preview.width - width) * 0.5);
+        const y = Math.round((preview.height - height) * 0.5);
+        previewCtx.drawImage(source, x, y, width, height);
+
+        const dataUrl = preview.toDataURL('image/png');
+        this.layerThumbnailCache.set(layer.id, { age, dataUrl });
+        if (thumbnail.isConnected) this.drawLayerThumbnailDataUrl(thumbnail, dataUrl);
     }
 
     private layerMiniButton(text: string, title: string, onClick: () => void): HTMLButtonElement {
@@ -3061,6 +3400,7 @@ export class DrawingScreen implements CanvasDelegate {
                 this.undoStack.push(pendingEntry);
                 this.redoStack = [];
                 this.pendingFillHistoryCount++;
+                this.queueLayerThumbnailRefresh(layerId);
                 this.updateUndoRedoButtons();
                 let historyReady = false;
                 result.historyPromise
@@ -3200,6 +3540,7 @@ export class DrawingScreen implements CanvasDelegate {
         this.undoStack.push(pendingEntry);
         this.redoStack = [];
         this.pendingFillHistoryCount++;
+        this.queueLayerThumbnailRefresh(layerId);
         this.updateUndoRedoButtons();
         let historyReady = false;
         result.historyPromise
