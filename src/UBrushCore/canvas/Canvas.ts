@@ -580,6 +580,33 @@ export class Canvas implements LineDriverDelegate {
 
     }
 
+    public async fixStable(fixer: Fixer): Promise<void> {
+
+        if (!fixer) return;
+
+        const changeRect = await this.drawingEngine.fix(fixer, false);
+        const pixelCount = fixer.patchRect.size.width * fixer.patchRect.size.height * 4;
+        const clearPixels = new Uint8Array(pixelCount);
+        const clearLiquidFixer = new Fixer(
+            fixer.patchRect,
+            fixer.patchStageRect,
+            FixerRenderTarget.Liquid,
+            clearPixels,
+            clearPixels
+        );
+        await this.drawingEngine.fix(clearLiquidFixer, true);
+        this.needsDry = false;
+
+        if (changeRect) {
+
+            this.updateCanvasInRect(changeRect);
+
+        }
+
+        this.age++;
+
+    }
+
     public async fixer(rect: Rect = Common.stageRect()): Promise<Fixer | null> {
 
         return this.drawingEngine.fixer(FixerRenderTarget.Merged, rect);

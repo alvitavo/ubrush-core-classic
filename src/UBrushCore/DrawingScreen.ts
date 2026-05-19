@@ -140,6 +140,7 @@ export class DrawingScreen implements CanvasDelegate {
     private undoStack: HistoryEntry[] = [];
     private redoStack: HistoryEntry[] = [];
     private layerOpacityHistoryStart: Map<string, number> = new Map();
+    private activeLiquidLayerIds: Set<string> = new Set();
     private layerThumbnailCache: Map<string, LayerThumbnailCacheEntry> = new Map();
     private layerThumbnailPendingAges: Map<string, number> = new Map();
     private layerThumbnailRefreshTimers: Map<string, number> = new Map();
@@ -332,6 +333,12 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     didDryCanvas(_canvas: Canvas): void {}
+
+    didDry(_canvasStack: CanvasStack, canvasIndex: number): void {
+        const layer = this.canvasStack?.layerArray[canvasIndex];
+        if (!layer) return;
+        this.activeLiquidLayerIds.delete(layer.id);
+    }
 
     didReleaseDrawing(_canvasStack: CanvasStack, fixerGroup: FixerGroup, canvasIndex: number): void {
         const layer = this.canvasStack?.layerArray[canvasIndex];
@@ -1840,10 +1847,20 @@ export class DrawingScreen implements CanvasDelegate {
             const layerId = this.canvasStack?.selectedLayer()?.id;
             if (!layerId) return;
             if (this.straightLineStrokeGroup && this.hasAnyFixer(this.straightLineStrokeGroup) && this.hasAnyRedoFixer(this.straightLineStrokeGroup)) {
-                this.undoStack.push({ kind: 'drawing', layerId, fixerGroup: this.straightLineStrokeGroup });
+                this.undoStack.push({
+                    kind: 'drawing',
+                    layerId,
+                    fixerGroup: this.straightLineStrokeGroup
+                });
+                this.markLayerLiquidActiveIfNeeded(layerId, this.straightLineStrokeGroup);
             }
-            this.undoStack.push({ kind: 'drawing', layerId, fixerGroup });
+            this.undoStack.push({
+                kind: 'drawing',
+                layerId,
+                fixerGroup
+            });
             this.redoStack = [];
+            this.markLayerLiquidActiveIfNeeded(layerId, fixerGroup);
             this.queueLayerThumbnailRefresh(layerId);
             this.updateUndoRedoButtons();
         }
@@ -2041,10 +2058,21 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private pushHistory(layerId: string, fixerGroup: FixerGroup): void {
-        this.undoStack.push({ kind: 'drawing', layerId, fixerGroup });
+        this.undoStack.push({
+            kind: 'drawing',
+            layerId,
+            fixerGroup
+        });
         this.redoStack = [];
+        this.markLayerLiquidActiveIfNeeded(layerId, fixerGroup);
         this.queueLayerThumbnailRefresh(layerId);
         this.updateUndoRedoButtons();
+    }
+
+    private markLayerLiquidActiveIfNeeded(layerId: string, fixerGroup: FixerGroup): void {
+        if (fixerGroup.undoFixerLiquid || fixerGroup.redoFixerLiquid) {
+            this.activeLiquidLayerIds.add(layerId);
+        }
     }
 
     private pushLayerPropertyHistory(
@@ -2229,15 +2257,8 @@ export class DrawingScreen implements CanvasDelegate {
 
     private async applyHistoryEntry(entry: HistoryEntry, undoing: boolean): Promise<void> {
         if (entry.kind === 'drawing') {
-            const group = entry.fixerGroup;
             const targetCanvas = this.canvasStack?.layerForId(entry.layerId)?.canvas;
-            if (undoing) {
-                if (group.undoFixerLiquid) await targetCanvas?.fix(group.undoFixerLiquid, true);
-                else if (group.undoFixer) await targetCanvas?.fix(group.undoFixer, false);
-            } else {
-                if (group.redoFixerLiquid) await targetCanvas?.fix(group.redoFixerLiquid, true);
-                else if (group.redoFixer) await targetCanvas?.fix(group.redoFixer, false);
-            }
+            await this.applyDrawingFixerGroupToCanvas(targetCanvas, entry.layerId, entry.fixerGroup, undoing);
             this.queueLayerThumbnailRefresh(entry.layerId);
             return;
         }
@@ -2261,6 +2282,52 @@ export class DrawingScreen implements CanvasDelegate {
                 this.applyLayerPropertyHistory(entry.layerId, entry.property, undoing ? entry.before : entry.after);
                 return;
         }
+    }
+
+    private async applyDrawingFixerGroupToCanvas(
+        targetCanvas: Canvas | undefined,
+        layerId: string,
+        group: FixerGroup,
+        undoing: boolean
+    ): Promise<void> {
+        if (!targetCanvas) return;
+
+        const liquidFixer = undoing ? group.undoFixerLiquid : group.redoFixerLiquid;
+        const dryFixer = undoing ? group.undoFixer : group.redoFixer;
+
+        if (this.activeLiquidLayerIds.has(layerId) && liquidFixer) {
+            await targetCanvas.fix(liquidFixer, true);
+            this.updateLayerLiquidStateFromFixer(layerId, liquidFixer);
+            return;
+        }
+
+        if (dryFixer) {
+            await targetCanvas.fixStable(dryFixer);
+            this.activeLiquidLayerIds.delete(layerId);
+            return;
+        }
+
+        if (liquidFixer) {
+            await targetCanvas.fix(liquidFixer, true);
+            this.updateLayerLiquidStateFromFixer(layerId, liquidFixer);
+        }
+    }
+
+    private updateLayerLiquidStateFromFixer(layerId: string, fixer: Fixer): void {
+        if (this.fixerHasVisiblePixels(fixer)) {
+            this.activeLiquidLayerIds.add(layerId);
+        } else {
+            this.activeLiquidLayerIds.delete(layerId);
+        }
+    }
+
+    private fixerHasVisiblePixels(fixer: Fixer): boolean {
+        const pixels = fixer.patchPixels;
+        if (!pixels) return false;
+        for (let i = 3; i < pixels.length; i += 4) {
+            if (pixels[i] !== 0) return true;
+        }
+        return false;
     }
 
     private applyLayerAddDeleteHistory(entry: LayerAddDeleteHistoryEntry, undoing: boolean): void {
@@ -2921,7 +2988,7 @@ export class DrawingScreen implements CanvasDelegate {
         if (!this.canvasStack) return;
         this.canvasStack.selectLayer(layerId);
         this.canvas = this.canvasStack.selectedCanvas;
-        this.canvasStack.setBrush(this.currentBrushClone());
+        this.ensureSelectedCanvasBrush();
         this.canvasStack.color = this.currentColor.clone();
         this.canvasStack.brushSize = this.currentSize;
         this.canvasStack.brushOpacity = this.currentOpacity;
@@ -3347,10 +3414,13 @@ export class DrawingScreen implements CanvasDelegate {
     }
 
     private ensureSelectedCanvasBrush(): void {
-        const brush = this.currentBrushClone();
+        if (!this.canvasStack) return;
+        if (this.canvasStack.selectedCanvas?.brush) return;
+
+        const brush = this.canvasStack.brush ?? this.currentBrushClone();
         if (!brush) return;
         this.savedBrush = JSON.parse(JSON.stringify(brush));
-        this.canvasStack?.setBrush(brush);
+        this.canvasStack.setBrush(brush);
     }
 
     private toolButton(text: string, onClick: () => void): HTMLButtonElement {
@@ -3462,7 +3532,11 @@ export class DrawingScreen implements CanvasDelegate {
                 this.pushHistory(layerId, fixerGroup);
             } else if (result.historyPromise) {
                 const pendingGroup = new FixerGroup();
-                const pendingEntry: DrawingHistoryEntry = { kind: 'drawing', layerId, fixerGroup: pendingGroup };
+                const pendingEntry: DrawingHistoryEntry = {
+                    kind: 'drawing',
+                    layerId,
+                    fixerGroup: pendingGroup
+                };
                 this.undoStack.push(pendingEntry);
                 this.redoStack = [];
                 this.pendingFillHistoryCount++;
@@ -3602,7 +3676,11 @@ export class DrawingScreen implements CanvasDelegate {
         if (!result.historyPromise) return;
 
         const pendingGroup = new FixerGroup();
-        const pendingEntry: DrawingHistoryEntry = { kind: 'drawing', layerId, fixerGroup: pendingGroup };
+        const pendingEntry: DrawingHistoryEntry = {
+            kind: 'drawing',
+            layerId,
+            fixerGroup: pendingGroup
+        };
         this.undoStack.push(pendingEntry);
         this.redoStack = [];
         this.pendingFillHistoryCount++;
