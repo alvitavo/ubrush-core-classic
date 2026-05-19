@@ -18,6 +18,7 @@ const BLEND_MODES: LayerBlendMode[] = [
 export class LayerSheet {
     public readonly element = document.createElement('div');
     private list = document.createElement('div');
+    private opacityHistoryStart = new Map<string, number>();
 
     constructor(private documentController: DocumentController) {
         this.element.className = 'ub-sheet ub-layer-sheet';
@@ -116,7 +117,13 @@ export class LayerSheet {
         opacity.step = '0.01';
         opacity.value = String(layer.opacity);
         opacity.addEventListener('click', (e) => e.stopPropagation());
-        opacity.addEventListener('input', () => this.documentController.setLayerOpacity(layer.id, Number(opacity.value)));
+        opacity.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            this.beginOpacityHistory(layer.id);
+        });
+        opacity.addEventListener('focus', () => this.beginOpacityHistory(layer.id));
+        opacity.addEventListener('input', () => this.documentController.setLayerOpacity(layer.id, Number(opacity.value), false));
+        opacity.addEventListener('change', () => this.commitOpacityHistory(layer.id, Number(opacity.value)));
 
         const blend = document.createElement('select');
         blend.value = layer.blendMode;
@@ -166,5 +173,19 @@ export class LayerSheet {
                 ctx.fillRect(x, y, cell, cell);
             }
         }
+    }
+
+    private beginOpacityHistory(layerId: string): void {
+        if (this.opacityHistoryStart.has(layerId)) return;
+        const layer = this.documentController.layers.find((candidate) => candidate.id === layerId);
+        if (layer) this.opacityHistoryStart.set(layerId, layer.opacity);
+    }
+
+    private commitOpacityHistory(layerId: string, after: number): void {
+        const before = this.opacityHistoryStart.get(layerId);
+        this.opacityHistoryStart.delete(layerId);
+        if (before === undefined) return;
+        this.documentController.commitLayerOpacity(layerId, before, after);
+        this.refresh();
     }
 }

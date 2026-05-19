@@ -23,6 +23,7 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
     private currentBrushSize = 0.1;
     private currentBrushOpacity = 1;
     private thumbnailCache = new Map<string, { age: number; dataUrl: string }>();
+    private suppressLayerHistory = false;
 
     constructor(private context: WGPUContext, size: Size) {
         this.canvasStack = new CanvasStack(context, size);
@@ -67,14 +68,36 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
     }
 
     public addLayer(): void {
-        this.canvasStack.createLayer();
+        const selectedBefore = this.selectedLayer?.id;
+        const index = this.layers.length;
+        const layer = this.canvasStack.createLayer();
+        if (!this.suppressLayerHistory) {
+            this.history.pushLayerAddDelete({
+                kind: 'layer-add',
+                layer,
+                index,
+                selectedLayerIdBefore: selectedBefore,
+                selectedLayerIdAfter: layer.id
+            });
+        }
         this.delegate?.documentDidChangeLayers();
     }
 
     public deleteSelectedLayer(): void {
         const layer = this.selectedLayer;
         if (!layer || this.layers.length <= 1) return;
-        this.canvasStack.removeLayer(layer.id);
+        const selectedBefore = layer.id;
+        const removed = this.canvasStack.detachLayer(layer.id);
+        if (!removed) return;
+        if (!this.suppressLayerHistory) {
+            this.history.pushLayerAddDelete({
+                kind: 'layer-delete',
+                layer: removed.layer,
+                index: removed.index,
+                selectedLayerIdBefore: selectedBefore,
+                selectedLayerIdAfter: this.selectedLayer?.id
+            });
+        }
         this.delegate?.documentDidChangeLayers();
     }
 
@@ -86,24 +109,43 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
     public toggleLayerVisible(layerId: string): void {
         const layer = this.canvasStack.layerForId(layerId);
         if (!layer) return;
+        const before = layer.visible;
         this.canvasStack.setLayerVisible(layerId, !layer.visible);
+        this.pushLayerPropertyHistory(layerId, 'visible', before, !before);
         this.delegate?.documentDidChangeLayers();
     }
 
     public toggleLayerLocked(layerId: string): void {
         const layer = this.canvasStack.layerForId(layerId);
         if (!layer) return;
+        const before = layer.locked;
         this.canvasStack.setLayerLocked(layerId, !layer.locked);
+        this.pushLayerPropertyHistory(layerId, 'locked', before, !before);
         this.delegate?.documentDidChangeLayers();
     }
 
-    public setLayerOpacity(layerId: string, opacity: number): void {
+    public setLayerOpacity(layerId: string, opacity: number, recordHistory: boolean = true): void {
+        const before = this.canvasStack.layerForId(layerId)?.opacity;
         this.canvasStack.setLayerOpacity(layerId, opacity);
+        const after = this.canvasStack.layerForId(layerId)?.opacity;
+        if (recordHistory && before !== undefined && after !== undefined) {
+            this.pushLayerPropertyHistory(layerId, 'opacity', before, after);
+        }
+        this.delegate?.documentDidChangeLayers();
+    }
+
+    public commitLayerOpacity(layerId: string, before: number, after: number): void {
+        this.pushLayerPropertyHistory(layerId, 'opacity', before, after);
         this.delegate?.documentDidChangeLayers();
     }
 
     public setLayerBlendMode(layerId: string, blendMode: LayerBlendMode): void {
+        const before = this.canvasStack.layerForId(layerId)?.blendMode;
         this.canvasStack.setLayerBlendMode(layerId, blendMode);
+        const after = this.canvasStack.layerForId(layerId)?.blendMode;
+        if (before !== undefined && after !== undefined) {
+            this.pushLayerPropertyHistory(layerId, 'blendMode', before, after);
+        }
         this.delegate?.documentDidChangeLayers();
     }
 
@@ -146,6 +188,49 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
         return this.canvasStack.layerForId(layerId)?.canvas;
     }
 
+    public layerExists(layerId: string): boolean {
+        return !!this.canvasStack.layerForId(layerId);
+    }
+
+    public detachLayer(layerId: string): void {
+        this.withoutLayerHistory(() => {
+            this.canvasStack.detachLayer(layerId);
+        });
+    }
+
+    public restoreLayer(layer: CanvasLayer, index: number, select: boolean): void {
+        this.withoutLayerHistory(() => {
+            this.canvasStack.restoreLayer(layer, index, select);
+        });
+    }
+
+    public applyLayerProperty(layerId: string, property: 'visible' | 'opacity' | 'blendMode' | 'locked' | 'alphaLock', value: string | number | boolean): void {
+        this.withoutLayerHistory(() => {
+            switch (property) {
+                case 'visible':
+                    this.canvasStack.setLayerVisible(layerId, Boolean(value));
+                    return;
+                case 'opacity':
+                    this.canvasStack.setLayerOpacity(layerId, Number(value));
+                    return;
+                case 'blendMode':
+                    this.canvasStack.setLayerBlendMode(layerId, value as LayerBlendMode);
+                    return;
+                case 'locked':
+                    this.canvasStack.setLayerLocked(layerId, Boolean(value));
+                    return;
+                case 'alphaLock':
+                    this.canvasStack.setLayerAlphaLock(layerId, Boolean(value));
+                    return;
+            }
+        });
+    }
+
+    public selectLayerIfExists(layerId?: string): void {
+        if (!layerId || !this.canvasStack.layerForId(layerId)) return;
+        this.canvasStack.selectLayer(layerId);
+    }
+
     public onHistoryChanged(): void {
         this.delegate?.documentDidChangeHistory();
     }
@@ -174,6 +259,26 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
 
     public didChangeLayers(): void {
         this.delegate?.documentDidChangeLayers();
+    }
+
+    private pushLayerPropertyHistory(
+        layerId: string,
+        property: 'visible' | 'opacity' | 'blendMode' | 'locked' | 'alphaLock',
+        before: string | number | boolean,
+        after: string | number | boolean
+    ): void {
+        if (this.suppressLayerHistory) return;
+        this.history.pushLayerProperty(layerId, property, before, after);
+    }
+
+    private withoutLayerHistory(work: () => void): void {
+        const previous = this.suppressLayerHistory;
+        this.suppressLayerHistory = true;
+        try {
+            work();
+        } finally {
+            this.suppressLayerHistory = previous;
+        }
     }
 
     private drawThumbnailDataUrl(target: HTMLCanvasElement, dataUrl: string): void {
