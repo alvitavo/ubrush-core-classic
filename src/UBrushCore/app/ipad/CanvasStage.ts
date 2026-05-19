@@ -18,6 +18,7 @@ import { FloodFillTuningMode } from '../../program/webgpu/WGPUFloodFillProgram';
 const STRAIGHTEN_MORPH_MS = 180;
 const SHAPE_ASSIST_EDIT_MORPH_MS = 90;
 const SHAPE_ASSIST_HOLD_MS = 1200;
+const SHAPE_ASSIST_HOLD_MOVE_TOLERANCE_PX = 6;
 const VIEWPORT_ANIMATION_MS = 220;
 
 interface StrokeSample {
@@ -72,6 +73,7 @@ export class CanvasStage {
     private straightLineActivationPromise: Promise<void> | null = null;
     private straightLineStartPos: Point | null = null;
     private straightLineStartStylus: Stylus | null = null;
+    private straightLineHoldClientPoint: Point | null = null;
     private straightLineSamples: StrokeSample[] = [];
     private straightLineStrokeGroup: FixerGroup | null = null;
     private straightLineUndoGroup: FixerGroup | null = null;
@@ -226,6 +228,7 @@ export class CanvasStage {
         this.stylusEventCount = 0;
         this.lastPoint = this.eventPoint(e);
         this.lastStylus = this.eventStylus(e);
+        this.straightLineHoldClientPoint = this.eventClientPoint(e);
 
         if (this.document.tool === 'fill') {
             await this.startFloodFillContext(this.lastPoint);
@@ -349,7 +352,7 @@ export class CanvasStage {
                 stylus: this.cloneStylus(this.lastStylus)
             });
             canvas.lineTo(this.lastPoint, this.lastStylus);
-            this.restartStraightLineTimer();
+            this.restartStraightLineTimerIfMovedEnough(e);
         }
     };
 
@@ -410,6 +413,22 @@ export class CanvasStage {
     private restartStraightLineTimer(): void {
         this.clearStraightLineTimer();
         this.startStraightLineTimer();
+    }
+
+    private restartStraightLineTimerIfMovedEnough(e: MouseEvent | TouchEvent): void {
+        const clientPoint = this.eventClientPoint(e);
+        if (!this.straightLineHoldClientPoint) {
+            this.straightLineHoldClientPoint = clientPoint;
+            this.restartStraightLineTimer();
+            return;
+        }
+
+        if (Common.distance(this.straightLineHoldClientPoint, clientPoint) < SHAPE_ASSIST_HOLD_MOVE_TOLERANCE_PX) {
+            return;
+        }
+
+        this.straightLineHoldClientPoint = clientPoint;
+        this.restartStraightLineTimer();
     }
 
     private clearStraightLineTimer(): void {
@@ -1500,6 +1519,7 @@ export class CanvasStage {
         this.straightLineUndoGroup = null;
         this.straightLineStartPos = null;
         this.straightLineStartStylus = null;
+        this.straightLineHoldClientPoint = null;
     }
 
     private viewportTransform(): AffineTransform {
@@ -2042,6 +2062,11 @@ export class CanvasStage {
     }
 
     private eventPoint(e: MouseEvent | TouchEvent): Point {
+        const clientPoint = this.eventClientPoint(e);
+        return this.clientPointToCanvasPoint(clientPoint.x, clientPoint.y);
+    }
+
+    private eventClientPoint(e: MouseEvent | TouchEvent): Point {
         let clientX = 0;
         let clientY = 0;
         if (e instanceof MouseEvent) {
@@ -2053,7 +2078,7 @@ export class CanvasStage {
             clientY = touch?.clientY ?? clientY;
         }
 
-        return this.clientPointToCanvasPoint(clientX, clientY);
+        return new Point(clientX, clientY);
     }
 
     private eventStylus(e: MouseEvent | TouchEvent): Stylus {
