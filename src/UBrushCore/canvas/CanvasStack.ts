@@ -25,6 +25,17 @@ export interface CanvasLayer {
     alphaLock: boolean;
 }
 
+export interface CanvasLayerSnapshot {
+    id: string;
+    name: string;
+    visible: boolean;
+    opacity: number;
+    blendMode: LayerBlendMode;
+    locked: boolean;
+    alphaLock: boolean;
+    pixels?: Uint8Array;
+}
+
 export interface MergeDownResult {
     sourceLayer: CanvasLayer;
     sourceIndex: number;
@@ -113,7 +124,6 @@ export class CanvasStack implements CanvasDelegate {
 
     public createLayer(name?: string, index: number = this.layers.length): CanvasLayer {
         const canvas = new Canvas(this.context, this.size);
-        canvas.clearOutputRenderTarget();
         const layer: CanvasLayer = {
             id: this.createLayerId(),
             name: name ?? `Layer ${this.nextLayerNumber++}`,
@@ -136,8 +146,9 @@ export class CanvasStack implements CanvasDelegate {
 
         const source = this.layers[sourceIndex];
         const canvas = new Canvas(this.context, this.size);
-        canvas.clearOutputRenderTarget();
-        this.context.copyTexture(canvas.outputRenderTarget, source.canvas.outputRenderTarget);
+        if (source.canvas.hasVisibleContent()) {
+            this.context.copyTexture(canvas.outputRenderTarget, source.canvas.outputRenderTarget);
+        }
 
         const layer: CanvasLayer = {
             id: this.createLayerId(),
@@ -211,7 +222,7 @@ export class CanvasStack implements CanvasDelegate {
     public removeLayer(id: string): CanvasLayer | null {
         const removed = this.detachLayer(id);
         if (!removed) return null;
-        this.context.deleteRenderTarget(removed.layer.canvas.outputRenderTarget);
+        removed.layer.canvas.destroy();
         return removed.layer;
     }
 
@@ -387,6 +398,45 @@ export class CanvasStack implements CanvasDelegate {
         this.updateCanvas();
     }
 
+    public restoreLayerSnapshots(snapshots: CanvasLayerSnapshot[], selectedLayerId?: string): void {
+        if (snapshots.length === 0) return;
+
+        this.delegate?.willChangeCanvases?.(this, this.layers.map((layer) => layer.canvas));
+        for (const layer of this.layers) {
+            layer.canvas.delegate = undefined;
+            layer.canvas.destroy();
+        }
+
+        this.layers = snapshots.map((snapshot, index) => {
+            const canvas = new Canvas(this.context, this.size);
+            if (snapshot.pixels) {
+                canvas.restorePixels(snapshot.pixels);
+            }
+            const layer: CanvasLayer = {
+                id: snapshot.id,
+                name: snapshot.name || `Layer ${index + 1}`,
+                canvas,
+                visible: snapshot.visible,
+                opacity: Math.max(0, Math.min(1, snapshot.opacity)),
+                blendMode: snapshot.blendMode || 'normal',
+                locked: snapshot.locked,
+                alphaLock: snapshot.alphaLock
+            };
+            canvas.useFixer = true;
+            canvas.delegate = this;
+            if (layer.alphaLock) canvas.setAlphaLock(true);
+            return layer;
+        });
+
+        this.nextLayerNumber = this.layers.length + 1;
+        const selectedLayer = this.layers.find((layer) => layer.id === selectedLayerId) ?? this.layers[this.layers.length - 1];
+        this.selectedCanvas = undefined;
+        if (selectedLayer) this.selectLayer(selectedLayer.id);
+        this.delegate?.didChangeCanvases?.(this, this.layers.map((item) => item.canvas));
+        this.notifyLayersChanged();
+        this.updateCanvas();
+    }
+
     public updateCanvas(): void {
         this.updateCanvasInRect(Common.stageRect());
     }
@@ -411,7 +461,7 @@ export class CanvasStack implements CanvasDelegate {
         }
 
         for (const layer of this.layers) {
-            if (!layer.visible || layer.opacity <= 0) continue;
+            if (!layer.visible || layer.opacity <= 0 || !layer.canvas.hasVisibleContent()) continue;
             this.compositeLayerIntoTarget(this.outputRenderTarget, layer, targetRect);
         }
 

@@ -8,8 +8,7 @@ let lastTap = 0;
 document.addEventListener('touchend', (e) => {
     const now = Date.now();
     if (now - lastTap < 300) {
-        const target = e.target as Element;
-        if (!target.closest('button, input, select, label, a')) e.preventDefault();
+        e.preventDefault();
     }
     lastTap = now;
 }, { passive: false });

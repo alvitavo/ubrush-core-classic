@@ -293,4 +293,15 @@ export class WGPUContext {
 
     }
 
+    public writePixels(renderTarget: WGPURenderTarget, pixels: Uint8Array): void {
+
+        this.device.queue.writeTexture(
+            { texture: renderTarget.gpuTexture },
+            pixels as BufferSource,
+            { bytesPerRow: renderTarget.size.width * 4, rowsPerImage: renderTarget.size.height },
+            { width: renderTarget.size.width, height: renderTarget.size.height, depthOrArrayLayers: 1 },
+        );
+
+    }
+
 }

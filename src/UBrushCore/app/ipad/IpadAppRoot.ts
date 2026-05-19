@@ -1,5 +1,6 @@
 import { IBrush } from '../../common/IBrush';
 import { CanvasStage, CanvasStageDelegate } from './CanvasStage';
+import { CrashRecoveryController } from './controllers/CrashRecoveryController';
 import { DocumentController } from './controllers/DocumentController';
 import { IpadAppShell, IpadAppShellDelegate } from './IpadAppShell';
 import { BrushCategory } from './types';
@@ -8,6 +9,7 @@ export class IpadAppRoot implements CanvasStageDelegate, IpadAppShellDelegate {
     private categories: BrushCategory[] = [];
     private shell?: IpadAppShell;
     private document?: DocumentController;
+    private recovery = new CrashRecoveryController();
 
     public async init(container: HTMLElement): Promise<void> {
         this.categories = await this.loadCategories();
@@ -22,7 +24,7 @@ export class IpadAppRoot implements CanvasStageDelegate, IpadAppShellDelegate {
     public stageDidCreateDocument(document: DocumentController): void {
         this.document = document;
         this.shell?.bindDocument(document);
-        void this.applyInitialBrush();
+        void this.restoreOrApplyInitialBrush(document);
     }
 
     public stageDidFail(error: string): void {
@@ -47,6 +49,32 @@ export class IpadAppRoot implements CanvasStageDelegate, IpadAppShellDelegate {
         if (!category || !this.document) return;
         const brushes = await this.loadBrushes(category);
         if (brushes[0]) await this.document.setBrush(brushes[0]);
+    }
+
+    private async restoreOrApplyInitialBrush(documentController: DocumentController): Promise<void> {
+        if (this.recoveryDisabledByUrl()) {
+            await this.applyInitialBrush();
+            return;
+        }
+
+        const snapshot = await this.recovery.loadLatest();
+        const restored = snapshot ? documentController.restoreSnapshot(snapshot) : false;
+
+        if (restored) {
+            await this.applyInitialBrush();
+            this.shell?.showToast('이전 작업을 복구했습니다');
+        } else {
+            await this.applyInitialBrush();
+        }
+
+        this.recovery.attach(documentController);
+    }
+
+    private recoveryDisabledByUrl(): boolean {
+        const params = new URLSearchParams(window.location.search);
+        const value = params.get('recovery') ?? params.get('crashRecovery') ?? params.get('layerRecovery');
+        if (value === null) return false;
+        return ['0', 'false', 'off', 'no', 'disabled'].includes(value.toLowerCase());
     }
 
     private async loadCategories(): Promise<BrushCategory[]> {

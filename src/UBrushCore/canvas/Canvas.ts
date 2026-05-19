@@ -54,7 +54,6 @@ export interface CanvasFloodFillResult {
 
 export class Canvas implements LineDriverDelegate {
 
-    public outputRenderTarget: WGPURenderTarget;
     public useFixer: boolean = true;
     public age: number = 0;
     public brush?: IBrush;
@@ -66,7 +65,8 @@ export class Canvas implements LineDriverDelegate {
     public temporary: boolean = false;
 
     private autoDry: boolean = false;
-    private drawingEngine: DrawingEngine;
+    private _outputRenderTarget?: WGPURenderTarget;
+    private drawingEngine?: DrawingEngine;
     private dots: Dot[] = [];
     private strokeBatchingEnabled: boolean = false;
     private lineRect: Rect | null = null;
@@ -81,16 +81,33 @@ export class Canvas implements LineDriverDelegate {
     constructor(context: WGPUContext, size: Size) {
 
         this.lineDriver.setDelegate(this);
-        this.outputRenderTarget = context.createRenderTarget(size);
         this.size = size;
         this.context = context;
-        this.drawingEngine = new DrawingEngine(context, size);
+    }
+
+    public get outputRenderTarget(): WGPURenderTarget {
+
+        return this.ensureOutputRenderTarget();
 
     }
 
     public getDebuggingTarget(): WGPURenderTarget | undefined {
 
-        return this.drawingEngine.debuggingRenderTarget;
+        return this.drawingEngine?.debuggingRenderTarget;
+
+    }
+
+    public destroy(): void {
+
+        this.releaseDrawingEngine();
+        if (this.alphaMaskRenderTarget) {
+            this.context.deleteRenderTarget(this.alphaMaskRenderTarget);
+            this.alphaMaskRenderTarget = undefined;
+        }
+        if (this._outputRenderTarget) {
+            this.context.deleteRenderTarget(this._outputRenderTarget);
+            this._outputRenderTarget = undefined;
+        }
 
     }
 
@@ -140,6 +157,14 @@ export class Canvas implements LineDriverDelegate {
 
         this.lineDriver.setBrush(brush);
 
+        if (!brush) {
+            this.releaseDrawingEngine();
+            this.releaseOutputRenderTargetIfEmpty();
+            return;
+        }
+
+        const drawingEngine = this.ensureDrawingEngine();
+
         // Swift parity: alphaSmudgingMode 먼저 → useSecondaryMask 나중 순서로 대입.
         // alphaSmudgingMode setter가 _resyncDynamicBuffersForMode 를 호출하므로
         // useSecondaryMask가 이미 설정된 상태에서 alphaSmudgingMode가 뒤늦게 바뀌면 버퍼 정합성이 깨진다.
@@ -150,27 +175,25 @@ export class Canvas implements LineDriverDelegate {
         // (Swift 는 동일 시나리오에서 maskAndCut 이 dualTipBlendmode=Normal 일 때 mask 를 무시해
         //  자동으로 통과되지만, watercolor 류 브러시가 maskDotBlendmode=Normal + useDualTip=true 인
         //  케이스에서 mask 효과가 핵심이므로 셰이더는 건드리지 않는다.)
-        this.drawingEngine.alphaSmudgingMode = brush?.alphaSmudgingMode ?? false;
-        this.drawingEngine.useSecondaryMask  = (brush?.useSecondaryMask ?? false) && (brush?.useDualTip ?? false);
+        drawingEngine.alphaSmudgingMode = brush.alphaSmudgingMode ?? false;
+        drawingEngine.useSecondaryMask  = (brush.useSecondaryMask ?? false) && (brush.useDualTip ?? false);
 
-        if (brush) {
-            this.drawingEngine.useSmudging = brush.useSmudging;
-            this.drawingEngine.layerLowCut = brush.layerLowCut;
-            this.drawingEngine.layerHighCut = brush.layerHighCut;
-            this.drawingEngine.useLayerTinting = brush.useLayerTinting;
-            this.drawingEngine.edgeStyle = brush.edgeStyle ?? EdgeStyle.NONE;
-            this.drawingEngine.dualTipEdgeStyle = brush.dualTipEdgeStyle ?? EdgeStyle.NONE;
-            this.drawingEngine.liquidLayerBlendmode = brush.layerBlendmode;
-            this.drawingEngine.dotBlendmode = brush.dotBlendmode ?? DotBlendmode.NORMAL;
-            this.drawingEngine.maskDotBlendmode = brush.maskDotBlendmode ?? DotBlendmode.NORMAL;
+        drawingEngine.useSmudging = brush.useSmudging;
+        drawingEngine.layerLowCut = brush.layerLowCut;
+        drawingEngine.layerHighCut = brush.layerHighCut;
+        drawingEngine.useLayerTinting = brush.useLayerTinting;
+        drawingEngine.edgeStyle = brush.edgeStyle ?? EdgeStyle.NONE;
+        drawingEngine.dualTipEdgeStyle = brush.dualTipEdgeStyle ?? EdgeStyle.NONE;
+        drawingEngine.liquidLayerBlendmode = brush.layerBlendmode;
+        drawingEngine.dotBlendmode = brush.dotBlendmode ?? DotBlendmode.NORMAL;
+        drawingEngine.maskDotBlendmode = brush.maskDotBlendmode ?? DotBlendmode.NORMAL;
 
-            await this.drawingEngine.setTipTextureImageBase64(brush.tipSource);
-            await this.drawingEngine.setDualTipTextureImageBase64(brush.dualTipSource);
-            await this.drawingEngine.setPatternTextureImageBase64(brush.textureSource);
+        await drawingEngine.setTipTextureImageBase64(brush.tipSource);
+        await drawingEngine.setDualTipTextureImageBase64(brush.dualTipSource);
+        await drawingEngine.setPatternTextureImageBase64(brush.textureSource);
 
-            this.drawingEngine.layerOpacity = 1;
-            this.drawingEngine.brushColor = this.lineDriver.getColor();
-        }
+        drawingEngine.layerOpacity = 1;
+        drawingEngine.brushColor = this.lineDriver.getColor();
 
         this.engineSetupWithRenderTarget(this.outputRenderTarget);
 
@@ -233,7 +256,7 @@ export class Canvas implements LineDriverDelegate {
 
     public clearOutputRenderTarget(): void {
 
-        this.context.clearRenderTarget(this.outputRenderTarget, Color.clear());
+        if (this._outputRenderTarget) this.context.clearRenderTarget(this._outputRenderTarget, Color.clear());
 
     }
     
@@ -289,6 +312,10 @@ export class Canvas implements LineDriverDelegate {
         return !!this.brush?.useSmudging;
     }
 
+    public hasVisibleContent(): boolean {
+        return this.hasContent;
+    }
+
     public setStrokeBatchingEnabled(value: boolean): void {
         this.strokeBatchingEnabled = value;
     }
@@ -312,13 +339,13 @@ export class Canvas implements LineDriverDelegate {
         if (samples.length === 0) return;
 
         const previousLineRect = this.lineRect;
-        const previousUseSmudging = this.drawingEngine.useSmudging;
+        const previousUseSmudging = this.ensureDrawingEngine().useSmudging;
 
         this.dots = [];
-        this.drawingEngine.cancelDrawing();
+        this.ensureDrawingEngine().cancelDrawing();
 
         if (options.disableSmudging) {
-            this.drawingEngine.useSmudging = false;
+            this.ensureDrawingEngine().useSmudging = false;
         }
 
         let changeRect: Rect | null = null;
@@ -351,7 +378,7 @@ export class Canvas implements LineDriverDelegate {
                 drawWithFollowAcceleration();
             }
         } finally {
-            this.drawingEngine.useSmudging = previousUseSmudging;
+            this.ensureDrawingEngine().useSmudging = previousUseSmudging;
         }
 
         const dirtyRect = changeRect
@@ -372,9 +399,9 @@ export class Canvas implements LineDriverDelegate {
         const rect = Common.stageRect();
 
         if (this.autoDry) {
-            fixerGroup.undoFixer = (await this.drawingEngine.activeMergedFixer(rect)) || undefined;
+            fixerGroup.undoFixer = (await this.ensureDrawingEngine().activeMergedFixer(rect)) || undefined;
         } else {
-            fixerGroup.undoFixerLiquid = (await this.drawingEngine.activeDrawingFixer(rect)) || undefined;
+            fixerGroup.undoFixerLiquid = (await this.ensureDrawingEngine().activeDrawingFixer(rect)) || undefined;
         }
 
         return fixerGroup;
@@ -385,13 +412,13 @@ export class Canvas implements LineDriverDelegate {
         const rect = Common.stageRect();
 
         if (this.autoDry) {
-            const curveFixer = (await this.drawingEngine.activeMergedFixer(rect)) || undefined;
+            const curveFixer = (await this.ensureDrawingEngine().activeMergedFixer(rect)) || undefined;
             strokeGroup.redoFixer = curveFixer;
             straightenGroup.undoFixer = curveFixer;
             return straightenGroup;
         }
 
-        this.drawingEngine.releaseDrawing();
+        this.ensureDrawingEngine().releaseDrawing();
         const curveFixer = (await this.liquidFixer(rect)) || undefined;
         strokeGroup.redoFixerLiquid = curveFixer;
         straightenGroup.undoFixerLiquid = curveFixer;
@@ -420,11 +447,11 @@ export class Canvas implements LineDriverDelegate {
         const rect = Common.stageRect();
 
         if (this.autoDry) {
-            this.drawingEngine.releaseDrawing();
+            this.ensureDrawingEngine().releaseDrawing();
             this.engineDry();
             fixerGroup.redoFixer = (await this.fixer(rect)) || undefined;
         } else {
-            this.drawingEngine.releaseDrawing();
+            this.ensureDrawingEngine().releaseDrawing();
             fixerGroup.redoFixerLiquid = (await this.liquidFixer(rect)) || undefined;
         }
 
@@ -458,7 +485,7 @@ export class Canvas implements LineDriverDelegate {
             if (this.autoDry) {
 
                 fixerGroup.undoFixer = (await this.fixer(this.lineRect || undefined)) || undefined;
-                this.drawingEngine.releaseDrawing();
+                this.ensureDrawingEngine().releaseDrawing();
                 this.engineDry();
                 fixerGroup.redoFixer = (await this.fixer(this.lineRect || undefined)) || undefined;
 
@@ -466,7 +493,7 @@ export class Canvas implements LineDriverDelegate {
 
                 fixerGroup.undoFixerLiquid = (await this.liquidFixer(this.lineRect || undefined)) || undefined;
                 fixerGroup.undoFixer = (await this.fixer(this.lineRect || undefined)) || undefined;
-                this.drawingEngine.releaseDrawing();
+                this.ensureDrawingEngine().releaseDrawing();
                 fixerGroup.redoFixerLiquid = (await this.liquidFixer(this.lineRect || undefined)) || undefined;
                 fixerGroup.redoFixer = (await this.fixer(this.lineRect || undefined)) || undefined;
 
@@ -478,12 +505,12 @@ export class Canvas implements LineDriverDelegate {
 
             if (this.autoDry) {
 
-                this.drawingEngine.releaseDrawing();
+                this.ensureDrawingEngine().releaseDrawing();
                 this.engineDry();
 
             } else {
 
-                this.drawingEngine.releaseDrawing();
+                this.ensureDrawingEngine().releaseDrawing();
 
             }
         }
@@ -495,7 +522,7 @@ export class Canvas implements LineDriverDelegate {
 
     public cancelLine(): void {
 
-        this.drawingEngine.cancelDrawing();
+        this.ensureDrawingEngine().cancelDrawing();
     
         if (this.lineRect) {
             this.updateCanvasInRect(this.lineRect);
@@ -512,14 +539,14 @@ export class Canvas implements LineDriverDelegate {
     }
 
     public async floodFill(seed: Point, color: Color, tolerance: number, edgeThreshold: number, tuningMode: FloodFillTuningMode = 'auto'): Promise<CanvasFloodFillResult | null> {
-        if (this.drawingEngine.alphaSmudgingMode) return null;
+        if (this.ensureDrawingEngine().alphaSmudgingMode) return null;
 
         const start = performance.now();
         const dryStart = performance.now();
         if (this.needsDry) this.engineDry();
         const dryMs = performance.now() - dryStart;
 
-        const result = await this.drawingEngine.floodFillDry(seed, color, tolerance, edgeThreshold, !this.hasContent, tuningMode);
+        const result = await this.ensureDrawingEngine().floodFillDry(seed, color, tolerance, edgeThreshold, !this.hasContent, tuningMode);
         const updateStart = performance.now();
         this.updateCanvasInRect(result.rect);
         const updateMs = performance.now() - updateStart;
@@ -567,7 +594,7 @@ export class Canvas implements LineDriverDelegate {
 
         if (!fixer) return;
 
-        const changeRect = await this.drawingEngine.fix(fixer, toLiquidLayer);
+        const changeRect = await this.ensureDrawingEngine().fix(fixer, toLiquidLayer);
         if (toLiquidLayer) this.needsDry = true;
 
         if (update && changeRect) {
@@ -584,7 +611,7 @@ export class Canvas implements LineDriverDelegate {
 
         if (!fixer) return;
 
-        const changeRect = await this.drawingEngine.fix(fixer, false);
+        const changeRect = await this.ensureDrawingEngine().fix(fixer, false);
         const pixelCount = fixer.patchRect.size.width * fixer.patchRect.size.height * 4;
         const clearPixels = new Uint8Array(pixelCount);
         const clearLiquidFixer = new Fixer(
@@ -594,7 +621,7 @@ export class Canvas implements LineDriverDelegate {
             clearPixels,
             clearPixels
         );
-        await this.drawingEngine.fix(clearLiquidFixer, true);
+        await this.ensureDrawingEngine().fix(clearLiquidFixer, true);
         this.needsDry = false;
 
         if (changeRect) {
@@ -609,7 +636,7 @@ export class Canvas implements LineDriverDelegate {
 
     public async fixer(rect: Rect = Common.stageRect()): Promise<Fixer | null> {
 
-        return this.drawingEngine.fixer(FixerRenderTarget.Merged, rect);
+        return this.ensureDrawingEngine().fixer(FixerRenderTarget.Merged, rect);
 
     }
 
@@ -617,7 +644,7 @@ export class Canvas implements LineDriverDelegate {
 
         if (this.autoDry) return null;
 
-        return this.drawingEngine.fixer(FixerRenderTarget.Liquid, rect);
+        return this.ensureDrawingEngine().fixer(FixerRenderTarget.Liquid, rect);
 
     }
 
@@ -638,6 +665,7 @@ export class Canvas implements LineDriverDelegate {
 
     public async pixelBounds(): Promise<Rect> {
 
+        if (!this._outputRenderTarget) return new Rect(0, 0, 0, 0);
         return this.context.pixelBound(this.outputRenderTarget);
 
     }
@@ -663,10 +691,11 @@ export class Canvas implements LineDriverDelegate {
     public clear(): void {
 
         this.clearOutputRenderTarget();
-        this.drawingEngine.clear();
+        this.drawingEngine?.clear();
         this.updateCanvas();
         this.hasContent = false;
         this.needsDry = false;
+        this.releaseOutputRenderTargetIfEmpty();
 
         this.age ++;
 
@@ -675,6 +704,16 @@ export class Canvas implements LineDriverDelegate {
     public syncFromOutputRenderTarget(): void {
 
         this.engineSetupWithRenderTarget(this.outputRenderTarget);
+        this.updateCanvas();
+        this.age++;
+
+    }
+
+    public restorePixels(pixels: Uint8Array): void {
+
+        this.context.writePixels(this.outputRenderTarget, pixels);
+        this.hasContent = this.pixelsHaveContent(pixels);
+        if (this.drawingEngine) this.engineSetupWithRenderTarget(this.outputRenderTarget);
         this.updateCanvas();
         this.age++;
 
@@ -691,7 +730,7 @@ export class Canvas implements LineDriverDelegate {
             return null;
         }
 
-        const changedRect: Rect | null = this.drawingEngine.drawDots(this.dots);
+        const changedRect: Rect | null = this.ensureDrawingEngine().drawDots(this.dots);
         this.dots = [];
 
         return changedRect;
@@ -704,7 +743,7 @@ export class Canvas implements LineDriverDelegate {
 
             const tempRenderTarget = this.context.createRenderTarget(this.size);
 
-            this.drawingEngine.printToRenderTarget(tempRenderTarget, rect, new AffineTransform());
+            this.ensureDrawingEngine().printToRenderTarget(tempRenderTarget, rect, new AffineTransform());
 
             WGPUProgramManager.getInstance().maskProgram.fill(
                 this.outputRenderTarget,
@@ -725,7 +764,7 @@ export class Canvas implements LineDriverDelegate {
 
         } else {
             
-            this.drawingEngine.printToRenderTarget(this.outputRenderTarget, rect, new AffineTransform());
+            this.ensureDrawingEngine().printToRenderTarget(this.outputRenderTarget, rect, new AffineTransform());
 
         }
 
@@ -735,7 +774,7 @@ export class Canvas implements LineDriverDelegate {
 
     private engineSetupWithRenderTarget(renderTarget: WGPURenderTarget): void {
 
-        this.drawingEngine.setupWithRenderTarget(renderTarget);
+        this.ensureDrawingEngine().setupWithRenderTarget(renderTarget);
         this.needsDry = false;
 
         if (this.delegate?.didDryCanvas) {
@@ -748,6 +787,7 @@ export class Canvas implements LineDriverDelegate {
 
     private engineDry(): void {
 
+        if (!this.drawingEngine) return;
         this.drawingEngine.dry();
         this.needsDry = false;
 
@@ -756,7 +796,47 @@ export class Canvas implements LineDriverDelegate {
             this.delegate.didDryCanvas(this);
 
         }
-        
+
+    }
+
+    private ensureDrawingEngine(): DrawingEngine {
+
+        if (!this.drawingEngine) {
+            this.drawingEngine = new DrawingEngine(this.context, this.size);
+            this.drawingEngine.setupWithRenderTarget(this.outputRenderTarget);
+            this.needsDry = false;
+        }
+        return this.drawingEngine;
+
+    }
+
+    private ensureOutputRenderTarget(): WGPURenderTarget {
+
+        if (!this._outputRenderTarget) {
+            this._outputRenderTarget = this.context.createRenderTarget(this.size);
+            this.context.clearRenderTarget(this._outputRenderTarget, Color.clear());
+        }
+        return this._outputRenderTarget;
+
+    }
+
+    private releaseDrawingEngine(): void {
+
+        if (!this.drawingEngine) return;
+        this.drawingEngine.destroy();
+        this.drawingEngine = undefined;
+        this.dots = [];
+        this.lineRect = null;
+        this.needsDry = false;
+
+    }
+
+    private releaseOutputRenderTargetIfEmpty(): void {
+
+        if (this.hasContent || this.alphaLock || !this._outputRenderTarget) return;
+        this.context.deleteRenderTarget(this._outputRenderTarget);
+        this._outputRenderTarget = undefined;
+
     }
 
     // LineDriverDelegate
@@ -778,6 +858,15 @@ export class Canvas implements LineDriverDelegate {
             interpolate(a.altitudeAngle, b.altitudeAngle),
             interpolate(a.azimuthAngle, b.azimuthAngle)
         );
+    }
+
+    private pixelsHaveContent(pixels: Uint8Array): boolean {
+
+        for (let i = 3; i < pixels.length; i += 4) {
+            if (pixels[i] !== 0) return true;
+        }
+        return false;
+
     }
 
 }

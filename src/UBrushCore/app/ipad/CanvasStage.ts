@@ -20,6 +20,8 @@ const SHAPE_ASSIST_EDIT_MORPH_MS = 90;
 const SHAPE_ASSIST_HOLD_MS = 1200;
 const SHAPE_ASSIST_HOLD_MOVE_TOLERANCE_PX = 6;
 const VIEWPORT_ANIMATION_MS = 220;
+const DOCUMENT_CANVAS_WIDTH = 4000;
+const DOCUMENT_CANVAS_HEIGHT = 3000;
 
 interface StrokeSample {
     point: Point;
@@ -63,6 +65,7 @@ export class CanvasStage {
 
     private context?: WGPUContext;
     private document?: DocumentController;
+    private readonly documentSize = new Size(DOCUMENT_CANVAS_WIDTH, DOCUMENT_CANVAS_HEIGHT);
     private canvasSize = new Size(1, 1);
     private lastPoint = new Point();
     private lastStylus = new Stylus();
@@ -154,7 +157,7 @@ export class CanvasStage {
         this.context = new WGPUContext(bootstrap.device, bootstrap.presentationContext, bootstrap.presentationFormat, this.canvasSize);
         WGPUProgramManager.init(this.context);
 
-        this.document = new DocumentController(this.context, this.canvasSize);
+        this.document = new DocumentController(this.context, this.documentSize);
         this.delegate.stageDidCreateDocument(this.document);
 
         this.attachEvents();
@@ -1595,10 +1598,11 @@ export class CanvasStage {
 
     private viewportTransform(): AffineTransform {
         const aspect = this.canvasSize.width / Math.max(1, this.canvasSize.height);
+        const fit = this.documentFitScale();
         const radians = this.viewportRotation * 0.017453292519943295;
         const cos = Math.cos(radians) * this.viewportScale;
         const sin = Math.sin(radians) * this.viewportScale;
-        return new AffineTransform(
+        const transform = new AffineTransform(
             cos,
             sin * aspect,
             -sin / aspect,
@@ -1606,6 +1610,8 @@ export class CanvasStage {
             this.viewportPanX,
             this.viewportPanY
         );
+        transform.scale(fit.x, fit.y);
+        return transform;
     }
 
     private inverseViewportTransform(): AffineTransform {
@@ -1731,6 +1737,15 @@ export class CanvasStage {
             && Math.abs(this.viewportPanY) < 0.001;
     }
 
+    private documentFitScale(): Point {
+        const screenAspect = this.canvasSize.width / Math.max(1, this.canvasSize.height);
+        const documentAspect = this.documentSize.width / Math.max(1, this.documentSize.height);
+        if (screenAspect > documentAspect) {
+            return new Point(documentAspect / screenAspect, 1);
+        }
+        return new Point(1, screenAspect / documentAspect);
+    }
+
     private clampViewportScale(scale: number): number {
         return Math.max(0.1, Math.min(16, scale));
     }
@@ -1823,15 +1838,15 @@ export class CanvasStage {
 
     private canvasPointToStagePoint(point: Point): Point {
         return new Point(
-            (point.x / Math.max(1, this.canvasSize.width)) * 2 - 1,
-            (point.y / Math.max(1, this.canvasSize.height)) * 2 - 1
+            (point.x / Math.max(1, this.documentSize.width)) * 2 - 1,
+            (point.y / Math.max(1, this.documentSize.height)) * 2 - 1
         );
     }
 
     private stagePointToCanvasPoint(point: Point): Point {
         return new Point(
-            ((point.x + 1) * 0.5) * this.canvasSize.width,
-            ((point.y + 1) * 0.5) * this.canvasSize.height
+            ((point.x + 1) * 0.5) * this.documentSize.width,
+            ((point.y + 1) * 0.5) * this.documentSize.height
         );
     }
 

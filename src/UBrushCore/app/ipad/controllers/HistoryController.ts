@@ -85,6 +85,13 @@ export class HistoryController {
         this.activeLiquidLayerIds.delete(layerId);
     }
 
+    public clear(): void {
+        this.undoStack = [];
+        this.redoStack = [];
+        this.activeLiquidLayerIds.clear();
+        this.provider.onHistoryChanged();
+    }
+
     public async undo(): Promise<void> {
         const entry = this.undoStack.pop();
         if (!entry) return;

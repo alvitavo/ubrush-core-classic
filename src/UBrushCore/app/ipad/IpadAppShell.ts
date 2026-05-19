@@ -25,6 +25,7 @@ export class IpadAppShell implements DocumentControllerDelegate {
     private sizeInput?: HTMLInputElement;
     private opacityInput?: HTMLInputElement;
     private document?: DocumentController;
+    private toastTimer: number | null = null;
 
     constructor(
         categories: BrushCategory[],
@@ -50,6 +51,23 @@ export class IpadAppShell implements DocumentControllerDelegate {
         this.sheetHost.appendChild(this.layerSheet.element);
         this.updateHistoryButtons();
         this.updateBrushControls();
+    }
+
+    public showToast(message: string): void {
+        let toast = this.element.querySelector<HTMLElement>('.ub-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.className = 'ub-toast';
+            this.element.appendChild(toast);
+        }
+
+        toast.textContent = message;
+        toast.classList.add('visible');
+        if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
+        this.toastTimer = window.setTimeout(() => {
+            toast?.classList.remove('visible');
+            this.toastTimer = null;
+        }, 2400);
     }
 
     public documentDidChangeLayers(): void {
@@ -214,6 +232,7 @@ export class IpadAppShell implements DocumentControllerDelegate {
         style.id = 'ub-ipad-styles';
         style.textContent = `
 .ub-ipad-app { position:relative; width:100%; height:100%; overflow:hidden; background:#20211f; color:#f4f0e8; }
+.ub-ipad-app button, .ub-ipad-app input, .ub-ipad-app select, .ub-ipad-app label, .ub-ipad-app a { touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
 .ub-topbar { position:absolute; z-index:20; top:calc(env(safe-area-inset-top, 0px) + 10px); left:14px; right:14px; height:48px; display:flex; align-items:center; gap:8px; padding:7px; border:1px solid rgba(255,255,255,.13); border-radius:24px; background:rgba(31,32,30,.78); backdrop-filter:blur(22px); box-shadow:0 12px 34px rgba(0,0,0,.24); }
 .ub-stage-host, .ub-ipad-stage, .ub-ipad-canvas { width:100%; height:100%; }
 .ub-ipad-stage { position:relative; overflow:hidden; }
@@ -235,6 +254,8 @@ export class IpadAppShell implements DocumentControllerDelegate {
 .ub-floating-slider span { font-size:11px; font-weight:700; }
 .ub-floating-slider input { width:174px; transform:rotate(-90deg); margin:66px 0; accent-color:#f0c96a; }
 .ub-sheet-host { position:absolute; z-index:30; inset:0; pointer-events:none; }
+.ub-toast { position:absolute; z-index:42; left:50%; bottom:calc(env(safe-area-inset-bottom, 0px) + 22px); transform:translate(-50%, 10px); max-width:calc(100vw - 40px); padding:10px 14px; border-radius:18px; background:rgba(31,32,30,.86); color:#f6f0e7; font:700 13px -apple-system, BlinkMacSystemFont, sans-serif; box-shadow:0 14px 38px rgba(0,0,0,.28); opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease; }
+.ub-toast.visible { opacity:1; transform:translate(-50%, 0); }
 .ub-sheet { position:absolute; pointer-events:auto; top:72px; right:18px; width:min(380px, calc(100vw - 36px)); max-height:calc(100vh - 94px); overflow:hidden; border:1px solid rgba(255,255,255,.13); border-radius:22px; background:rgba(38,39,36,.9); backdrop-filter:blur(24px); box-shadow:0 20px 60px rgba(0,0,0,.32); }
 .ub-layer-sheet { display:flex; flex-direction:column; }
 .ub-sheet[hidden] { display:none; }

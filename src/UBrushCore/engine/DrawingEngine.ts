@@ -116,7 +116,21 @@ export class DrawingEngine {
     }
 
     public destroy(): void {
-        // TODO: delete render targets
+        this.context.deleteRenderTarget(this.drawingRenderTarget);
+        this.context.deleteRenderTarget(this.smudging1CopyRenderTarget);
+        this.context.deleteRenderTarget(this.smudging0CopyRenderTarget);
+        this.context.deleteRenderTarget(this.liquidRenderTarget);
+        this.context.deleteRenderTarget(this.dryRenderTarget);
+        if (this.drawingAlphaRenderTarget) this.context.deleteRenderTarget(this.drawingAlphaRenderTarget);
+        if (this.smudging1CopyAlphaRenderTarget) this.context.deleteRenderTarget(this.smudging1CopyAlphaRenderTarget);
+        if (this.smudging1CopyColorRenderTarget) this.context.deleteRenderTarget(this.smudging1CopyColorRenderTarget);
+        if (this.smudging0CopyAlphaRenderTarget) this.context.deleteRenderTarget(this.smudging0CopyAlphaRenderTarget);
+        if (this.smudging0CopyColorRenderTarget) this.context.deleteRenderTarget(this.smudging0CopyColorRenderTarget);
+        if (this.maskDrawingRenderTarget) this.context.deleteRenderTarget(this.maskDrawingRenderTarget);
+        if (this.maskLiquidRenderTarget) this.context.deleteRenderTarget(this.maskLiquidRenderTarget);
+        this.context.deleteTexture(this.tipTexture);
+        this.context.deleteTexture(this.patternTexture);
+        this.context.deleteTexture(this.dualTipTexture);
     }
 
     // ---- alphaSmudgingMode / useSecondaryMask (Swift parity) ----
