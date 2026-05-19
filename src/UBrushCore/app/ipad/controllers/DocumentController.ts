@@ -14,6 +14,13 @@ export interface DocumentControllerDelegate {
     documentDidChangeRender(): void;
 }
 
+export interface TransientHistoryController {
+    canUndo(): boolean;
+    canRedo(): boolean;
+    undo(): void;
+    redo(): void;
+}
+
 export class DocumentController implements CanvasStackDelegate, HistoryLayerProvider {
     public readonly canvasStack: CanvasStack;
     public readonly history: HistoryController;
@@ -24,6 +31,7 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
     private currentBrushOpacity = 1;
     private thumbnailCache = new Map<string, { age: number; dataUrl: string }>();
     private suppressLayerHistory = false;
+    private transientHistory?: TransientHistoryController;
 
     constructor(private context: WGPUContext, size: Size) {
         this.canvasStack = new CanvasStack(context, size);
@@ -46,6 +54,37 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
 
     public get selectedCanvas(): Canvas | undefined {
         return this.canvasStack.selectedCanvas;
+    }
+
+    public get canUndo(): boolean {
+        return this.transientHistory?.canUndo() ?? this.history.canUndo;
+    }
+
+    public get canRedo(): boolean {
+        return this.transientHistory?.canRedo() ?? this.history.canRedo;
+    }
+
+    public setTransientHistory(controller?: TransientHistoryController): void {
+        this.transientHistory = controller;
+        this.delegate?.documentDidChangeHistory();
+    }
+
+    public undo(): void {
+        if (this.transientHistory) {
+            this.transientHistory.undo();
+            this.delegate?.documentDidChangeHistory();
+            return;
+        }
+        void this.history.undo();
+    }
+
+    public redo(): void {
+        if (this.transientHistory) {
+            this.transientHistory.redo();
+            this.delegate?.documentDidChangeHistory();
+            return;
+        }
+        void this.history.redo();
     }
 
     public async setBrush(brush?: IBrush): Promise<void> {

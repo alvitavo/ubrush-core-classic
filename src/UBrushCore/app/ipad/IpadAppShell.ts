@@ -14,8 +14,8 @@ export class IpadAppShell implements DocumentControllerDelegate {
     public readonly element = document.createElement('div');
     private topBar = document.createElement('div');
     private sheetHost = document.createElement('div');
-    private undoButton = this.iconButton('Undo', 'Undo', () => void this.document?.history.undo());
-    private redoButton = this.iconButton('Redo', 'Redo', () => void this.document?.history.redo());
+    private undoButton = this.iconButton('Undo', 'Undo', () => this.document?.undo());
+    private redoButton = this.iconButton('Redo', 'Redo', () => this.document?.redo());
     private layerSheet?: LayerSheet;
     private brushSheet: BrushLibrarySheet;
     private sizeValue = document.createElement('span');
@@ -138,8 +138,8 @@ export class IpadAppShell implements DocumentControllerDelegate {
     }
 
     private updateHistoryButtons(): void {
-        this.undoButton.disabled = !this.document?.history.canUndo;
-        this.redoButton.disabled = !this.document?.history.canRedo;
+        this.undoButton.disabled = !this.document?.canUndo;
+        this.redoButton.disabled = !this.document?.canRedo;
     }
 
     private textButton(text: string, onClick: () => void): HTMLButtonElement {
@@ -218,6 +218,15 @@ export class IpadAppShell implements DocumentControllerDelegate {
 .ub-layer-command-grid { grid-template-columns:1fr 1fr; }
 .ub-layer-option-button { min-height:34px; border:0; border-radius:10px; background:rgba(255,255,255,.1); color:#f6f0e7; padding:0 8px; font-weight:750; }
 .ub-layer-option-button.danger { background:#733832; color:#fff3ed; }
+.ub-shape-assist-ribbon { position:absolute; z-index:25; left:50%; top:calc(env(safe-area-inset-top, 0px) + 68px); transform:translateX(-50%); display:flex; align-items:center; gap:6px; max-width:calc(100vw - 28px); overflow-x:auto; padding:6px; border:1px solid rgba(255,255,255,.14); border-radius:18px; background:rgba(31,32,30,.82); backdrop-filter:blur(20px); box-shadow:0 12px 34px rgba(0,0,0,.24); pointer-events:auto; }
+.ub-shape-assist-ribbon button { flex:0 0 auto; height:32px; border:0; border-radius:16px; background:rgba(255,255,255,.1); color:#f6f0e7; padding:0 12px; font-weight:750; }
+.ub-shape-assist-ribbon button.active { background:#f0c96a; color:#1f201e; }
+.ub-shape-assist-ribbon button.done { background:rgba(255,255,255,.2); }
+.ub-shape-assist-handles { position:absolute; z-index:24; inset:0; pointer-events:none; }
+.ub-shape-assist-handle { position:absolute; width:18px; height:18px; margin-left:-9px; margin-top:-9px; border-radius:50%; background:#4a90d9; border:2px solid #fff; box-shadow:0 2px 10px rgba(0,0,0,.32); pointer-events:auto; touch-action:none; cursor:grab; }
+.ub-shape-assist-handle.control { background:#f1b84a; }
+.ub-shape-assist-handle.anchor { background:#5ad18d; }
+.ub-shape-assist-handle.center { width:20px; height:20px; margin-left:-10px; margin-top:-10px; background:#f05a7e; }
 @media (max-width: 720px) {
   .ub-topbar { left:8px; right:8px; gap:5px; overflow-x:auto; }
   .ub-text-button, .ub-segment-button, .ub-icon-button { flex:0 0 auto; }
