@@ -395,14 +395,27 @@ export class CanvasStack implements CanvasDelegate {
         if (this.updatelock) return;
 
         this.needsComposite = false;
-        this.context.clearRenderTarget(this.outputRenderTarget, this.backgroundColor);
+        const targetRect = this.clampRectToStage(rect);
+        if (targetRect.size.width <= 0 || targetRect.size.height <= 0) return;
+
+        const stageRect = Common.stageRect();
+        if (this.rectsMatch(targetRect, stageRect)) {
+            this.context.clearRenderTarget(this.outputRenderTarget, this.backgroundColor);
+        } else {
+            WGPUProgramManager.getInstance().colorFillProgram.fill(this.outputRenderTarget, {
+                targetRect,
+                canvasRect: stageRect,
+                transform: new AffineTransform(),
+                color: this.backgroundColor
+            });
+        }
 
         for (const layer of this.layers) {
             if (!layer.visible || layer.opacity <= 0) continue;
-            this.compositeLayerIntoTarget(this.outputRenderTarget, layer);
+            this.compositeLayerIntoTarget(this.outputRenderTarget, layer, targetRect);
         }
 
-        this.delegate?.changeRect(this, rect);
+        this.delegate?.changeRect(this, targetRect);
     }
 
     public compositeIfNeeded(): void {
@@ -453,7 +466,8 @@ export class CanvasStack implements CanvasDelegate {
         }
     }
 
-    private compositeLayerIntoTarget(target: WGPURenderTarget, layer: CanvasLayer): void {
+    private compositeLayerIntoTarget(target: WGPURenderTarget, layer: CanvasLayer, targetRect: Rect = Common.stageRect()): void {
+        const sourceRect = targetRect;
         const stageRect = Common.stageRect();
         const transform = new AffineTransform();
         const programManager = WGPUProgramManager.getInstance();
@@ -462,10 +476,10 @@ export class CanvasStack implements CanvasDelegate {
             const destination = this.shaderBlendDestinationTarget();
             this.context.copyTexture(destination, target);
             programManager.layerShaderBlendProgram.fill(target, {
-                targetRect: stageRect,
+                targetRect,
                 source: layer.canvas.outputRenderTarget.texture,
                 destination: destination.texture,
-                sourceRect: stageRect,
+                sourceRect,
                 canvasRect: stageRect,
                 transform,
                 mode: layer.blendMode,
@@ -475,14 +489,30 @@ export class CanvasStack implements CanvasDelegate {
         }
 
         programManager.layerCompositeProgram.fill(target, {
-            targetRect: stageRect,
+            targetRect,
             source: layer.canvas.outputRenderTarget.texture,
-            sourceRect: stageRect,
+            sourceRect,
             canvasRect: stageRect,
             transform,
             blend: this.renderBlendForLayer(layer),
             opacity: layer.opacity
         });
+    }
+
+    private clampRectToStage(rect: Rect): Rect {
+        const stageRect = Common.stageRect();
+        const left = Math.max(stageRect.minX, rect.minX);
+        const right = Math.min(stageRect.maxX, rect.maxX);
+        const bottom = Math.max(stageRect.minY, rect.minY);
+        const top = Math.min(stageRect.maxY, rect.maxY);
+        return new Rect(left, bottom, Math.max(0, right - left), Math.max(0, top - bottom));
+    }
+
+    private rectsMatch(a: Rect, b: Rect): boolean {
+        return Math.abs(a.minX - b.minX) < 0.0001
+            && Math.abs(a.minY - b.minY) < 0.0001
+            && Math.abs(a.size.width - b.size.width) < 0.0001
+            && Math.abs(a.size.height - b.size.height) < 0.0001;
     }
 
     private shaderBlendDestinationTarget(): WGPURenderTarget {

@@ -139,7 +139,7 @@ Required strategy:
 
 - Per-layer dirty flags.
 - Stack-level dirty compositing. Done in V1.5.
-- Dirty rect tracking.
+- Dirty rect tracking. Done in V2.11.
 - Cached group render targets.
 - Composite only when layer content or layer properties change.
 - Avoid per-frame full-stack recomposite.

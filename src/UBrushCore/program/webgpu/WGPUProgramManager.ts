@@ -1,4 +1,5 @@
 import { WGPUContext } from "../../gpu/webgpu/WGPUContext";
+import { WGPUColorFillProgram } from "./WGPUColorFillProgram";
 import { WGPUDrawDotProgram } from "./WGPUDrawDotProgram";
 import { WGPUFillRectProgram } from "./WGPUFillRectProgram";
 import { WGPUFloodFillProgram } from "./WGPUFloodFillProgram";
@@ -39,6 +40,7 @@ export class WGPUProgramManager {
 
     public drawDotProgram: WGPUDrawDotProgram;
     public smudgingDotProgram: WGPUSmudgingDrawDotProgram;
+    public colorFillProgram: WGPUColorFillProgram;
     public fillRectProgram: WGPUFillRectProgram;
     public floodFillProgram: WGPUFloodFillProgram;
     public highLowCutProgram: WGPUHighLowCutProgram;
@@ -53,6 +55,7 @@ export class WGPUProgramManager {
 
         this.drawDotProgram = new WGPUDrawDotProgram(context);
         this.smudgingDotProgram = new WGPUSmudgingDrawDotProgram(context);
+        this.colorFillProgram = new WGPUColorFillProgram(context);
         this.fillRectProgram = new WGPUFillRectProgram(context);
         this.floodFillProgram = new WGPUFloodFillProgram(context);
         this.highLowCutProgram = new WGPUHighLowCutProgram(context);
@@ -68,6 +71,7 @@ export class WGPUProgramManager {
     public destroy(): void {
 
         this.fillRectProgram.distroy();
+        this.colorFillProgram.distroy();
         this.floodFillProgram.distroy();
         this.drawDotProgram.distroy();
         this.smudgingDotProgram.distroy();
