@@ -13,6 +13,7 @@ export interface DocumentControllerDelegate {
     documentDidChangeLayers(): void;
     documentDidChangeHistory(): void;
     documentDidChangeRender(): void;
+    documentDidChangeTool(): void;
 }
 
 export interface TransientHistoryController {
@@ -117,7 +118,9 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
     }
 
     public setTool(tool: AppTool): void {
+        if (this.currentTool === tool) return;
         this.currentTool = tool;
+        this.delegate?.documentDidChangeTool();
     }
 
     public addLayer(): void {

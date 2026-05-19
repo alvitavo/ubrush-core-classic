@@ -191,6 +191,7 @@ export class CanvasStage {
 
         if (this.document.tool === 'fill') {
             await this.startFloodFillContext(this.lastPoint);
+            this.document.setTool('brush');
             return;
         }
 

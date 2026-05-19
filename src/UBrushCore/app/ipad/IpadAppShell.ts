@@ -59,6 +59,10 @@ export class IpadAppShell implements DocumentControllerDelegate {
 
     public documentDidChangeRender(): void {}
 
+    public documentDidChangeTool(): void {
+        this.updateToolButtons();
+    }
+
     private build(): void {
         this.topBar.className = 'ub-topbar';
         this.topBar.append(
