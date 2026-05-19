@@ -9,7 +9,7 @@ interface DrawingHistoryEntry {
     fixerGroup: FixerGroup;
 }
 
-type LayerHistoryProperty = 'visible' | 'opacity' | 'blendMode' | 'locked' | 'alphaLock';
+type LayerHistoryProperty = 'name' | 'visible' | 'opacity' | 'blendMode' | 'locked' | 'alphaLock';
 
 interface LayerPropertyHistoryEntry {
     kind: 'layer-property';

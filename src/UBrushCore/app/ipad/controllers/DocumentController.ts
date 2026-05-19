@@ -101,8 +101,38 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
         this.delegate?.documentDidChangeLayers();
     }
 
+    public duplicateSelectedLayer(): void {
+        const source = this.selectedLayer;
+        if (!source) return;
+        const selectedBefore = source.id;
+        const sourceIndex = this.layers.findIndex((candidate) => candidate.id === source.id);
+        const layer = this.canvasStack.duplicateLayer(source.id);
+        if (!layer) return;
+
+        if (!this.suppressLayerHistory) {
+            this.history.pushLayerAddDelete({
+                kind: 'layer-add',
+                layer,
+                index: sourceIndex + 1,
+                selectedLayerIdBefore: selectedBefore,
+                selectedLayerIdAfter: layer.id
+            });
+        }
+        this.delegate?.documentDidChangeLayers();
+    }
+
     public selectLayer(layerId: string): void {
         this.canvasStack.selectLayer(layerId);
+        this.delegate?.documentDidChangeLayers();
+    }
+
+    public renameLayer(layerId: string, name: string): void {
+        const layer = this.canvasStack.layerForId(layerId);
+        if (!layer) return;
+        const before = layer.name;
+        this.canvasStack.renameLayer(layerId, name);
+        const after = this.canvasStack.layerForId(layerId)?.name;
+        if (after !== undefined) this.pushLayerPropertyHistory(layerId, 'name', before, after);
         this.delegate?.documentDidChangeLayers();
     }
 
@@ -121,6 +151,15 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
         const before = layer.locked;
         this.canvasStack.setLayerLocked(layerId, !layer.locked);
         this.pushLayerPropertyHistory(layerId, 'locked', before, !before);
+        this.delegate?.documentDidChangeLayers();
+    }
+
+    public toggleLayerAlphaLock(layerId: string): void {
+        const layer = this.canvasStack.layerForId(layerId);
+        if (!layer) return;
+        const before = layer.alphaLock;
+        this.canvasStack.setLayerAlphaLock(layerId, !layer.alphaLock);
+        this.pushLayerPropertyHistory(layerId, 'alphaLock', before, !before);
         this.delegate?.documentDidChangeLayers();
     }
 
@@ -204,9 +243,12 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
         });
     }
 
-    public applyLayerProperty(layerId: string, property: 'visible' | 'opacity' | 'blendMode' | 'locked' | 'alphaLock', value: string | number | boolean): void {
+    public applyLayerProperty(layerId: string, property: 'name' | 'visible' | 'opacity' | 'blendMode' | 'locked' | 'alphaLock', value: string | number | boolean): void {
         this.withoutLayerHistory(() => {
             switch (property) {
+                case 'name':
+                    this.canvasStack.renameLayer(layerId, String(value));
+                    return;
                 case 'visible':
                     this.canvasStack.setLayerVisible(layerId, Boolean(value));
                     return;
@@ -263,7 +305,7 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
 
     private pushLayerPropertyHistory(
         layerId: string,
-        property: 'visible' | 'opacity' | 'blendMode' | 'locked' | 'alphaLock',
+        property: 'name' | 'visible' | 'opacity' | 'blendMode' | 'locked' | 'alphaLock',
         before: string | number | boolean,
         after: string | number | boolean
     ): void {

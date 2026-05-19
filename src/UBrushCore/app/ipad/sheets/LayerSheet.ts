@@ -18,6 +18,8 @@ const BLEND_MODES: LayerBlendMode[] = [
 export class LayerSheet {
     public readonly element = document.createElement('div');
     private list = document.createElement('div');
+    private optionsPanel = document.createElement('div');
+    private optionsLayerId?: string;
     private opacityHistoryStart = new Map<string, number>();
 
     constructor(private documentController: DocumentController) {
@@ -33,6 +35,7 @@ export class LayerSheet {
 
     public hide(): void {
         this.element.hidden = true;
+        this.optionsLayerId = undefined;
     }
 
     public toggle(): void {
@@ -47,6 +50,7 @@ export class LayerSheet {
         for (let i = layers.length - 1; i >= 0; i--) {
             this.list.appendChild(this.layerRow(layers[i], layers[i].id === selectedId));
         }
+        this.refreshOptionsPanel();
     }
 
     private build(): void {
@@ -66,7 +70,9 @@ export class LayerSheet {
         header.append(title, add);
 
         this.list.className = 'ub-layer-list';
-        this.element.append(header, this.list);
+        this.optionsPanel.className = 'ub-layer-options-panel';
+        this.optionsPanel.hidden = true;
+        this.element.append(header, this.list, this.optionsPanel);
     }
 
     private layerRow(layer: CanvasLayer, selected: boolean): HTMLElement {
@@ -97,18 +103,34 @@ export class LayerSheet {
         const actions = document.createElement('div');
         actions.className = 'ub-layer-actions';
         actions.append(
-            this.action(layer.visible ? 'E' : 'H', layer.visible ? 'Hide layer' : 'Show layer', () => this.documentController.toggleLayerVisible(layer.id)),
-            this.action(layer.locked ? 'L' : 'U', layer.locked ? 'Unlock layer' : 'Lock layer', () => this.documentController.toggleLayerLocked(layer.id))
+            this.action(layer.visible ? 'V' : '-', layer.visible ? 'Hide layer' : 'Show layer', () => this.documentController.toggleLayerVisible(layer.id)),
+            this.action(layer.locked ? 'L' : '-', layer.locked ? 'Unlock layer' : 'Lock layer', () => this.documentController.toggleLayerLocked(layer.id)),
+            this.action(layer.alphaLock ? 'A' : '-', layer.alphaLock ? 'Disable alpha lock' : 'Enable alpha lock', () => this.documentController.toggleLayerAlphaLock(layer.id)),
+            this.action('...', 'Layer options', () => this.showOptions(layer.id))
         );
 
         row.append(thumb, meta, actions);
-        row.appendChild(this.layerOptions(layer));
         return row;
     }
 
     private layerOptions(layer: CanvasLayer): HTMLElement {
         const options = document.createElement('div');
-        options.className = 'ub-layer-options';
+        options.className = 'ub-layer-options-content';
+
+        const header = document.createElement('div');
+        header.className = 'ub-layer-options-title';
+        header.textContent = 'Layer Options';
+
+        const name = document.createElement('input');
+        name.className = 'ub-layer-name-input';
+        name.value = layer.name;
+        name.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') name.blur();
+        });
+        name.addEventListener('change', () => {
+            this.documentController.renameLayer(layer.id, name.value);
+            this.refresh();
+        });
 
         const opacity = document.createElement('input');
         opacity.type = 'range';
@@ -125,6 +147,8 @@ export class LayerSheet {
         opacity.addEventListener('input', () => this.documentController.setLayerOpacity(layer.id, Number(opacity.value), false));
         opacity.addEventListener('change', () => this.commitOpacityHistory(layer.id, Number(opacity.value)));
 
+        const opacityRow = this.optionRow(`Opacity ${Math.round(layer.opacity * 100)}%`, opacity);
+
         const blend = document.createElement('select');
         blend.value = layer.blendMode;
         blend.addEventListener('click', (e) => e.stopPropagation());
@@ -135,18 +159,24 @@ export class LayerSheet {
             option.textContent = mode;
             blend.appendChild(option);
         }
+        const blendRow = this.optionRow('Blend', blend);
 
-        const deleteButton = document.createElement('button');
-        deleteButton.className = 'ub-small-danger';
-        deleteButton.textContent = 'Delete';
-        deleteButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.documentController.selectLayer(layer.id);
-            this.documentController.deleteSelectedLayer();
-            this.refresh();
-        });
+        const toggles = document.createElement('div');
+        toggles.className = 'ub-layer-toggle-grid';
+        toggles.append(
+            this.optionButton(layer.visible ? 'Visible' : 'Hidden', () => this.documentController.toggleLayerVisible(layer.id)),
+            this.optionButton(layer.locked ? 'Locked' : 'Unlocked', () => this.documentController.toggleLayerLocked(layer.id)),
+            this.optionButton(layer.alphaLock ? 'Alpha Lock On' : 'Alpha Lock Off', () => this.documentController.toggleLayerAlphaLock(layer.id))
+        );
 
-        options.append(opacity, blend, deleteButton);
+        const commands = document.createElement('div');
+        commands.className = 'ub-layer-command-grid';
+        commands.append(
+            this.optionButton('Duplicate', () => this.documentController.duplicateSelectedLayer()),
+            this.optionButton('Delete', () => this.documentController.deleteSelectedLayer(), 'danger')
+        );
+
+        options.append(header, name, opacityRow, blendRow, toggles, commands);
         return options;
     }
 
@@ -158,6 +188,51 @@ export class LayerSheet {
         button.addEventListener('click', (e) => {
             e.stopPropagation();
             onClick();
+            this.refresh();
+        });
+        return button;
+    }
+
+    private showOptions(layerId: string): void {
+        this.documentController.selectLayer(layerId);
+        this.optionsLayerId = layerId;
+        this.refresh();
+    }
+
+    private refreshOptionsPanel(): void {
+        const layerId = this.optionsLayerId ?? this.documentController.selectedLayer?.id;
+        let layer = this.documentController.layers.find((candidate) => candidate.id === layerId);
+        if (!layer && this.documentController.selectedLayer) {
+            layer = this.documentController.selectedLayer;
+        }
+        this.optionsPanel.replaceChildren();
+        if (!layer) {
+            this.optionsPanel.hidden = true;
+            this.optionsLayerId = undefined;
+            return;
+        }
+
+        this.optionsPanel.hidden = false;
+        this.optionsPanel.appendChild(this.layerOptions(layer));
+    }
+
+    private optionRow(labelText: string, control: HTMLElement): HTMLElement {
+        const row = document.createElement('label');
+        row.className = 'ub-layer-option-row';
+        const label = document.createElement('span');
+        label.textContent = labelText;
+        row.append(label, control);
+        return row;
+    }
+
+    private optionButton(text: string, onClick: () => void, tone: 'normal' | 'danger' = 'normal'): HTMLButtonElement {
+        const button = document.createElement('button');
+        button.className = `ub-layer-option-button${tone === 'danger' ? ' danger' : ''}`;
+        button.textContent = text;
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onClick();
+            this.optionsLayerId = this.documentController.selectedLayer?.id;
             this.refresh();
         });
         return button;

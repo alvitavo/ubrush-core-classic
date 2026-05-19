@@ -190,6 +190,7 @@ export class IpadAppShell implements DocumentControllerDelegate {
 .ub-floating-slider input { width:174px; transform:rotate(-90deg); margin:66px 0; accent-color:#f0c96a; }
 .ub-sheet-host { position:absolute; z-index:30; inset:0; pointer-events:none; }
 .ub-sheet { position:absolute; pointer-events:auto; top:72px; right:18px; width:min(380px, calc(100vw - 36px)); max-height:calc(100vh - 94px); overflow:hidden; border:1px solid rgba(255,255,255,.13); border-radius:22px; background:rgba(38,39,36,.9); backdrop-filter:blur(24px); box-shadow:0 20px 60px rgba(0,0,0,.32); }
+.ub-layer-sheet { display:flex; flex-direction:column; }
 .ub-sheet[hidden] { display:none; }
 .ub-sheet-header { height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 16px; border-bottom:1px solid rgba(255,255,255,.1); font-weight:800; }
 .ub-brush-body { display:grid; grid-template-columns:136px 1fr; height:min(560px, calc(100vh - 146px)); }
@@ -197,18 +198,26 @@ export class IpadAppShell implements DocumentControllerDelegate {
 .ub-brush-categories { border-right:1px solid rgba(255,255,255,.1); }
 .ub-list-button, .ub-brush-button { width:100%; min-height:38px; margin-bottom:6px; border:0; border-radius:10px; background:rgba(255,255,255,.08); color:#efe9de; text-align:left; padding:0 11px; font-weight:650; }
 .ub-brush-button { min-height:42px; }
-.ub-layer-list { max-height:calc(100vh - 146px); }
+.ub-layer-list { max-height:min(440px, calc(100vh - 360px)); }
 .ub-layer-row { display:grid; grid-template-columns:48px 1fr auto; gap:10px; align-items:center; padding:10px; margin-bottom:8px; border:1px solid rgba(255,255,255,.08); border-radius:14px; background:rgba(255,255,255,.06); cursor:pointer; }
 .ub-layer-row.selected { border-color:#f0c96a; background:rgba(240,201,106,.16); }
 .ub-layer-thumb { width:48px; height:38px; border-radius:8px; background:#d7d2c7; border:1px solid rgba(0,0,0,.28); }
 .ub-layer-meta { min-width:0; }
 .ub-layer-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:760; }
 .ub-layer-sub { margin-top:3px; color:#c7bdac; font-size:12px; }
-.ub-layer-actions { display:flex; gap:6px; }
-.ub-layer-options { grid-column:1 / -1; display:grid; grid-template-columns:1fr 120px auto; gap:8px; align-items:center; }
-.ub-layer-options input { accent-color:#f0c96a; }
-.ub-layer-options select { min-width:0; height:30px; border:0; border-radius:8px; background:rgba(255,255,255,.12); color:#f7f2e9; padding:0 8px; }
-.ub-small-danger { height:30px; border:0; border-radius:8px; background:#733832; color:#fff3ed; padding:0 10px; font-weight:700; }
+.ub-layer-actions { display:flex; gap:5px; }
+.ub-layer-options-panel { padding:12px; border-top:1px solid rgba(255,255,255,.1); background:rgba(0,0,0,.13); }
+.ub-layer-options-panel[hidden] { display:none; }
+.ub-layer-options-content { display:grid; gap:10px; }
+.ub-layer-options-title { color:#e8dfcf; font-size:12px; font-weight:800; text-transform:uppercase; }
+.ub-layer-name-input { width:100%; height:36px; border:0; border-radius:10px; background:rgba(255,255,255,.12); color:#fff7ec; padding:0 11px; font-weight:700; }
+.ub-layer-option-row { display:grid; grid-template-columns:92px 1fr; align-items:center; gap:10px; color:#cfc5b5; font-size:12px; font-weight:700; }
+.ub-layer-option-row input { accent-color:#f0c96a; }
+.ub-layer-option-row select { min-width:0; height:34px; border:0; border-radius:10px; background:rgba(255,255,255,.12); color:#f7f2e9; padding:0 9px; }
+.ub-layer-toggle-grid, .ub-layer-command-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+.ub-layer-command-grid { grid-template-columns:1fr 1fr; }
+.ub-layer-option-button { min-height:34px; border:0; border-radius:10px; background:rgba(255,255,255,.1); color:#f6f0e7; padding:0 8px; font-weight:750; }
+.ub-layer-option-button.danger { background:#733832; color:#fff3ed; }
 @media (max-width: 720px) {
   .ub-topbar { left:8px; right:8px; gap:5px; overflow-x:auto; }
   .ub-text-button, .ub-segment-button, .ub-icon-button { flex:0 0 auto; }
