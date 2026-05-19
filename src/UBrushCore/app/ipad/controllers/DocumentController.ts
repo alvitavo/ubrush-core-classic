@@ -14,6 +14,7 @@ export interface DocumentControllerDelegate {
     documentDidChangeHistory(): void;
     documentDidChangeRender(): void;
     documentDidChangeTool(): void;
+    documentDidChangeBrush(): void;
 }
 
 export interface TransientHistoryController {
@@ -21,6 +22,8 @@ export interface TransientHistoryController {
     canRedo(): boolean;
     undo(): void;
     redo(): void;
+    brushDidChange?(): void;
+    brushDidCommit?(): void;
 }
 
 export class DocumentController implements CanvasStackDelegate, HistoryLayerProvider {
@@ -67,6 +70,14 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
         return this.currentColor.clone();
     }
 
+    public get brushSize(): number {
+        return this.currentBrushSize;
+    }
+
+    public get brushOpacity(): number {
+        return this.currentBrushOpacity;
+    }
+
     public get canUndo(): boolean {
         return this.transientHistory?.canUndo() ?? this.history.canUndo;
     }
@@ -105,11 +116,20 @@ export class DocumentController implements CanvasStackDelegate, HistoryLayerProv
     public setBrushSize(size: number): void {
         this.currentBrushSize = size;
         this.canvasStack.brushSize = size;
+        this.transientHistory?.brushDidChange?.();
+        this.delegate?.documentDidChangeBrush();
     }
 
     public setBrushOpacity(opacity: number): void {
         this.currentBrushOpacity = opacity;
         this.canvasStack.brushOpacity = opacity;
+        this.transientHistory?.brushDidChange?.();
+        this.delegate?.documentDidChangeBrush();
+    }
+
+    public commitBrushControls(): void {
+        this.transientHistory?.brushDidCommit?.();
+        this.delegate?.documentDidChangeHistory();
     }
 
     public setColor(color: Color): void {

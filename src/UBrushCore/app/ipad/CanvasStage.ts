@@ -41,6 +41,8 @@ type ShapeAssistHandleKey = 'start' | 'control1' | 'control2' | 'end' | 'ellipse
 interface ShapeAssistSnapshot {
     mode: ShapeAssistMode;
     handles: ShapeAssistHandles;
+    size: number;
+    opacity: number;
     randomSeed: number;
 }
 
@@ -1218,7 +1220,9 @@ export class CanvasStage {
             canUndo: () => this.shapeAssistUndoStack.length > 1,
             canRedo: () => this.shapeAssistRedoStack.length > 0,
             undo: () => this.undoShapeAssistEdit(),
-            redo: () => this.redoShapeAssistEdit()
+            redo: () => this.redoShapeAssistEdit(),
+            brushDidChange: () => this.renderShapeAssistPreview(true),
+            brushDidCommit: () => this.pushShapeAssistSnapshot()
         });
         document.addEventListener('mousedown', this.onShapeAssistDocumentMouseDown, true);
         document.addEventListener('touchstart', this.onShapeAssistDocumentTouchStart, true);
@@ -1488,6 +1492,8 @@ export class CanvasStage {
         return {
             mode: this.shapeAssistMode,
             handles: this.cloneShapeAssistHandles(this.shapeAssistHandles),
+            size: this.document?.brushSize ?? 0.1,
+            opacity: this.document?.brushOpacity ?? 1,
             randomSeed: this.shapeAssistRandomSeed
         };
     }
@@ -1496,6 +1502,8 @@ export class CanvasStage {
         this.shapeAssistMode = snapshot.mode;
         this.shapeAssistHandles = this.cloneShapeAssistHandles(snapshot.handles);
         this.shapeAssistRandomSeed = snapshot.randomSeed;
+        this.document?.setBrushSize(snapshot.size);
+        this.document?.setBrushOpacity(snapshot.opacity);
         this.updateShapeAssistRibbon();
         this.renderShapeAssistPreview();
     }
@@ -1504,6 +1512,8 @@ export class CanvasStage {
         return {
             mode: snapshot.mode,
             handles: this.cloneShapeAssistHandles(snapshot.handles),
+            size: snapshot.size,
+            opacity: snapshot.opacity,
             randomSeed: snapshot.randomSeed
         };
     }
@@ -1521,6 +1531,8 @@ export class CanvasStage {
     private shapeAssistSnapshotsEqual(a: ShapeAssistSnapshot, b: ShapeAssistSnapshot): boolean {
         return a.mode === b.mode
             && a.randomSeed === b.randomSeed
+            && Math.abs(a.size - b.size) < 0.0001
+            && Math.abs(a.opacity - b.opacity) < 0.0001
             && this.pointsAlmostEqual(a.handles.start, b.handles.start)
             && this.pointsAlmostEqual(a.handles.control1, b.handles.control1)
             && this.pointsAlmostEqual(a.handles.control2, b.handles.control2)

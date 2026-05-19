@@ -22,6 +22,8 @@ export class IpadAppShell implements DocumentControllerDelegate {
     private brushSheet: BrushLibrarySheet;
     private sizeValue = document.createElement('span');
     private opacityValue = document.createElement('span');
+    private sizeInput?: HTMLInputElement;
+    private opacityInput?: HTMLInputElement;
     private document?: DocumentController;
 
     constructor(
@@ -47,6 +49,7 @@ export class IpadAppShell implements DocumentControllerDelegate {
         this.layerSheet = new LayerSheet(document);
         this.sheetHost.appendChild(this.layerSheet.element);
         this.updateHistoryButtons();
+        this.updateBrushControls();
     }
 
     public documentDidChangeLayers(): void {
@@ -61,6 +64,10 @@ export class IpadAppShell implements DocumentControllerDelegate {
 
     public documentDidChangeTool(): void {
         this.updateToolButtons();
+    }
+
+    public documentDidChangeBrush(): void {
+        this.updateBrushControls();
     }
 
     private build(): void {
@@ -93,14 +100,18 @@ export class IpadAppShell implements DocumentControllerDelegate {
     private floatingControls(): HTMLElement {
         const wrap = document.createElement('div');
         wrap.className = 'ub-floating-controls';
+        const sizeControl = this.slider('Size', 0, 0.5, 0.001, 0.1, this.sizeValue, (value) => this.document?.setBrushSize(value));
+        const opacityControl = this.slider('Opacity', 0, 1, 0.01, 1, this.opacityValue, (value) => this.document?.setBrushOpacity(value));
+        this.sizeInput = sizeControl.input;
+        this.opacityInput = opacityControl.input;
         wrap.append(
-            this.slider('Size', 0, 0.5, 0.001, 0.1, this.sizeValue, (value) => this.document?.setBrushSize(value)),
-            this.slider('Opacity', 0, 1, 0.01, 1, this.opacityValue, (value) => this.document?.setBrushOpacity(value))
+            sizeControl.wrap,
+            opacityControl.wrap
         );
         return wrap;
     }
 
-    private slider(labelText: string, min: number, max: number, step: number, value: number, valueEl: HTMLElement, onInput: (value: number) => void): HTMLElement {
+    private slider(labelText: string, min: number, max: number, step: number, value: number, valueEl: HTMLElement, onInput: (value: number) => void): { wrap: HTMLElement; input: HTMLInputElement } {
         const wrap = document.createElement('label');
         wrap.className = 'ub-floating-slider';
         const label = document.createElement('span');
@@ -118,9 +129,10 @@ export class IpadAppShell implements DocumentControllerDelegate {
             valueEl.textContent = labelText === 'Opacity' ? `${Math.round(next * 100)}%` : next.toFixed(2);
             onInput(next);
         });
+        input.addEventListener('change', () => this.document?.commitBrushControls());
 
         wrap.append(label, input, valueEl);
-        return wrap;
+        return { wrap, input };
     }
 
     private colorButton(): HTMLLabelElement {
@@ -149,6 +161,16 @@ export class IpadAppShell implements DocumentControllerDelegate {
     private updateHistoryButtons(): void {
         this.undoButton.disabled = !this.document?.canUndo;
         this.redoButton.disabled = !this.document?.canRedo;
+    }
+
+    private updateBrushControls(): void {
+        if (!this.document) return;
+        const size = this.document.brushSize;
+        const opacity = this.document.brushOpacity;
+        if (this.sizeInput) this.sizeInput.value = String(size);
+        if (this.opacityInput) this.opacityInput.value = String(opacity);
+        this.sizeValue.textContent = size.toFixed(2);
+        this.opacityValue.textContent = `${Math.round(opacity * 100)}%`;
     }
 
     private setTool(tool: 'brush' | 'fill'): void {
