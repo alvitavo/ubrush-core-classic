@@ -194,7 +194,7 @@ export class IpadAppShell implements DocumentControllerDelegate {
 .ub-ipad-app { position:relative; width:100%; height:100%; overflow:hidden; background:#20211f; color:#f4f0e8; }
 .ub-topbar { position:absolute; z-index:20; top:calc(env(safe-area-inset-top, 0px) + 10px); left:14px; right:14px; height:48px; display:flex; align-items:center; gap:8px; padding:7px; border:1px solid rgba(255,255,255,.13); border-radius:24px; background:rgba(31,32,30,.78); backdrop-filter:blur(22px); box-shadow:0 12px 34px rgba(0,0,0,.24); }
 .ub-stage-host, .ub-ipad-stage, .ub-ipad-canvas { width:100%; height:100%; }
-.ub-ipad-canvas { display:block; cursor:crosshair; }
+.ub-ipad-canvas { display:block; cursor:crosshair; touch-action:none; }
 .ub-text-button, .ub-segment-button, .ub-icon-button { height:34px; border:0; color:#f6f2ea; background:rgba(255,255,255,.1); border-radius:17px; padding:0 12px; font:600 13px -apple-system, BlinkMacSystemFont, sans-serif; cursor:pointer; }
 .ub-icon-button { min-width:34px; padding:0 10px; }
 .ub-icon-button.compact { height:28px; min-width:28px; padding:0 7px; font-size:11px; }

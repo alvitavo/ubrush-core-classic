@@ -102,6 +102,20 @@ export class CanvasStage {
     private floodFillPreviewPromise: Promise<void> | null = null;
     private floodFillUndoStack: FloodFillSnapshot[] = [];
     private floodFillRedoStack: FloodFillSnapshot[] = [];
+    private viewportScale = 1;
+    private viewportRotation = 0;
+    private viewportPanX = 0;
+    private viewportPanY = 0;
+    private spaceKeyDown = false;
+    private isViewportPanning = false;
+    private viewportPanStartClient = new Point();
+    private viewportPanStartOffset = new Point();
+    private isTouchViewportGesture = false;
+    private touchViewportStartDistance = 1;
+    private touchViewportStartAngle = 0;
+    private touchViewportStartScale = 1;
+    private touchViewportStartRotation = 0;
+    private touchViewportAnchorStagePoint = new Point();
 
     constructor(private delegate: CanvasStageDelegate) {
         this.element.className = 'ub-ipad-stage';
@@ -133,6 +147,9 @@ export class CanvasStage {
     private attachEvents(): void {
         this.canvas.addEventListener('mousedown', this.onPointerDown);
         this.canvas.addEventListener('touchstart', this.onPointerDown, { passive: false });
+        this.canvas.addEventListener('wheel', this.onCanvasWheel, { passive: false });
+        document.addEventListener('keydown', this.onDocumentKeyDown);
+        document.addEventListener('keyup', this.onDocumentKeyUp);
         window.addEventListener('resize', () => this.resizeCanvas());
         if ('ResizeObserver' in window) {
             this.resizeObserver = new ResizeObserver(() => this.resizeCanvas());
@@ -148,6 +165,7 @@ export class CanvasStage {
         this.canvas.width = Math.floor(width * scale);
         this.canvas.height = Math.floor(height * scale);
         this.canvasSize = new Size(this.canvas.width, this.canvas.height);
+        this.updateShapeAssistHandles();
     }
 
     private loop(): void {
@@ -166,13 +184,21 @@ export class CanvasStage {
             source: this.document.canvasStack.outputRenderTarget.texture,
             sourceRect: Common.stageRect(),
             canvasRect: Common.stageRect(),
-            transform: new AffineTransform(),
+            transform: this.viewportTransform(),
             blend: RenderObjectBlend.Normal
         });
     }
 
     private onPointerDown = async (e: MouseEvent | TouchEvent): Promise<void> => {
         e.preventDefault();
+        if (e instanceof MouseEvent && (e.button === 1 || this.spaceKeyDown)) {
+            this.beginViewportPan(e);
+            return;
+        }
+        if (!(e instanceof MouseEvent) && e.touches.length >= 2) {
+            this.beginTouchViewportGesture(e);
+            return;
+        }
         if (!this.document || this.document.selectedLayerIsLocked()) return;
 
         if (this.shapeAssistEditingContext) {
@@ -217,6 +243,69 @@ export class CanvasStage {
             document.addEventListener('touchmove', this.onPointerMove, { passive: false });
             document.addEventListener('touchend', this.onPointerUp);
         }
+    };
+
+    private beginViewportPan(e: MouseEvent): void {
+        this.isViewportPanning = true;
+        this.viewportPanStartClient = new Point(e.clientX, e.clientY);
+        this.viewportPanStartOffset = new Point(this.viewportPanX, this.viewportPanY);
+        this.canvas.style.cursor = 'grabbing';
+        document.addEventListener('mousemove', this.onViewportPanMove);
+        document.addEventListener('mouseup', this.onViewportPanUp);
+    }
+
+    private onViewportPanMove = (e: MouseEvent): void => {
+        if (!this.isViewportPanning) return;
+        e.preventDefault();
+        const rect = this.canvas.getBoundingClientRect();
+        const dx = ((e.clientX - this.viewportPanStartClient.x) / Math.max(1, rect.width)) * 2;
+        const dy = -((e.clientY - this.viewportPanStartClient.y) / Math.max(1, rect.height)) * 2;
+        this.viewportPanX = this.viewportPanStartOffset.x + dx;
+        this.viewportPanY = this.viewportPanStartOffset.y + dy;
+        this.updateShapeAssistHandles();
+    };
+
+    private onViewportPanUp = (): void => {
+        this.isViewportPanning = false;
+        this.canvas.style.cursor = this.spaceKeyDown ? 'grab' : 'crosshair';
+        document.removeEventListener('mousemove', this.onViewportPanMove);
+        document.removeEventListener('mouseup', this.onViewportPanUp);
+    };
+
+    private beginTouchViewportGesture(e: TouchEvent): void {
+        const metrics = this.touchGestureMetrics(e);
+        if (!metrics) return;
+        this.isTouchViewportGesture = true;
+        this.clearStraightLineTimer();
+        this.touchViewportStartDistance = metrics.distance;
+        this.touchViewportStartAngle = metrics.angle;
+        this.touchViewportStartScale = this.viewportScale;
+        this.touchViewportStartRotation = this.viewportRotation;
+        this.touchViewportAnchorStagePoint = this.inverseViewportTransform().applyToPoint(metrics.centerStage);
+        document.addEventListener('touchmove', this.onTouchViewportGestureMove, { passive: false });
+        document.addEventListener('touchend', this.onTouchViewportGestureEnd);
+        document.addEventListener('touchcancel', this.onTouchViewportGestureEnd);
+    }
+
+    private onTouchViewportGestureMove = (e: TouchEvent): void => {
+        if (!this.isTouchViewportGesture) return;
+        e.preventDefault();
+        const metrics = this.touchGestureMetrics(e);
+        if (!metrics) return;
+        const factor = metrics.distance / Math.max(1, this.touchViewportStartDistance);
+        const deltaDegrees = (metrics.angle - this.touchViewportStartAngle) * 57.29577951308232;
+        this.viewportScale = this.clampViewportScale(this.touchViewportStartScale * factor);
+        this.viewportRotation = this.normalizeViewportRotation(this.touchViewportStartRotation + deltaDegrees);
+        this.setViewportPanForAnchor(this.touchViewportAnchorStagePoint, metrics.centerStage);
+        this.updateShapeAssistHandles();
+    };
+
+    private onTouchViewportGestureEnd = (e: TouchEvent): void => {
+        if (e.touches.length >= 2) return;
+        this.isTouchViewportGesture = false;
+        document.removeEventListener('touchmove', this.onTouchViewportGestureMove);
+        document.removeEventListener('touchend', this.onTouchViewportGestureEnd);
+        document.removeEventListener('touchcancel', this.onTouchViewportGestureEnd);
     };
 
     private onPointerMove = (e: MouseEvent | TouchEvent): void => {
@@ -1374,19 +1463,164 @@ export class CanvasStage {
         this.straightLineStartStylus = null;
     }
 
+    private viewportTransform(): AffineTransform {
+        const aspect = this.canvasSize.width / Math.max(1, this.canvasSize.height);
+        const radians = this.viewportRotation * 0.017453292519943295;
+        const cos = Math.cos(radians) * this.viewportScale;
+        const sin = Math.sin(radians) * this.viewportScale;
+        return new AffineTransform(
+            cos,
+            sin * aspect,
+            -sin / aspect,
+            cos,
+            this.viewportPanX,
+            this.viewportPanY
+        );
+    }
+
+    private inverseViewportTransform(): AffineTransform {
+        return this.viewportTransform().inverse();
+    }
+
+    private zoomViewport(factor: number, screenStagePoint: Point): void {
+        const before = this.inverseViewportTransform().applyToPoint(screenStagePoint);
+        this.viewportScale = this.clampViewportScale(this.viewportScale * factor);
+        this.setViewportPanForAnchor(before, screenStagePoint);
+        this.updateShapeAssistHandles();
+    }
+
+    private rotateViewport(deltaDegrees: number, screenStagePoint: Point): void {
+        const before = this.inverseViewportTransform().applyToPoint(screenStagePoint);
+        this.viewportRotation = this.normalizeViewportRotation(this.viewportRotation + deltaDegrees);
+        this.setViewportPanForAnchor(before, screenStagePoint);
+        this.updateShapeAssistHandles();
+    }
+
+    private rotateViewportAtCenter(deltaDegrees: number): void {
+        this.rotateViewport(deltaDegrees, new Point(0, 0));
+    }
+
+    private resetViewport(): void {
+        this.viewportScale = 1;
+        this.viewportRotation = 0;
+        this.viewportPanX = 0;
+        this.viewportPanY = 0;
+        this.updateShapeAssistHandles();
+    }
+
+    private setViewportPanForAnchor(canvasStagePoint: Point, screenStagePoint: Point): void {
+        const previousPanX = this.viewportPanX;
+        const previousPanY = this.viewportPanY;
+        this.viewportPanX = 0;
+        this.viewportPanY = 0;
+        const projected = this.viewportTransform().applyToPoint(canvasStagePoint);
+        this.viewportPanX = previousPanX;
+        this.viewportPanY = previousPanY;
+        this.viewportPanX = screenStagePoint.x - projected.x;
+        this.viewportPanY = screenStagePoint.y - projected.y;
+    }
+
+    private clampViewportScale(scale: number): number {
+        return Math.max(0.1, Math.min(16, scale));
+    }
+
+    private normalizeViewportRotation(degrees: number): number {
+        let next = degrees % 360;
+        if (next > 180) next -= 360;
+        if (next < -180) next += 360;
+        return next;
+    }
+
+    private onCanvasWheel = (e: WheelEvent): void => {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+        this.zoomViewport(factor, this.clientPointToScreenStagePoint(e.clientX, e.clientY));
+    };
+
+    private onDocumentKeyDown = (e: KeyboardEvent): void => {
+        if (this.isTextEditingTarget(e.target)) return;
+        if (e.code === 'Space') {
+            e.preventDefault();
+            this.spaceKeyDown = true;
+            if (!this.isViewportPanning) this.canvas.style.cursor = 'grab';
+            return;
+        }
+        if (e.code === 'Digit0') {
+            e.preventDefault();
+            this.resetViewport();
+            return;
+        }
+        if (e.shiftKey && e.code === 'ArrowLeft') {
+            e.preventDefault();
+            this.rotateViewportAtCenter(-90);
+            return;
+        }
+        if (e.shiftKey && e.code === 'ArrowRight') {
+            e.preventDefault();
+            this.rotateViewportAtCenter(90);
+        }
+    };
+
+    private onDocumentKeyUp = (e: KeyboardEvent): void => {
+        if (e.code !== 'Space') return;
+        this.spaceKeyDown = false;
+        if (!this.isViewportPanning) this.canvas.style.cursor = 'crosshair';
+    };
+
+    private isTextEditingTarget(target: EventTarget | null): boolean {
+        const el = target as HTMLElement | null;
+        if (!el) return false;
+        return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
+    }
+
+    private touchGestureMetrics(e: TouchEvent): { centerStage: Point; distance: number; angle: number } | null {
+        const first = e.touches[0];
+        const second = e.touches[1];
+        if (!first || !second) return null;
+        const centerX = (first.clientX + second.clientX) * 0.5;
+        const centerY = (first.clientY + second.clientY) * 0.5;
+        const dx = second.clientX - first.clientX;
+        const dy = second.clientY - first.clientY;
+        return {
+            centerStage: this.clientPointToScreenStagePoint(centerX, centerY),
+            distance: Math.max(1, Math.hypot(dx, dy)),
+            angle: Math.atan2(dy, dx)
+        };
+    }
+
     private canvasPointToContainer(point: Point): Point {
         const rect = this.canvas.getBoundingClientRect();
+        const stage = this.viewportTransform().applyToPoint(this.canvasPointToStagePoint(point));
         return new Point(
-            (point.x / Math.max(1, this.canvas.width)) * rect.width,
-            (1 - point.y / Math.max(1, this.canvas.height)) * rect.height
+            ((stage.x + 1) * 0.5) * rect.width,
+            ((1 - stage.y) * 0.5) * rect.height
         );
     }
 
     private clientPointToCanvasPoint(clientX: number, clientY: number): Point {
+        const stage = this.inverseViewportTransform().applyToPoint(this.clientPointToScreenStagePoint(clientX, clientY));
+        return this.stagePointToCanvasPoint(stage);
+    }
+
+    private clientPointToScreenStagePoint(clientX: number, clientY: number): Point {
         const rect = this.canvas.getBoundingClientRect();
         return new Point(
-            ((clientX - rect.left) / Math.max(1, rect.width)) * this.canvas.width,
-            this.canvas.height - ((clientY - rect.top) / Math.max(1, rect.height)) * this.canvas.height
+            ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+            1 - ((clientY - rect.top) / Math.max(1, rect.height)) * 2
+        );
+    }
+
+    private canvasPointToStagePoint(point: Point): Point {
+        return new Point(
+            (point.x / Math.max(1, this.canvasSize.width)) * 2 - 1,
+            (point.y / Math.max(1, this.canvasSize.height)) * 2 - 1
+        );
+    }
+
+    private stagePointToCanvasPoint(point: Point): Point {
+        return new Point(
+            ((point.x + 1) * 0.5) * this.canvasSize.width,
+            ((point.y + 1) * 0.5) * this.canvasSize.height
         );
     }
 
@@ -1694,21 +1928,18 @@ export class CanvasStage {
             clientX = e.clientX;
             clientY = e.clientY;
         } else {
-            clientX = e.touches[0]?.clientX ?? clientX;
-            clientY = e.touches[0]?.clientY ?? clientY;
+            const touch = e.touches[0] ?? e.changedTouches[0];
+            clientX = touch?.clientX ?? clientX;
+            clientY = touch?.clientY ?? clientY;
         }
 
-        const rect = this.canvas.getBoundingClientRect();
-        return new Point(
-            ((clientX - rect.left) / Math.max(1, rect.width)) * this.canvas.width,
-            this.canvas.height - ((clientY - rect.top) / Math.max(1, rect.height)) * this.canvas.height
-        );
+        return this.clientPointToCanvasPoint(clientX, clientY);
     }
 
     private eventStylus(e: MouseEvent | TouchEvent): Stylus {
         if (e instanceof MouseEvent) return new Stylus();
 
-        const touch = e.touches[0];
+        const touch = e.touches[0] ?? e.changedTouches[0];
         if ((touch as any)?.touchType === 'stylus') {
             const pressure = this.stylusEventCount < 2 ? 0 : touch.force;
             this.stylusEventCount++;
