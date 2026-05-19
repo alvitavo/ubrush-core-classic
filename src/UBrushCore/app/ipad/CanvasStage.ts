@@ -254,6 +254,7 @@ export class CanvasStage {
         } else {
             document.addEventListener('touchmove', this.onPointerMove, { passive: false });
             document.addEventListener('touchend', this.onPointerUp);
+            document.addEventListener('touchcancel', this.onPointerUp);
         }
     };
 
@@ -324,6 +325,11 @@ export class CanvasStage {
 
     private onPointerMove = (e: MouseEvent | TouchEvent): void => {
         e.preventDefault();
+        if (!(e instanceof MouseEvent) && e.touches.length >= 2) {
+            void this.switchTouchDrawingToViewportGesture(e);
+            return;
+        }
+
         const canvas = this.activeCanvas();
         if (!canvas) return;
 
@@ -369,7 +375,26 @@ export class CanvasStage {
         document.removeEventListener('mouseup', this.onPointerUp);
         document.removeEventListener('touchmove', this.onPointerMove);
         document.removeEventListener('touchend', this.onPointerUp);
+        document.removeEventListener('touchcancel', this.onPointerUp);
     };
+
+    private async switchTouchDrawingToViewportGesture(e: TouchEvent): Promise<void> {
+        document.removeEventListener('touchmove', this.onPointerMove);
+        document.removeEventListener('touchend', this.onPointerUp);
+        document.removeEventListener('touchcancel', this.onPointerUp);
+
+        const canvas = this.activeCanvas();
+        const strokeGroup = this.straightLineStrokeGroup;
+        this.clearStraightLineTimer();
+        this.straightLineToken++;
+        canvas?.cancelLine();
+        this.resetShapeAssistState(false);
+        this.beginTouchViewportGesture(e);
+
+        if (!canvas || !strokeGroup) return;
+        if (strokeGroup.undoFixerLiquid) await canvas.fix(strokeGroup.undoFixerLiquid, true);
+        if (strokeGroup.undoFixer) await canvas.fix(strokeGroup.undoFixer, false);
+    }
 
     private activeCanvas(): Canvas | undefined {
         return this.document?.selectedCanvas;
